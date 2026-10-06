@@ -1,0 +1,276 @@
+import { config } from "../../config/env.js";
+import { APPROVAL_GATE as GATE, JOB_STATUS as S, NOTIFICATION_TYPE, TASK_TYPE, loadGateFor } from "../../config/statuses.js";
+import { Job, JobEligibleStudent, JobHubspotMapping } from "../../models/index.js";
+import { waitForApproval } from "../../services/approvalService.js";
+import { AUDIT, audit } from "../../services/auditService.js";
+import { applySubmittedInputs, mapDeal, missingRequiredFields } from "../../services/dealMapper.js";
+import { latestSnapshot, saveSnapshot } from "../../services/dealSnapshotService.js";
+import { findEligibleStudents } from "../../services/eligibilityService.js";
+import { integrations } from "../../services/integrations.js";
+import { transitionJob } from "../../services/jobService.js";
+import {
+  buildPortalPayload,
+  isLoadedInto,
+  jobUrlFor,
+  loadInto,
+  nextOrderNumber,
+  prepareOrganisation,
+  resendToTargets,
+} from "../../services/learningPortal/portalLoader.js";
+import { formatIst } from "../../services/learningPortal/nkbPayload.js";
+import { notificationKey, sendBulk } from "../../services/notificationService.js";
+import { enqueueTask } from "../../services/taskQueue.js";
+import { now } from "../../utils/clock.js";
+import { PermanentError } from "../../utils/errors.js";
+import { chunk, hoursFromNow } from "../../utils/helpers.js";
+import { enqueueNext, isPast, proceed } from "./shared.js";
+
+const DEADLINE_SYNC_TOLERANCE_MS = 5 * 60 * 1000;
+const DEAL_FIELDS = [
+  "companyName", "companyWebsite", "companyLinkedin", "companyLogoUrl", "jobRole", "jobDescription", "skills",
+  "eligibility", "batch", "campus", "program", "location", "ctc", "employmentType", "openings",
+  "expectedPoolCount", "crmOwnerName", "crmOwnerEmail", "applicationDeadline", "importantInstructions",
+];
+
+export const pick = (mapped) => Object.fromEntries(DEAL_FIELDS.map((field) => [field, mapped[field] ?? null]));
+
+async function requireSnapshot(job) {
+  const snapshot = await latestSnapshot(job._id);
+  if (!snapshot) throw new PermanentError("No HubSpot snapshot stored for this job; retry the deal fetch");
+  return snapshot;
+}
+
+async function fetchDeal({ job }) {
+  if (isPast(job, S.FETCHING_DEAL)) return proceed(job, GATE.DEAL_DETAILS, TASK_TYPE.CREATE_JOB);
+  await transitionJob(job._id, S.FETCHING_DEAL, { from: [S.SUBMITTED, S.FETCHING_DEAL] });
+
+  const bundle = await integrations.hubspot.fetchDealBundle(job.hubspotDealId);
+  const mapped = applySubmittedInputs(mapDeal(bundle), job);
+  const missing = missingRequiredFields(mapped);
+  if (missing.length) {
+    throw new PermanentError(`HubSpot deal ${job.hubspotDealId} is missing required fields: ${missing.join(", ")}`);
+  }
+
+  await saveSnapshot(job, mapped, bundle.deal.properties, "INITIAL");
+  await Job.updateOne({ _id: job._id }, { $set: pick(mapped) });
+  await transitionJob(job._id, S.DEAL_FETCHED, { from: S.FETCHING_DEAL });
+  await proceed(job, GATE.DEAL_DETAILS, TASK_TYPE.CREATE_JOB);
+}
+
+async function createJob({ job }) {
+  if (isPast(job, S.JOB_CREATING)) return enqueueNext(job, TASK_TYPE.IDENTIFY_ELIGIBLE);
+  if (await waitForApproval(job, GATE.DEAL_DETAILS)) return;
+  await transitionJob(job._id, S.JOB_CREATING, { from: [S.DEAL_FETCHED, S.JOB_CREATING] });
+
+  const snapshot = await requireSnapshot(job);
+  const portal = integrations.learningPortal;
+  const save = (set) => Job.findByIdAndUpdate(job._id, { $set: set }, { returnDocument: "after" });
+
+  let current = await Job.findById(job._id);
+  if (!current.learningPortalOrgId) {
+    const organisation = await prepareOrganisation(current);
+    current = await save({ learningPortalOrgId: organisation.organisationId });
+  }
+  if (!current.learningPortalJobId) {
+    current = await save({ learningPortalJobId: portal.newId() });
+  }
+
+  if (!current.learningPortalPayload) {
+    const deadline = hoursFromNow(config.workflow.applicationWindowHours, now());
+    const payload = await buildPortalPayload(current, snapshot.rawProperties, { deadline, order: await nextOrderNumber() });
+    current = await save({ learningPortalPayload: payload, learningPortalDeadline: deadline });
+  }
+
+  for (const env of portal.targets) {
+    if (isLoadedInto(current, env)) continue;
+    if (await waitForApproval(current, loadGateFor(env))) return;
+    current = await loadInto(job._id, env);
+  }
+  const learningPortalJobUrl = jobUrlFor(current);
+  await save({ learningPortalJobUrl });
+  await JobHubspotMapping.updateOne({ jobId: job._id }, { $set: { learningPortalJobId: current.learningPortalJobId } });
+  await transitionJob(job._id, S.JOB_CREATED, { from: S.JOB_CREATING });
+  await audit({
+    action: AUDIT.JOB_CREATED,
+    entityId: job._id,
+    metadata: {
+      learningPortalJobId: current.learningPortalJobId,
+      organisationId: current.learningPortalOrgId,
+      environments: portal.targets.join(","),
+    },
+  });
+  await Promise.all([
+    enqueueNext(job, TASK_TYPE.HUBSPOT_WRITE_BACK),
+    enqueueNext(job, TASK_TYPE.TRACK_LOADED_JOB),
+    enqueueNext(job, TASK_TYPE.IDENTIFY_ELIGIBLE),
+  ]);
+}
+
+async function identifyEligible({ job, heartbeat }) {
+  if (isPast(job, S.ELIGIBILITY_PROCESSING)) return proceed(job, GATE.ELIGIBLE_STUDENTS, TASK_TYPE.GRANT_ACCESS);
+  await transitionJob(job._id, S.ELIGIBILITY_PROCESSING, { from: [S.JOB_CREATED, S.ELIGIBILITY_PROCESSING] });
+
+  const snapshot = await requireSnapshot(job);
+  const current = await Job.findById(job._id).lean();
+  const students = await findEligibleStudents(current, snapshot.rawProperties);
+  if (!students.length) {
+    throw new PermanentError("No eligible students were found for this deal's eligibility criteria");
+  }
+
+  for (const batch of chunk(students, 1000)) {
+    await JobEligibleStudent.bulkWrite(
+      batch.map((student) => ({
+        updateOne: {
+          filter: { jobId: job._id, studentId: student.studentId },
+          update: {
+            $set: {
+              studentName: student.studentName ?? "",
+              email: student.email ?? null,
+              mobile: student.mobile ?? null,
+              campus: student.campus ?? null,
+              batch: student.batch ?? null,
+            },
+            $setOnInsert: { eligibleAt: now() },
+          },
+          upsert: true,
+        },
+      })),
+      { ordered: false },
+    );
+    await heartbeat();
+  }
+
+  const eligibleCount = await JobEligibleStudent.countDocuments({ jobId: job._id });
+  await transitionJob(job._id, S.ELIGIBLE_STUDENTS_IDENTIFIED, {
+    from: S.ELIGIBILITY_PROCESSING,
+    set: { eligibleCount },
+  });
+  await proceed(job, GATE.ELIGIBLE_STUDENTS, TASK_TYPE.GRANT_ACCESS);
+}
+
+async function grantAccess({ job, heartbeat }) {
+  if (isPast(job, S.GRANTING_ACCESS)) return proceed(job, GATE.START_WINDOW, TASK_TYPE.SEND_INITIAL_NOTIFICATIONS);
+  if (await waitForApproval(job, GATE.ELIGIBLE_STUDENTS)) return;
+  await transitionJob(job._id, S.GRANTING_ACCESS, { from: [S.ELIGIBLE_STUDENTS_IDENTIFIED, S.GRANTING_ACCESS] });
+  const current = await Job.findById(job._id).lean();
+
+  const pending = await JobEligibleStudent.find(
+    { jobId: job._id, accessGrantedAt: null, accessRejectedReason: null },
+    { studentId: 1 },
+  ).lean();
+
+  let granted = 0;
+  let rejected = 0;
+  for (const batch of chunk(pending.map((row) => row.studentId), 1000)) {
+    const result = await integrations.learningPortal.grantAccess(
+      config.learningPortal.accessEnv,
+      current.learningPortalJobId,
+      batch,
+    );
+    if (result.granted.length) {
+      await JobEligibleStudent.updateMany(
+        { jobId: job._id, studentId: { $in: result.granted } },
+        { $set: { accessGrantedAt: now() } },
+      );
+    }
+    for (const { studentId, reason } of result.rejected) {
+      await JobEligibleStudent.updateOne({ jobId: job._id, studentId }, { $set: { accessRejectedReason: reason } });
+    }
+    granted += result.granted.length;
+    rejected += result.rejected.length;
+    await heartbeat();
+  }
+
+  const totalGranted = await JobEligibleStudent.countDocuments({ jobId: job._id, accessGrantedAt: { $ne: null } });
+  if (!totalGranted) throw new PermanentError("The Learning Portal did not grant access to any eligible student");
+  await audit({ action: AUDIT.ACCESS_GRANTED, entityId: job._id, metadata: { granted, rejected, totalGranted } });
+  await proceed(job, GATE.START_WINDOW, TASK_TYPE.SEND_INITIAL_NOTIFICATIONS);
+}
+
+export async function scheduleWindowTasks(job) {
+  const start = job.applicationStartAt;
+  const { reminderOneHours, reminderTwoHours, countSyncMinutes } = config.workflow;
+  await Promise.all([
+    enqueueNext(job, TASK_TYPE.REMINDER_10H, { scheduledFor: hoursFromNow(reminderOneHours, start) }),
+    enqueueNext(job, TASK_TYPE.REMINDER_20H, { scheduledFor: hoursFromNow(reminderTwoHours, start) }),
+    enqueueNext(job, TASK_TYPE.APPLICATION_CLOSE_21H, { scheduledFor: job.applicationEndAt }),
+    enqueueTask({
+      jobId: job._id,
+      type: TASK_TYPE.APPLICATION_COUNT_SYNC,
+      scheduledFor: new Date(start.getTime() + countSyncMinutes * 60 * 1000),
+      payload: { index: 1 },
+      dedupeKey: `${job._id}:APPLICATION_COUNT_SYNC:1`,
+    }),
+  ]);
+}
+
+async function sendInitialNotifications({ job, heartbeat }) {
+  if (isPast(job, S.INITIAL_NOTIFICATION_SENDING)) return;
+  if (await waitForApproval(job, GATE.START_WINDOW)) return;
+  await transitionJob(job._id, S.INITIAL_NOTIFICATION_SENDING, {
+    from: [S.GRANTING_ACCESS, S.INITIAL_NOTIFICATION_SENDING],
+  });
+
+  const start = now();
+  await Job.updateOne(
+    { _id: job._id, applicationStartAt: null },
+    {
+      $set: {
+        applicationStartAt: start,
+        applicationEndAt: hoursFromNow(config.workflow.applicationWindowHours, start),
+      },
+    },
+  );
+  let current = await Job.findById(job._id);
+
+  const drift = Math.abs((current.learningPortalDeadline?.getTime() ?? 0) - current.applicationEndAt.getTime());
+  if (drift > DEADLINE_SYNC_TOLERANCE_MS && current.learningPortalPayload) {
+    await resendToTargets(current, current.learningPortalPayload, { deadline: current.applicationEndAt });
+    current = await Job.findByIdAndUpdate(
+      job._id,
+      {
+        $set: {
+          learningPortalDeadline: current.applicationEndAt,
+          "learningPortalPayload.job_details.apply_by": formatIst(current.applicationEndAt),
+        },
+      },
+      { returnDocument: "after" },
+    );
+  }
+
+  await scheduleWindowTasks(current);
+
+  const type = NOTIFICATION_TYPE.INITIAL_JOB_EMAIL;
+  const totals = { SENT: 0, SKIPPED: 0, FAILED: 0, RETRYING: 0, DUPLICATE: 0 };
+  const cursor = JobEligibleStudent.find({ jobId: job._id, accessGrantedAt: { $ne: null } }).lean().cursor();
+  let batch = [];
+  const flush = async () => {
+    const counts = await sendBulk({
+      job: current,
+      type,
+      recipients: batch,
+      keyFor: (student) => notificationKey(job._id, type, student.studentId),
+      onSent: (student) =>
+        JobEligibleStudent.updateOne({ _id: student._id }, { $set: { initialEmailSentAt: now() } }),
+    });
+    for (const [key, value] of Object.entries(counts)) totals[key] += value;
+    batch = [];
+    await heartbeat();
+  };
+  for await (const student of cursor) {
+    batch.push(student);
+    if (batch.length >= 500) await flush();
+  }
+  if (batch.length) await flush();
+
+  await audit({ action: AUDIT.INITIAL_EMAIL_SENT, entityId: job._id, metadata: totals });
+  await transitionJob(job._id, S.APPLICATIONS_OPEN, { from: S.INITIAL_NOTIFICATION_SENDING });
+}
+
+export const dealProcessingHandlers = {
+  [TASK_TYPE.FETCH_DEAL]: { run: fetchDeal },
+  [TASK_TYPE.CREATE_JOB]: { run: createJob },
+  [TASK_TYPE.IDENTIFY_ELIGIBLE]: { run: identifyEligible },
+  [TASK_TYPE.GRANT_ACCESS]: { run: grantAccess },
+  [TASK_TYPE.SEND_INITIAL_NOTIFICATIONS]: { run: sendInitialNotifications },
+};

@@ -1,0 +1,22 @@
+{
+  "name": "job-flow-automation",
+  "private": true,
+  "description": "HubSpot → Learning Portal → Student applications → AI prioritisation → PSM review → CRM sharing",
+  "workspaces": [
+    "apps/api",
+    "apps/web"
+  ],
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "dev:db": "npm run db:memory -w apps/api",
+    "dev:api": "npm run dev -w apps/api",
+    "dev:worker": "npm run worker:dev -w apps/api",
+    "dev:web": "npm run dev -w apps/web",
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present"
+  }
+}

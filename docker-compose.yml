@@ -1,0 +1,41 @@
+services:
+  mongo:
+    image: mongo:7
+    ports:
+      - "127.0.0.1:27017:27017"
+    volumes:
+      - mongo-data:/data/db
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    command: ["node", "src/server.js"]
+    env_file:
+      - path: apps/api/.env
+        required: false
+    environment: &local-env
+      NODE_ENV: development
+      MONGODB_URI: mongodb://mongo:27017/job_flow
+      FRONTEND_URL: http://localhost:5173
+      INTEGRATION_MODE: ${INTEGRATION_MODE:-live}
+      ALLOW_DEV_LOGIN: ${ALLOW_DEV_LOGIN:-true}
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      - mongo
+
+  worker:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    command: ["node", "src/worker.js"]
+    env_file:
+      - path: apps/api/.env
+        required: false
+    environment: *local-env
+    depends_on:
+      - mongo
+
+volumes:
+  mongo-data:
