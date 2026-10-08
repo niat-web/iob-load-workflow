@@ -1,4 +1,4 @@
-import { ChevronDown, LogOut } from "lucide-react";
+import { ChevronDown, ChevronUp, LogOut } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { useAuth } from "../auth/AuthContext";
@@ -30,7 +30,8 @@ function Avatar({ user }: { user: User }) {
   );
 }
 
-export function UserEmailMenu({ user }: { user: User }) {
+export function UserEmailMenu({ user, variant = "compact" }: { user: User; variant?: "compact" | "sidebar" }) {
+  const sidebar = variant === "sidebar";
   const menuId = useId();
   const [open, setOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
@@ -53,7 +54,7 @@ export function UserEmailMenu({ user }: { user: User }) {
   };
 
   return (
-    <div className="relative">
+    <div className={cn("relative", sidebar && "w-full")}>
       <button
         ref={triggerRef}
         type="button"
@@ -69,16 +70,25 @@ export function UserEmailMenu({ user }: { user: User }) {
         aria-controls={open ? menuId : undefined}
         aria-label={`Account menu for ${user.email}`}
         className={cn(
-          "focus-ring flex max-w-[320px] items-center gap-2.5 rounded-lg py-1.5 pr-2 pl-1.5 transition-colors hover:bg-slate-50",
+          "focus-ring flex items-center gap-2.5 rounded-lg transition-colors hover:bg-slate-50",
+          sidebar ? "w-full px-2.5 py-2 text-left" : "max-w-[320px] py-1.5 pr-2 pl-1.5",
           open && "bg-slate-50",
         )}
       >
         <Avatar user={user} />
-        <span className="hidden truncate text-sm font-semibold text-ink sm:block">{user.email}</span>
-        <ChevronDown
-          className={cn("size-4 shrink-0 text-muted transition-transform", open && "rotate-180")}
-          aria-hidden
-        />
+        {sidebar ? (
+          <span className="flex min-w-0 flex-1 flex-col leading-tight">
+            <span className="truncate text-sm font-semibold text-ink">{user.name || user.email}</span>
+            <span className="truncate text-xs text-muted">{user.email}</span>
+          </span>
+        ) : (
+          <span className="hidden truncate text-sm font-semibold text-ink sm:block">{user.email}</span>
+        )}
+        {sidebar ? (
+          <ChevronUp className={cn("size-4 shrink-0 text-muted transition-transform", open && "rotate-180")} aria-hidden />
+        ) : (
+          <ChevronDown className={cn("size-4 shrink-0 text-muted transition-transform", open && "rotate-180")} aria-hidden />
+        )}
       </button>
       {open && (
         <div
@@ -93,7 +103,10 @@ export function UserEmailMenu({ user }: { user: User }) {
               triggerRef.current?.focus();
             }
           }}
-          className="absolute top-full right-0 z-40 mt-1.5 w-44 animate-pop-in rounded-lg border bg-surface p-1 shadow-pop"
+          className={cn(
+            "absolute z-40 animate-pop-in rounded-lg border bg-surface p-1 shadow-pop",
+            sidebar ? "right-0 bottom-full left-0 mb-1.5" : "top-full right-0 mt-1.5 w-44",
+          )}
         >
           <button
             type="button"
@@ -101,9 +114,9 @@ export function UserEmailMenu({ user }: { user: User }) {
             role="menuitem"
             disabled={signingOut}
             onClick={() => void handleLogout()}
-            className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm font-medium text-slate-700 outline-none hover:bg-slate-50 focus-visible:bg-slate-100 disabled:opacity-60"
+            className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm font-semibold text-red-600 outline-none hover:bg-red-50 focus-visible:bg-red-50 disabled:opacity-60"
           >
-            <LogOut className="size-4 text-muted" aria-hidden />
+            <LogOut className="size-4 text-red-600" aria-hidden />
             Logout
           </button>
         </div>

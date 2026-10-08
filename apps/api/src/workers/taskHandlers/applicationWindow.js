@@ -1,12 +1,11 @@
 import { config } from "../../config/env.js";
 import { JOB_STATUS as S, NOTIFICATION_TYPE, TASK_TYPE, WINDOW_STATUSES } from "../../config/statuses.js";
-import { AiCallLog, Job, JobEligibleStudent } from "../../models/index.js";
-import { triggerReminderCalls } from "../../services/aiCallService.js";
+import { Job } from "../../models/index.js";
 import { recordAppliedCount, syncApplicants } from "../../services/applicationService.js";
 import { AUDIT, audit } from "../../services/auditService.js";
+import { alertCrmToBoost, runResultsSyncTask } from "../../services/boostService.js";
 import { integrations } from "../../services/integrations.js";
 import { transitionJob } from "../../services/jobService.js";
-import { notificationKey, sendBulk } from "../../services/notificationService.js";
 import { enqueueTask } from "../../services/taskQueue.js";
 import { now } from "../../utils/clock.js";
 import { logger } from "../../utils/logger.js";
@@ -72,28 +71,16 @@ function reminderHandler(type) {
     }
 
     await transitionJob(job._id, spec.processing, { from: WINDOW_STATUSES });
-    const nonApplicants = await JobEligibleStudent.find({
-      jobId: job._id,
-      applied: false,
-      accessGrantedAt: { $ne: null },
-    }).lean();
-
-    const emailCounts = await sendBulk({
-      job: synced,
-      type: spec.notification,
-      recipients: nonApplicants,
-      keyFor: (student) => notificationKey(job._id, spec.notification, student.studentId),
-    });
-    const calls = await triggerReminderCalls({ job: synced, students: nonApplicants, reminderType: type });
-
+    const alert = await alertCrmToBoost(synced, type);
     await recordReminder(job._id, spec.key, {
-      status: "SENT",
-      emailCount: emailCounts.SENT,
-      callCount: calls.queued,
-      reason: `${nonApplicants.length} non-applicants; ${calls.skipped} without a valid phone; ${calls.deferred} calls deferred`,
+      status: alert.outcome === "SENT" ? "SENT" : "SKIPPED",
+      emailCount: 0,
+      callCount: 0,
+      reason:
+        alert.outcome === "SENT"
+          ? `CRM ${alert.to} asked to boost applications (${alert.appliedCount} applied, ${alert.notApplied} not applied)`
+          : `CRM alert not sent (${alert.outcome})`,
     });
-    await audit({ action: AUDIT.REMINDER_EMAILS_SENT, entityId: job._id, metadata: { reminder: type, ...emailCounts } });
-    await audit({ action: AUDIT.AI_CALLS_TRIGGERED, entityId: job._id, metadata: { reminder: type, ...calls } });
     await transitionJob(job._id, spec.sent, { from: spec.processing });
   };
 }
@@ -106,23 +93,8 @@ function reminderFailure(type) {
   };
 }
 
-async function retryAiCalls({ task, job }) {
-  if (!WINDOW_STATUSES.includes(job.status)) return;
-  const { reminderType, studentIds = [] } = task.payload ?? {};
-  const students = await JobEligibleStudent.find({ jobId: job._id, studentId: { $in: studentIds } }).lean();
-  const applied = students.filter((student) => student.applied).map((student) => student.studentId);
-  if (applied.length) {
-    await AiCallLog.updateMany(
-      { jobId: job._id, reminderType, studentId: { $in: applied }, status: { $in: ["RATE_LIMITED", "RETRYING"] } },
-      { $set: { status: "SKIPPED", error: "Student applied before the retry" } },
-    );
-  }
-  await triggerReminderCalls({
-    job,
-    students: students.filter((student) => !student.applied),
-    reminderType,
-    retry: true,
-  });
+async function callResultsSync({ job }) {
+  await runResultsSyncTask(job);
 }
 
 async function applicationClose({ job }) {
@@ -139,6 +111,6 @@ export const applicationWindowHandlers = {
   [TASK_TYPE.APPLICATION_COUNT_SYNC]: { run: applicationCountSync },
   [TASK_TYPE.REMINDER_10H]: { run: reminderHandler(TASK_TYPE.REMINDER_10H), onPermanentFailure: reminderFailure(TASK_TYPE.REMINDER_10H) },
   [TASK_TYPE.REMINDER_20H]: { run: reminderHandler(TASK_TYPE.REMINDER_20H), onPermanentFailure: reminderFailure(TASK_TYPE.REMINDER_20H) },
-  [TASK_TYPE.RETRY_AI_CALLS]: { run: retryAiCalls },
+  [TASK_TYPE.CALL_RESULTS_SYNC]: { run: callResultsSync },
   [TASK_TYPE.APPLICATION_CLOSE_21H]: { run: applicationClose },
 };

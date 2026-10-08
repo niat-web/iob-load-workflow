@@ -18,6 +18,7 @@ import { Job } from "../models/index.js";
 import { now } from "../utils/clock.js";
 import { escapeRegex } from "../utils/helpers.js";
 import { canDelete, canStop } from "./dealControlService.js";
+import { hubspotRecordUrl } from "./dealMapper.js";
 import { publicLinkUrlsForJobs } from "./publicLinkService.js";
 
 const S = JOB_STATUS;
@@ -129,8 +130,39 @@ function learningPortalInfo(job) {
   };
 }
 
+function firstLoadedAt(job) {
+  const dates = config.learningPortal.targets
+    .map((name) => job.learningPortalLoads?.[name]?.loadedAt)
+    .filter(Boolean)
+    .map((date) => new Date(date).getTime());
+  return dates.length ? new Date(Math.min(...dates)) : null;
+}
+
+function dealFields(job) {
+  const details = job.learningPortalPayload?.job_details ?? {};
+  const plans = details.enroll_plans ?? job.enrollPlans ?? [];
+  return {
+    hubspotRecordUrl: hubspotRecordUrl(job),
+    ingestedAt: iso(firstLoadedAt(job) ?? job.createdAt),
+    companyWebsite: job.companyWebsite ?? null,
+    companyLinkedin: job.companyLinkedin ?? null,
+    companyLogoUrl: job.companyLogoUrl ?? null,
+    jdCount: job.jdCount ?? null,
+    jobType: details.job_type ?? job.jobType ?? null,
+    experienceType: job.experienceType ?? null,
+    jobSource: details.job_source ?? job.jobSource ?? null,
+    applicationMode: job.applicationMode ?? null,
+    internshipDuration: job.internshipDuration ?? null,
+    enrollPlans: [...plans],
+    eligibility: job.eligibility ?? null,
+    compensationDescription: job.importantInstructions ?? null,
+    deadline: iso(job.applicationEndAt ?? job.learningPortalDeadline) ?? job.applicationDeadline ?? null,
+  };
+}
+
 export function toCrmDetail(job, publicLinkUrl = null) {
   return {
+    ...dealFields(job),
     ...toCrmRow(job, publicLinkUrl),
     approvals: Object.entries(job.approvals ?? {})
       .map(([gate, approval]) => ({ gate, label: APPROVAL_GATE_LABELS[gate] ?? gate, by: approval?.by ?? null, at: iso(approval?.at) }))
@@ -298,7 +330,8 @@ export async function listPsmJobs({ search, company, psmStatus, priorityStatus, 
   const and = [psmBaseFilter()];
   const text = searchFilter(search);
   if (text) and.push(text);
-  if (company) and.push({ companyName: company });
+  const companies = Array.isArray(company) ? company : company ? [company] : [];
+  if (companies.length) and.push({ companyName: { $in: companies } });
   const chipFilter = psmFilterQuery({ psmStatus, priorityStatus, aiStatus });
   if (chipFilter.$and) and.push(...chipFilter.$and);
   const result = await paginate({ $and: and }, { page, limit, sort });

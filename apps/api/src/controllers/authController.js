@@ -7,17 +7,16 @@ import {
   issueSession,
   resolveUser,
   serializeUser,
-  verifyMicrosoftIdToken,
+  verifyGoogleIdToken,
 } from "../services/authService.js";
 import { notFound } from "../utils/errors.js";
 
-export const microsoftLoginSchema = z.object({ idToken: z.string().min(20).max(20000) });
+export const googleLoginSchema = z.object({ credential: z.string().min(20).max(20000) });
 export const devLoginSchema = z.object({ email: z.string().trim().toLowerCase().pipe(z.email()) });
 
 export function getConfig(req, res) {
   res.json({
-    microsoftClientId: config.auth.microsoftClientId ?? null,
-    microsoftTenantId: config.auth.microsoftTenantId ?? null,
+    googleClientId: config.auth.googleClientId ?? null,
     devLoginEnabled: config.auth.devLoginEnabled,
   });
 }
@@ -36,9 +35,9 @@ async function completeLogin(req, res, profile, method) {
   res.json({ user: serializeUser(user), redirectTo: homeFor(user.role) });
 }
 
-export async function microsoftLogin(req, res) {
-  const profile = await verifyMicrosoftIdToken(req.valid.body.idToken);
-  await completeLogin(req, res, profile, "microsoft");
+export async function googleLogin(req, res) {
+  const profile = await verifyGoogleIdToken(req.valid.body.credential);
+  await completeLogin(req, res, profile, "google");
 }
 
 export async function devLogin(req, res) {

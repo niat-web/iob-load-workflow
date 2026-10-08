@@ -18,9 +18,9 @@ import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 import { useClampPage, useUrlFilters } from "../../hooks/useUrlFilters";
 import type { CrmDealRow, CrmDealsQuery } from "../../types/api";
 import { cn } from "../../utils/cn";
+import { DEFAULT_PAGE_SIZE } from "../../utils/pagination";
 
 export const CRM_FILTER_KEYS = ["q", "status", "company"] as const;
-const PAGE_SIZE = 20;
 
 type Panel = { kind: "details" | "logs" | "approval"; job: CrmDealRow } | null;
 type Confirm = { kind: "stop" | "delete"; job: CrmDealRow } | null;
@@ -29,8 +29,15 @@ function dealName(job: CrmDealRow) {
   return job.companyName ? `${job.hubspotDealId} (${job.companyName})` : job.hubspotDealId;
 }
 
-export function DealsSection({ emptyDescription }: { emptyDescription: string }) {
+interface DealsSectionProps {
+  emptyDescription: string;
+  fixedPageSize?: number;
+}
+
+export function DealsSection({ emptyDescription, fixedPageSize }: DealsSectionProps) {
   const { filters, page, hasFilters, setFilter, setPage, clearFilters } = useUrlFilters(CRM_FILTER_KEYS);
+  const [chosenPageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const pageSize = fixedPageSize ?? chosenPageSize;
   const [panel, setPanel] = useState<Panel>(null);
   const toast = useToast();
   const copy = useCopyToClipboard();
@@ -45,9 +52,9 @@ export function DealsSection({ emptyDescription }: { emptyDescription: string })
       status: filters.status || undefined,
       company: filters.company || undefined,
       page,
-      limit: PAGE_SIZE,
+      limit: pageSize,
     }),
-    [filters, page],
+    [filters, page, pageSize],
   );
 
   const deals = useCrmDeals(query);
@@ -66,7 +73,7 @@ export function DealsSection({ emptyDescription }: { emptyDescription: string })
     [retryMutate, toast],
   );
 
-  const offset = ((pagination?.page ?? page) - 1) * (pagination?.limit ?? PAGE_SIZE);
+  const offset = ((pagination?.page ?? page) - 1) * (pagination?.limit ?? pageSize);
   const columns = useMemo(
     () =>
       buildCrmColumns({
@@ -179,7 +186,19 @@ export function DealsSection({ emptyDescription }: { emptyDescription: string })
           }
           footer={
             pagination && pagination.total > 0 ? (
-              <Pagination pagination={pagination} onPageChange={setPage} disabled={deals.isPlaceholderData} />
+              <Pagination
+              pagination={pagination}
+              onPageChange={setPage}
+              onPageSizeChange={
+                fixedPageSize
+                  ? undefined
+                  : (size) => {
+                      setPageSize(size);
+                      setPage(1);
+                    }
+              }
+              disabled={deals.isPlaceholderData}
+            />
             ) : null
           }
         />

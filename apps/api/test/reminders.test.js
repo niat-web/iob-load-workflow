@@ -2,12 +2,14 @@ import "./setup.js";
 import { after, before, beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { JOB_STATUS, NOTIFICATION_TYPE, TASK_TYPE } from "../src/config/statuses.js";
-import { AiCallLog, Job, JobApplication, JobEligibleStudent, NotificationLog, WorkflowTask } from "../src/models/index.js";
-import { integrations } from "../src/services/integrations.js";
+import { AiCall, Job, JobEligibleStudent, NotificationLog, WorkflowTask } from "../src/models/index.js";
 import { runDueTasks } from "../src/workers/workflowWorker.js";
 import { advanceAndRun, loginAs, nowMs, openApplicationWindow, resetDb, startTestDb, stopTestDb } from "./helpers.js";
 
-describe("10h / 20h reminders", () => {
+const crmAlerts = (job) =>
+  NotificationLog.find({ jobId: job._id, type: NOTIFICATION_TYPE.APPLICATIONS_BELOW_TARGET }).sort({ createdAt: 1 }).lean();
+
+describe("10h / 20h checkpoints", () => {
   let crm;
   before(startTestDb);
   after(stopTestDb);
@@ -16,7 +18,7 @@ describe("10h / 20h reminders", () => {
     crm = await loginAs("crm.user@example.com", "CRM");
   });
 
-  test("at 10h with the target not reached, only non-applicants get an email and an AI call", async () => {
+  test("at 10h with the target not reached, the CRM who added the deal gets a boost link; students get nothing automatically", async () => {
     const job = await openApplicationWindow(crm, "12345");
     await advanceAndRun({ hours: 10, minutes: 1 });
 
@@ -24,29 +26,20 @@ describe("10h / 20h reminders", () => {
     assert.equal(updated.poolTargetReached, false);
     assert.equal(updated.reminders.r10h.status, "SENT");
     assert.equal(updated.status, JOB_STATUS.REMINDER_10H_SENT);
+    assert.match(updated.reminders.r10h.reason, /asked to boost applications/);
 
-    const appliedIds = (await JobApplication.find({ jobId: job._id })).map((a) => a.studentId);
-    assert.ok(appliedIds.length > 0, "some students applied");
-    const nonApplicants = await JobEligibleStudent.find({ jobId: job._id, applied: false });
-    assert.equal(nonApplicants.length, updated.eligibleCount - appliedIds.length);
+    const alerts = await crmAlerts(job);
+    assert.deepEqual(alerts.map((log) => [log.email, log.status]), [["crm.user@example.com", "SENT"]]);
+    assert.equal(alerts[0].payload.link, `http://localhost:5173/crm/deals/${job._id}/boost`);
 
-    const reminderEmails = await NotificationLog.find({ jobId: job._id, type: NOTIFICATION_TYPE.REMINDER_10H });
-    assert.equal(reminderEmails.length, nonApplicants.length);
-    assert.equal(reminderEmails.filter((log) => appliedIds.includes(log.studentId)).length, 0, "applied students get no reminder email");
-
-    const calls = await AiCallLog.find({ jobId: job._id, reminderType: "REMINDER_10H" });
-    assert.equal(calls.length, nonApplicants.length);
-    assert.equal(calls.filter((call) => appliedIds.includes(call.studentId)).length, 0, "applied students get no call");
-    const queued = calls.filter((call) => call.status === "QUEUED");
-    const skipped = calls.filter((call) => call.status === "SKIPPED");
-    assert.ok(queued.length > 0);
-    assert.ok(skipped.every((call) => /phone/i.test(call.error)), "only students without a phone are skipped");
-    assert.equal(updated.reminders.r10h.callCount, queued.length);
-
-    assert.equal(integrations.nxtdial.requests.length, Math.ceil(queued.length / 5));
+    const notApplied = await JobEligibleStudent.countDocuments({ jobId: job._id, applied: { $ne: true }, accessGrantedAt: { $ne: null } });
+    assert.equal(updated.boost.crmAlerts.length, 1);
+    assert.equal(updated.boost.crmAlerts[0].notApplied, notApplied);
+    assert.equal(await NotificationLog.countDocuments({ jobId: job._id, type: NOTIFICATION_TYPE.REMINDER_10H }), 0);
+    assert.equal(await AiCall.countDocuments({ jobId: job._id }), 0, "no AI call is placed without the CRM");
   });
 
-  test("when the expected pool is already reached, the reminder is skipped entirely", async () => {
+  test("when the expected pool is already reached, the checkpoint is skipped and only the pool-reached email goes out", async () => {
     const job = await openApplicationWindow(crm, "12345");
     await Job.updateOne({ _id: job._id }, { $set: { expectedPoolCount: 1 } });
     await advanceAndRun({ hours: 10, minutes: 1 });
@@ -56,8 +49,7 @@ describe("10h / 20h reminders", () => {
     assert.ok(updated.poolTargetReachedAt);
     assert.equal(updated.reminders.r10h.status, "SKIPPED");
     assert.equal(updated.status, JOB_STATUS.APPLICATIONS_OPEN, "window stays open when the target is reached");
-    assert.equal(await NotificationLog.countDocuments({ jobId: job._id, type: NOTIFICATION_TYPE.REMINDER_10H }), 0);
-    assert.equal(await AiCallLog.countDocuments({ jobId: job._id }), 0);
+    assert.equal((await crmAlerts(job)).length, 0);
     const reachedMail = async () =>
       (await NotificationLog.find({ jobId: job._id, type: NOTIFICATION_TYPE.POOL_TARGET_REACHED }).lean()).map((log) => [log.email, log.status]);
     assert.deepEqual(await reachedMail(), [["crm.user@example.com", "SENT"]], "only the CRM who added the deal is emailed");
@@ -65,30 +57,24 @@ describe("10h / 20h reminders", () => {
     await advanceAndRun({ hours: 10 });
     const later = await Job.findById(job._id);
     assert.equal(later.reminders.r20h.status, "SKIPPED");
-    assert.equal(await NotificationLog.countDocuments({ jobId: job._id, type: NOTIFICATION_TYPE.REMINDER_20H }), 0);
     assert.deepEqual(await reachedMail(), [["crm.user@example.com", "SENT"]], "the email is sent once");
   });
 
-  test("the 20h reminder only reaches students who still have not applied", async () => {
+  test("the 20h checkpoint sends a second, separate alert to the CRM", async () => {
     const job = await openApplicationWindow(crm, "12345");
     await advanceAndRun({ hours: 10, minutes: 1 });
     await advanceAndRun({ hours: 10 });
 
     const updated = await Job.findById(job._id);
     assert.equal(updated.reminders.r20h.status, "SENT");
-    const appliedIds = (await JobApplication.find({ jobId: job._id })).map((a) => a.studentId);
-    const reminder20 = await NotificationLog.find({ jobId: job._id, type: NOTIFICATION_TYPE.REMINDER_20H });
-    assert.equal(reminder20.filter((log) => appliedIds.includes(log.studentId)).length, 0);
-    const reminder10 = await NotificationLog.countDocuments({ jobId: job._id, type: NOTIFICATION_TYPE.REMINDER_10H });
-    assert.ok(reminder20.length < reminder10, "more students applied between 10h and 20h");
+    assert.equal((await crmAlerts(job)).length, 2);
+    assert.deepEqual(updated.boost.crmAlerts.map((alert) => alert.reminder), [TASK_TYPE.REMINDER_10H, TASK_TYPE.REMINDER_20H]);
   });
 
-  test("re-running a reminder does not send duplicate emails or calls", async () => {
+  test("re-running a checkpoint does not email the CRM twice", async () => {
     const job = await openApplicationWindow(crm, "12345");
     await advanceAndRun({ hours: 10, minutes: 1 });
     const emails = await NotificationLog.countDocuments({ jobId: job._id });
-    const calls = await AiCallLog.countDocuments({ jobId: job._id });
-    const requests = integrations.nxtdial.requests.length;
 
     await Job.updateOne({ _id: job._id }, { $set: { "reminders.r10h": null, status: JOB_STATUS.APPLICATIONS_OPEN } });
     await WorkflowTask.updateOne(
@@ -98,8 +84,7 @@ describe("10h / 20h reminders", () => {
     await runDueTasks();
 
     assert.equal(await NotificationLog.countDocuments({ jobId: job._id }), emails);
-    assert.equal(await AiCallLog.countDocuments({ jobId: job._id }), calls);
-    assert.equal(integrations.nxtdial.requests.length, requests);
+    assert.equal((await crmAlerts(job)).length, 1);
   });
 
   test("application count sync updates progress during the window", async () => {

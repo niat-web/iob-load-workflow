@@ -13,10 +13,19 @@ const plainProperties = (properties) =>
   Object.fromEntries(
     Object.entries(properties ?? {}).map(([key, value]) => [key, isObject(value) && "value" in value ? value.value : value]),
   );
-const NESTED_KEYS = new Set(["company", "owner", "associations", "associatedCompany", "deal"]);
+const NESTED_KEYS = new Set(["company", "companyProperties", "owner", "associations", "associatedCompany", "deal"]);
+
+function parsedObject(value) {
+  if (typeof value !== "string") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
 
 function companyFrom(raw) {
-  const company = first(raw);
+  const company = first(parsedObject(raw));
   if (!isObject(company)) return null;
   const props = { ...plainProperties(company.properties), ...company };
   return {
@@ -54,7 +63,9 @@ export function parseDealWebhookResponse(raw, dealId) {
   }
   return {
     deal: { id: String(dealId), properties },
-    company: companyFrom(body.company ?? dealPart.company ?? body.associatedCompany),
+    company: companyFrom(
+      body.company ?? dealPart.company ?? body.associatedCompany ?? body.companyProperties ?? dealPart.companyProperties,
+    ),
     owner: ownerFrom(body.owner ?? dealPart.owner),
   };
 }

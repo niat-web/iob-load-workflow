@@ -10,7 +10,7 @@ import {
   stepLabel,
 } from "../config/statuses.js";
 import {
-  AiCallLog,
+  AiCall,
   AuditLog,
   Job,
   JobHubspotMapping,
@@ -19,6 +19,7 @@ import {
 } from "../models/index.js";
 import { approvalPreview, canEditPlans } from "../services/approvalPreview.js";
 import { approveGate } from "../services/approvalService.js";
+import { boostOverview, sendBoostEmails, startAiCalls, syncCallResults } from "../services/boostService.js";
 import { AUDIT, audit } from "../services/auditService.js";
 import { canDelete, canStop, deleteDeal as removeDeal, stepStillRunning, stopDeal as haltDeal } from "../services/dealControlService.js";
 import { latestSnapshot } from "../services/dealSnapshotService.js";
@@ -52,6 +53,12 @@ export const processDealSchema = z.object({
     .min(1, "Expected pool must be at least 1")
     .max(100000, "Expected pool is too large")
     .optional(),
+  jdCount: z.coerce
+    .number()
+    .int("JD count must be a whole number")
+    .min(1, "JD count must be at least 1")
+    .max(1000, "JD count is too large")
+    .optional(),
   crmOwnerId: hubspotOwnerId.optional(),
   profilingPocId: hubspotOwnerId.optional(),
   iseId: hubspotOwnerId.optional(),
@@ -74,7 +81,7 @@ export const listSchema = z.object({
   status: z.enum(Object.keys(DISPLAY_STATUS)).optional(),
   company: z.string().trim().max(200).optional(),
   page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(20),
+  limit: z.coerce.number().int().min(1).max(500).default(50),
   sort: z.enum(["updatedAt:desc", "updatedAt:asc", "companyName:asc", "companyName:desc", "progressPercent:desc"]).default("updatedAt:desc"),
 });
 
@@ -113,7 +120,7 @@ export async function processDeal(req, res) {
     return res.status(200).json({ job: toCrmRow(existing, await publicLinkUrlForJob(existing)), duplicate: true });
   }
 
-  const { expectedPoolCount, crmOwnerId, profilingPocId, iseId } = req.valid.body;
+  const { expectedPoolCount, jdCount, crmOwnerId, profilingPocId, iseId } = req.valid.body;
   const crmOwner = ownerRef(crmOwnerId);
   const crmOwnerEmail = crmOwner
     ? (hubspotOwnerForUser(req.user)?.id === crmOwner.id ? req.user.email : crmOwner.email)
@@ -127,6 +134,7 @@ export async function processDeal(req, res) {
       flowMode: req.valid.body.flowMode,
       submittedBy: req.user.email,
       expectedPoolCount: expectedPoolCount ?? null,
+      jdCount: jdCount ?? null,
       crmOwnerId: crmOwner?.id ?? null,
       crmOwnerName: crmOwner?.name ?? null,
       crmOwnerEmail,
@@ -134,6 +142,7 @@ export async function processDeal(req, res) {
       ise: ownerRef(iseId),
       submittedInputs: {
         expectedPoolCount: expectedPoolCount ?? null,
+        jdCount: jdCount ?? null,
         crmOwnerId: crmOwner?.id ?? null,
         crmOwnerEmail,
         profilingPocId: ownerRef(profilingPocId)?.id ?? null,
@@ -218,16 +227,16 @@ export async function dealLogs(req, res) {
     });
   }
 
-  const calls = await AiCallLog.aggregate([
+  const calls = await AiCall.aggregate([
     { $match: { jobId: job._id } },
-    { $group: { _id: { type: "$reminderType", status: "$status" }, count: { $sum: 1 }, at: { $max: "$updatedAt" } } },
+    { $group: { _id: { batchId: "$batchId", status: "$status" }, count: { $sum: 1 }, at: { $max: "$updatedAt" } } },
   ]);
   for (const row of calls) {
     items.push({
       at: row.at,
       level: row._id.status === "FAILED" ? "warn" : "info",
       type: "call",
-      message: `AI calls (${row._id.type}): ${row.count} ${row._id.status.toLowerCase()}`,
+      message: `AI calls (batch ${row._id.batchId}): ${row.count} ${row._id.status.toLowerCase().replaceAll("_", " ")}`,
     });
   }
 
@@ -339,7 +348,7 @@ export async function updateApprovalPlans(req, res) {
   });
   const updated = await Job.findOneAndUpdate(
     { _id: job._id, "awaitingApproval.gate": loadGateFor(config.learningPortal.targets[0]) },
-    { $set: { learningPortalPayload: payload } },
+    { $set: { learningPortalPayload: payload, enrollPlans: payload.job_details.enroll_plans ?? enrollPlans } },
     { returnDocument: "after" },
   );
   if (!updated) throw conflict("This step has already moved on. Refresh to see the current step.", "NOT_WAITING");
@@ -370,4 +379,23 @@ export async function deleteDeal(req, res) {
   }
   if (!(await removeDeal(job, req.user))) throw conflict("This deal has just changed. Refresh and try again.", "NOT_DELETABLE");
   res.status(204).end();
+}
+
+export async function boostDetail(req, res) {
+  res.json(await boostOverview(await loadJob(req.valid.params.jobId)));
+}
+
+export async function boostEmails(req, res) {
+  const run = await sendBoostEmails(await loadJob(req.valid.params.jobId), req.user);
+  res.json({ run, boost: await boostOverview(await loadJob(req.valid.params.jobId)) });
+}
+
+export async function boostCalls(req, res) {
+  const run = await startAiCalls(await loadJob(req.valid.params.jobId), req.user);
+  res.status(202).json({ run, boost: await boostOverview(await loadJob(req.valid.params.jobId)) });
+}
+
+export async function boostCallsSync(req, res) {
+  await syncCallResults(await loadJob(req.valid.params.jobId));
+  res.json({ boost: await boostOverview(await loadJob(req.valid.params.jobId)) });
 }

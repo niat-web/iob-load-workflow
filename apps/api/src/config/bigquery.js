@@ -20,8 +20,15 @@ const DEFAULT_COLUMNS = {
     mobile: "phone",
     campus: "campus",
     batch: "passout_year",
-    program: "enroll_plan",
+    program: "enroll_plan_version_tag",
     placementStatus: "placement_status",
+  },
+  pool: {
+    studentId: "user_id",
+    studentName: "fullName",
+    email: "email_id",
+    mobile: "mobile_number",
+    product: "product",
   },
   grit: {
     studentId: "user_id",

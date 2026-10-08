@@ -1,105 +1,125 @@
 import "./setup.js";
 import { after, afterEach, before, beforeEach, describe, mock, test } from "node:test";
 import assert from "node:assert/strict";
-import mongoose from "mongoose";
-import { TASK_TYPE } from "../src/config/statuses.js";
-import { AiCallLog, Job, WorkflowTask } from "../src/models/index.js";
-import { triggerReminderCalls } from "../src/services/aiCallService.js";
-import { overrideIntegration } from "../src/services/integrations.js";
+import { config } from "../src/config/env.js";
+import { buildAgentDefinition, ensureRatingTemplate, RATING_COLUMNS, spokenJobSummary } from "../src/services/callAgentService.js";
+import { integrations, overrideIntegration } from "../src/services/integrations.js";
+import { mapProviderStatus } from "../src/services/boostService.js";
 import { LiveNxtDialClient } from "../src/services/nxtDialClient.js";
-import { nowMs, resetDb, startTestDb, stopTestDb } from "./helpers.js";
-
-const students = (count, { withPhone = true } = {}) =>
-  Array.from({ length: count }, (_, i) => ({
-    studentId: `S${i + 1}`,
-    studentName: `Student ${i + 1}`,
-    mobile: withPhone ? `98765${String(10000 + i).slice(-5)}` : "12",
-  }));
+import { resetDb, startTestDb, stopTestDb } from "./helpers.js";
 
 function respond(status, body = {}, headers = {}) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", ...headers } });
 }
 
-describe("NxtDial reminder calls", () => {
-  let job;
-  before(startTestDb);
-  after(stopTestDb);
-  beforeEach(async () => {
-    await resetDb();
-    overrideIntegration("nxtdial", new LiveNxtDialClient());
-    job = await Job.create({
-      hubspotDealId: "555",
-      companyName: "TCS",
-      jobRole: "Software Engineer",
-      applicationEndAt: new Date(nowMs() + 11 * 3600 * 1000),
-    });
+const JOB = {
+  _id: "64b000000000000000000001",
+  companyName: "neurogent.ai",
+  jobRole: "AI Software Engineer (FDE) - Intern",
+  employmentType: "Internship",
+  location: "Gurugram",
+  ctc: "₹25,000 – ₹50,000 per month",
+  internshipDuration: "12 months",
+  skills: ["GenAI", "React js", "TypeScript", "Python"],
+  openings: 2,
+};
+
+describe("NxtDial client", () => {
+  let client;
+  beforeEach(() => {
+    client = new LiveNxtDialClient();
   });
   afterEach(() => mock.restoreAll());
 
-  test("sends multi-number requests in chunks with the documented payload", async () => {
-    const fetchMock = mock.method(globalThis, "fetch", async () => respond(200, { id: "alert-1" }));
-    const summary = await triggerReminderCalls({ job, students: students(12), reminderType: "REMINDER_10H" });
-
-    assert.equal(summary.queued, 12);
-    assert.equal(fetchMock.mock.callCount(), 3, "12 students in chunks of 5");
+  test("creates an agent with the API key and returns its id", async () => {
+    const fetchMock = mock.method(globalThis, "fetch", async () => respond(201, { id: "agent-1", name: "Apply reminder" }));
+    const agent = await client.createAgent({ name: "Apply reminder" });
+    assert.deepEqual(agent, { id: "agent-1", name: "Apply reminder" });
     const [url, init] = fetchMock.mock.calls[0].arguments;
-    assert.equal(url, "https://nxtdial.test/api/alert");
+    assert.equal(url, "https://nxtdial.test/api/agents");
+    assert.equal(init.method, "POST");
     assert.match(init.headers.Authorization, /^Bearer /);
-    const body = JSON.parse(init.body);
-    assert.equal(body.phones.length, 5);
-    assert.deepEqual(body.phones[0], { name: "Student 1", phone: "+919876510000" });
-    assert.equal(body.variables.company, "TCS");
-    assert.equal(body.variables.role, "Software Engineer");
-    assert.ok(body.variables.deadline);
-    assert.equal(await AiCallLog.countDocuments({ status: "QUEUED", nxtDialCallId: "alert-1" }), 12);
+    assert.deepEqual(JSON.parse(init.body), { name: "Apply reminder" });
   });
 
-  test("invalid or missing phone numbers are never called", async () => {
-    const fetchMock = mock.method(globalThis, "fetch", async () => respond(200, {}));
-    const summary = await triggerReminderCalls({ job, students: students(3, { withPhone: false }), reminderType: "REMINDER_10H" });
-    assert.equal(fetchMock.mock.callCount(), 0);
-    assert.equal(summary.skipped, 3);
+  test("creates a batch, starts it with per-student items and reads its results", async () => {
+    const fetchMock = mock.method(globalThis, "fetch", async (url) => {
+      if (url.endsWith("/api/batches")) return respond(201, { id: "batch-1" });
+      if (url.endsWith("/start")) return respond(200, { queued: 1 });
+      return respond(200, { batch: { id: "batch-1", status: "active" }, calls: [{ callId: "c1", phone: "+919876500000", status: "completed" }] });
+    });
+    assert.deepEqual(await client.createBatch({ name: "B", agentId: "agent-1", fromNumber: "+911234567890" }), { id: "batch-1" });
+    await client.startBatch("batch-1", [{ name: "Asha", phone: "+919876500000", metadata: { jd: "JD" } }]);
+    const results = await client.getBatchResults("batch-1");
+    assert.equal(results.calls[0].callId, "c1");
+
+    const [, createInit] = fetchMock.mock.calls[0].arguments;
+    assert.deepEqual(JSON.parse(createInit.body), { name: "B", agentId: "agent-1", telephonyProvider: "plivo", fromNumber: "+911234567890" });
+    const [startUrl, startInit] = fetchMock.mock.calls[1].arguments;
+    assert.equal(startUrl, "https://nxtdial.test/api/batches/batch-1/start");
+    assert.deepEqual(JSON.parse(startInit.body).items[0].metadata, { jd: "JD" });
+    const [resultsUrl, resultsInit] = fetchMock.mock.calls[2].arguments;
+    assert.equal(resultsUrl, "https://nxtdial.test/api/batches/batch-1/results");
+    assert.equal(resultsInit.body, undefined);
   });
 
-  test("429 honours Retry-After and schedules a retry instead of hammering the API", async () => {
-    const fetchMock = mock.method(globalThis, "fetch", async () => respond(429, { message: "slow down" }, { "Retry-After": "120" }));
-    const summary = await triggerReminderCalls({ job, students: students(12), reminderType: "REMINDER_10H" });
-
-    assert.equal(fetchMock.mock.callCount(), 1, "stops at the first 429");
-    assert.equal(summary.deferred, 12);
-    assert.equal(await AiCallLog.countDocuments({ status: "RATE_LIMITED" }), 12);
-    const retry = await WorkflowTask.findOne({ type: TASK_TYPE.RETRY_AI_CALLS });
-    assert.equal(retry.scheduledFor.getTime(), nowMs() + 120_000);
-    assert.equal(retry.payload.studentIds.length, 12);
-
+  test("rate limits are retryable with the server's wait time; other client errors are not", async () => {
+    mock.method(globalThis, "fetch", async () => respond(429, { message: "Daily request limit reached" }, { "Retry-After": "120" }));
+    await assert.rejects(client.createAgent({}), (error) => error.retryable === true && error.retryAfterMs === 120_000);
     mock.restoreAll();
-    const okMock = mock.method(globalThis, "fetch", async () => respond(200, { id: "alert-2" }));
-    const retried = await triggerReminderCalls({ job, students: students(12), reminderType: "REMINDER_10H", retry: true });
-    assert.equal(retried.queued, 12);
-    assert.equal(okMock.mock.callCount(), 3);
+    mock.method(globalThis, "fetch", async () => respond(403, { message: "Agent limit reached" }));
+    await assert.rejects(client.createAgent({}), (error) => error.retryable === false && /Agent limit reached/.test(error.message));
   });
 
-  test("401 is a permanent failure: no retry is scheduled", async () => {
-    mock.method(globalThis, "fetch", async () => respond(401, { message: "bad key" }));
-    const summary = await triggerReminderCalls({ job, students: students(7), reminderType: "REMINDER_20H" });
-    assert.equal(summary.failed, 7);
-    assert.equal(await WorkflowTask.countDocuments({ type: TASK_TYPE.RETRY_AI_CALLS }), 0);
-    assert.equal(await AiCallLog.countDocuments({ status: "FAILED" }), 7);
+  test("provider call statuses map to the app's call statuses", () => {
+    assert.equal(mapProviderStatus("completed"), "COMPLETED");
+    assert.equal(mapProviderStatus("no-answer"), "NO_ANSWER");
+    assert.equal(mapProviderStatus("busy"), "BUSY");
+    assert.equal(mapProviderStatus("failed"), "FAILED");
+    assert.equal(mapProviderStatus("queued"), "QUEUED");
+    assert.equal(mapProviderStatus("in-progress"), "CALLING");
+  });
+});
+
+describe("Call agent built from the job description", () => {
+  before(startTestDb);
+  after(stopTestDb);
+  beforeEach(resetDb);
+
+  test("the agent is two-way, capped at 2 minutes, and uses {name}, {jd} and {deadline}", () => {
+    const agent = buildAgentDefinition(JOB, "job_application_reminder");
+    assert.equal(agent.conversationEngine, "pipeline");
+    assert.equal(agent.callTimeoutSeconds, 120);
+    assert.equal(agent.ratingTemplate, "job_application_reminder");
+    assert.match(agent.welcomeMessage, /^Hi \{name\},/);
+    assert.match(agent.welcomeMessage, /neurogent\.ai/);
+    for (const placeholder of ["{name}", "{jd}", "{deadline}"]) assert.ok(agent.prompt.includes(placeholder), placeholder);
+    assert.match(agent.prompt, /within 2 minutes/);
+    assert.ok(agent.finalCallMessage.length > 10);
+    assert.deepEqual(agent.variables, ["name", "jd", "deadline"]);
+    assert.equal(config.nxtdial.callMaxSeconds, 120);
   });
 
-  test("5xx is retried with backoff", async () => {
-    mock.method(globalThis, "fetch", async () => respond(503, { message: "down" }));
-    const summary = await triggerReminderCalls({ job, students: students(4), reminderType: "REMINDER_10H" });
-    assert.equal(summary.deferred, 4);
-    assert.equal(await AiCallLog.countDocuments({ status: "RETRYING" }), 4);
-    assert.equal(await WorkflowTask.countDocuments({ type: TASK_TYPE.RETRY_AI_CALLS }), 1);
+  test("the spoken job summary falls back to the job facts when Gemini returns nothing", async () => {
+    const text = await spokenJobSummary(JOB);
+    assert.match(text, /neurogent\.ai is hiring for the role of AI Software Engineer/);
+    assert.match(text, /Gurugram/);
+    assert.match(text, /₹25,000 – ₹50,000 per month/);
   });
 
-  test("a student is never called twice for the same reminder", async () => {
-    const fetchMock = mock.method(globalThis, "fetch", async () => respond(200, { id: "alert-3" }));
-    await triggerReminderCalls({ job, students: students(3), reminderType: "REMINDER_10H" });
-    await triggerReminderCalls({ job, students: students(3), reminderType: "REMINDER_10H" });
-    assert.equal(fetchMock.mock.callCount(), 1);
-    assert.equal(await AiCallLog.countDocuments({ jobId: new mongoose.Types.ObjectId(job._id) }), 3);
+  test("the scoring sheet is created once and then reused", async () => {
+    const first = await ensureRatingTemplate();
+    const second = await ensureRatingTemplate();
+    assert.equal(first, "job_application_reminder");
+    assert.equal(second, first);
+    assert.equal(integrations.nxtdial.templates.length, 1);
+    assert.deepEqual(integrations.nxtdial.templates[0].columnHeaders, RATING_COLUMNS);
+  });
+
+  test("a Gemini summary is used when it returns enough text", async () => {
+    overrideIntegration("gemini", {
+      generateText: async () => "neurogent.ai is hiring AI engineer interns in Gurugram with a stipend of up to fifty thousand rupees a month.",
+    });
+    assert.match(await spokenJobSummary(JOB), /fifty thousand rupees/);
   });
 });

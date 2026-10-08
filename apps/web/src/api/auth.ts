@@ -14,8 +14,8 @@ export function fetchMe(signal?: AbortSignal): Promise<MeResponse> {
   return api.get<MeResponse>("/auth/me", undefined, signal);
 }
 
-export function loginWithMicrosoft(idToken: string): Promise<LoginResponse> {
-  return api.post<LoginResponse>("/auth/microsoft", { idToken });
+export function loginWithGoogle(credential: string): Promise<LoginResponse> {
+  return api.post<LoginResponse>("/auth/google", { credential });
 }
 
 export function devLogin(email: string): Promise<LoginResponse> {

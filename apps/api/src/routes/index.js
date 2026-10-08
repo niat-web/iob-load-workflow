@@ -46,7 +46,7 @@ export function authRoutes() {
   const router = Router();
   router.use(authLimiter);
   router.get("/config", auth.getConfig);
-  router.post("/microsoft", validate({ body: auth.microsoftLoginSchema }), a(auth.microsoftLogin));
+  router.post("/google", validate({ body: auth.googleLoginSchema }), a(auth.googleLogin));
   router.post("/dev-login", validate({ body: auth.devLoginSchema }), a(auth.devLogin));
   router.get("/me", requireAuth, auth.me);
   router.post("/logout", auth.logout);
@@ -73,6 +73,10 @@ export function crmRoutes() {
   );
   router.post("/deals/:jobId/stop", validate({ params: crm.jobIdParams }), a(crm.stopDeal));
   router.delete("/deals/:jobId", validate({ params: crm.jobIdParams }), a(crm.deleteDeal));
+  router.get("/deals/:jobId/boost", validate({ params: crm.jobIdParams }), a(crm.boostDetail));
+  router.post("/deals/:jobId/boost/emails", validate({ params: crm.jobIdParams }), a(crm.boostEmails));
+  router.post("/deals/:jobId/boost/calls", validate({ params: crm.jobIdParams }), a(crm.boostCalls));
+  router.post("/deals/:jobId/boost/calls/sync", validate({ params: crm.jobIdParams }), a(crm.boostCallsSync));
   return router;
 }
 
@@ -113,6 +117,23 @@ export function adminRoutes() {
   router.get("/users", a(admin.listUsers));
   router.post("/users", validate({ body: admin.createUserSchema }), a(admin.createUser));
   router.patch("/users/:email", validate({ params: admin.userParams, body: admin.updateUserSchema }), a(admin.updateUser));
+  router.get("/eligible-pool", validate({ query: admin.poolQuerySchema }), a(admin.eligiblePool));
+  router.get("/eligible-pool/summary", a(admin.eligiblePoolSummary));
+  router.post("/eligible-pool/sync", a(admin.syncEligiblePool));
+  router.post("/eligible-pool", validate({ body: admin.poolStudentCreateSchema }), a(admin.addPoolStudent));
+  router.patch(
+    "/eligible-pool/:studentId",
+    validate({ params: admin.poolStudentParams, body: admin.poolStudentUpdateSchema }),
+    a(admin.editPoolStudent),
+  );
+  router.delete("/eligible-pool/:studentId", validate({ params: admin.poolStudentParams }), a(admin.removePoolStudent));
+  router.get("/bigquery/datasets", a(admin.bigQueryDatasets));
+  router.get("/bigquery/datasets/:dataset/tables", validate({ params: admin.datasetParams }), a(admin.bigQueryTables));
+  router.get(
+    "/bigquery/datasets/:dataset/tables/:table/rows",
+    validate({ params: admin.tableParams, query: admin.tableRowsQuery }),
+    a(admin.bigQueryTableRows),
+  );
   return router;
 }
 

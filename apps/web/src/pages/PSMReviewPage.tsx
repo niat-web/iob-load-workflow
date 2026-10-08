@@ -18,13 +18,13 @@ import { useToast } from "../components/toast-context";
 import { Button } from "../components/ui/Button";
 import { cardClass } from "../components/ui/styles";
 import { useClampPage, useUrlFilters } from "../hooks/useUrlFilters";
+import { DEFAULT_PAGE_SIZE } from "../utils/pagination";
 import type { CandidatePatch, CandidatesQuery, PsmJobDetail } from "../types/api";
 import { CANDIDATE_STATUS_OPTIONS } from "../utils/candidate";
 import { formatNumber, priorityOptions } from "../utils/format";
 import { AccessDenied } from "./AccessDenied";
 
 const FILTER_KEYS = ["q", "aiPriority", "finalPriority", "status"] as const;
-const PAGE_SIZE = 20;
 const CONFIRM_MESSAGE =
   "You are about to finalize this candidate pool. Please verify all priority changes before submitting.";
 const FROZEN_MESSAGE = "This candidate pool has already been submitted. Changes are no longer allowed.";
@@ -74,6 +74,7 @@ function PSMReview({ jobId }: { jobId: string }) {
   const toast = useToast();
   const refreshReview = useRefreshReview(jobId);
   const { filters, page, hasFilters, setFilter, setPage, clearFilters } = useUrlFilters(FILTER_KEYS);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   const startReview = useStartReview(jobId);
@@ -95,9 +96,9 @@ function PSMReview({ jobId }: { jobId: string }) {
       finalPriority: filters.finalPriority || undefined,
       status: filters.status || undefined,
       page,
-      limit: PAGE_SIZE,
+      limit: pageSize,
     }),
-    [filters, page],
+    [filters, page, pageSize],
   );
   const candidates = useCandidates(jobId, query, ready);
   const pagination = candidates.data?.pagination;
@@ -144,7 +145,7 @@ function PSMReview({ jobId }: { jobId: string }) {
   const detail = job.data;
   const readOnly = detail?.isSubmitted ?? true;
   const candidateCount = detail?.candidateCount ?? 0;
-  const offset = ((pagination?.page ?? page) - 1) * (pagination?.limit ?? PAGE_SIZE);
+  const offset = ((pagination?.page ?? page) - 1) * (pagination?.limit ?? pageSize);
 
   const columns = useMemo(
     () => buildCandidateColumns({ jobId, offset, candidateCount, readOnly, save }),
@@ -257,7 +258,15 @@ function PSMReview({ jobId }: { jobId: string }) {
           }
           footer={
             pagination && pagination.total > 0 ? (
-              <Pagination pagination={pagination} onPageChange={setPage} disabled={candidates.isPlaceholderData} />
+              <Pagination
+              pagination={pagination}
+              onPageChange={setPage}
+              onPageSizeChange={(size) => {
+                setPageSize(size);
+                setPage(1);
+              }}
+              disabled={candidates.isPlaceholderData}
+            />
             ) : null
           }
         />

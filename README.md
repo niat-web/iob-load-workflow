@@ -70,7 +70,7 @@ tasks are scheduled the moment the window opens.
 | Fetch deal, map fields, validate required fields | `FETCH_DEAL` | `DEAL_FETCHED` |
 | Load the job into beta, then prod (same org and job IDs; test accounts get access) | `CREATE_JOB` | `JOB_CREATED` |
 | Write the job ID to the HubSpot deal(s); add a tracker-sheet row | `HUBSPOT_WRITE_BACK`, `TRACK_LOADED_JOB` | — |
-| Find eligible students (eligible-users API on beta) | `IDENTIFY_ELIGIBLE` | `ELIGIBLE_STUDENTS_IDENTIFIED` |
+| Find eligible students (Eligible Pool page) | `IDENTIFY_ELIGIBLE` | `ELIGIBLE_STUDENTS_IDENTIFIED` |
 | Grant eligible students apply access (prod) | `GRANT_ACCESS` | `GRANTING_ACCESS` |
 | Open the 21h window, schedule 10h/20h/21h, send initial emails | `SEND_INITIAL_NOTIFICATIONS` | `APPLICATIONS_OPEN` |
 | Refresh the applied count every `APPLICATION_COUNT_SYNC_MINUTES` | `APPLICATION_COUNT_SYNC` | — |
@@ -114,7 +114,7 @@ per job, and each HubSpot webhook event is stored once (`eventId` or a hash of t
 
 ### Security
 
-- Microsoft ID tokens are verified on the server (signature, app, company tenant, age); the role
+- Google ID tokens are verified on the server (signature, app, issuer, age, verified email); the role
   comes only from the `users` collection.
 - Session: HS256 JWT in an HttpOnly cookie (`Secure` in production). Users are re-read on every
   request, so deactivation takes effect immediately.
@@ -141,7 +141,7 @@ npm install
 ### Option A: live (the default)
 
 Every integration is live unless you say otherwise. Fill `apps/api/.env` from
-[.env.example](.env.example): MongoDB Atlas, the HubSpot deal webhook, the Learning Portal keys, Gemini, BigQuery, AWS SES, NxtDial, Microsoft sign-in, and your own email in
+[.env.example](.env.example): MongoDB Atlas, the HubSpot deal webhook, the Learning Portal keys, Gemini, BigQuery, AWS SES, NxtDial, Google sign-in, and your own email in
 `BOOTSTRAP_ADMIN_EMAILS`. Set `PROCESS_ROLE=all` to run the worker inside the API process. Keys can be
 added over time: the API always starts, lists what is still missing, and only the steps that need a
 missing key stop (see below).
@@ -151,7 +151,7 @@ npm run dev:api      # API on http://localhost:8000 (+ worker with PROCESS_ROLE=
 npm run dev:web      # frontend on http://localhost:5173
 ```
 
-Open http://localhost:5173 and sign in with Microsoft.
+Open http://localhost:5173 and sign in with Google.
 
 ### Option B: Docker
 
@@ -240,25 +240,26 @@ trials, and is refused when `NODE_ENV=production`.
 
 Indexes are created automatically on startup.
 
-### Microsoft sign-in
+### Google sign-in
 
-Users sign in with their company Microsoft account (Microsoft Entra ID). The browser signs in with
-a popup and sends the ID token to the API, which verifies it. No client secret is needed.
+Users sign in with their company Google account through the official **Sign in with Google**
+button (Google Identity Services). Google returns a signed ID token, and the API verifies it
+(signature against Google's keys, `aud` = your client ID, issuer, age, verified email). Only a
+**Client ID** is needed; there is no client secret and no redirect page.
 
-1. [entra.microsoft.com](https://entra.microsoft.com) → **App registrations** → **New registration**.
-2. Name: `Job Flow Automation`. Supported account types: **Accounts in this organizational
-   directory only** (single tenant).
-3. Redirect URI: platform **Single-page application (SPA)**, URI
-   `http://localhost:5173/redirect.html`. After deploying, add
-   `https://<your-vercel-domain>/redirect.html` under **Authentication**.
-4. From **Overview**, copy **Application (client) ID** → `MICROSOFT_CLIENT_ID` and
-   **Directory (tenant) ID** → `MICROSOFT_TENANT_ID` on the backend (the frontend reads them from
-   `/api/auth/config`).
-5. Optional: `ALLOWED_EMAIL_DOMAINS=yourcompany.com`.
+1. [console.cloud.google.com](https://console.cloud.google.com) → pick or create a project.
+2. **APIs & Services → OAuth consent screen**: user type **Internal** (only your Google Workspace),
+   app name `Job Flow Automation`, support email, then save.
+3. **APIs & Services → Credentials → Create credentials → OAuth client ID**, type **Web application**.
+4. **Authorized JavaScript origins**: `http://localhost:5173` (and `http://localhost`), plus
+   `https://<your-vercel-domain>` after deploying. No redirect URI is needed.
+5. Copy the **Client ID** (`…apps.googleusercontent.com`) → `GOOGLE_CLIENT_ID` in `apps/api/.env`
+   (the frontend reads it from `/api/auth/config`).
+6. Optional: `ALLOWED_EMAIL_DOMAINS=yourcompany.com`.
 
-Signing in only proves who someone is: they must also be in the user list
-(`npm run users -- add …`). If Microsoft shows "Need admin approval", an Entra admin opens the app
-→ **API permissions** → **Grant admin consent**.
+Signing in only proves who someone is: they must also be in the user list (Settings → Users, or
+`npm run users -- add …`). This Client ID is separate from `GOOGLE_APPLICATION_CREDENTIALS_JSON`,
+which is the BigQuery service account.
 
 ### HubSpot (through one webhook, no token)
 
@@ -333,7 +334,7 @@ Deals are loaded the way `CRM_Job_Loading/retool_phase1.py` loads them, using th
 | Job (`job_details/create`) | created first | same `job_id`, same content |
 | Apply link | `LEARNING_PORTAL_BETA_APPLY_LINK_TEMPLATE` | `LEARNING_PORTAL_PROD_APPLY_LINK_TEMPLATE` |
 | Test accounts (`user/jobs/create`) | the tool's beta test users for the job's plans | the tool's prod test users |
-| Eligible students | listed by `jobs/eligible/users/count/get` | given apply access, 100 per request |
+| Eligible students | from the Eligible Pool page (see Eligibility) | given apply access, 100 per request |
 
 - **Keys**: `LEARNING_PORTAL_BETA_API_KEY` and `LEARNING_PORTAL_PROD_API_KEY` (the tool's
   `BETA_API_KEY` / `PROD_API_KEY` names also work). Base URLs, apply links and test accounts
@@ -360,24 +361,44 @@ Deals are loaded the way `CRM_Job_Loading/retool_phase1.py` loads them, using th
   "Order" continues from that tracker's last Order.
 - **Not ported** (manual steps of the tool's UI): the operator's enroll-plan confirmation before
   prod, NIAT batch selection, the Google-Sheet student lists (`USER_IDS` mode) and the CRM / ISE /
-  profiling-agent pickers. Eligible students come from the eligible-users API (`CRITERIA` mode).
+  profiling-agent pickers. Eligible students come from the Eligible Pool page (see Eligibility).
 - **Deadline**: `apply_by` is the end of the application window (`APPLICATION_WINDOW_HOURS`, 21h),
   not the tool's +24h.
 
 ### Eligibility
 
-`ELIGIBILITY_SOURCE=learning_portal` (default in live mode) calls the portal's eligible-users API
-with the same filters the existing tool builds, then reads names, emails and phones from
-`BIGQUERY_STUDENTS_TABLE`. `ELIGIBILITY_SOURCE=bigquery` filters the students table directly by
-batch, program, campus and placement status.
+Eligible students come from the **Eligible Pool** page (MongoDB `eligible_pool_students`), the
+default `ELIGIBILITY_SOURCE=pool`. BigQuery is not read directly for eligibility.
+
+- The deal's course plans give its products: NIAT, Academy (`CCBP_ACADEMY_*`), Intensive, External.
+- Only students with Eligibility Status **Eligible** in those products are picked. Placed, Mint,
+  Do not Provided and Not Interested are left out.
+- If the deal has a pass-out year (`pass_out_year`), students with another year are left out;
+  students with no year set are kept.
+- Name, email and mobile come from the same row. Emails and AI calls only reach students whose
+  email or mobile is filled in on the Eligible Pool page.
+- If nothing matches, the deal stops at this step with the products in the message. Add the
+  students on the Eligible Pool page and retry.
+
+**BigQuery later**: once the NIAT eligible-students table exists in BigQuery, set its name as `pool`
+in `apps/api/src/config/bigqueryTables.js` and its columns under `pool` in
+`apps/api/src/config/bigquery.js`, then use **Settings → Config → Sync from BigQuery**. The sync
+copies the rows into the Eligible Pool table (new students start as Eligible; students added or
+edited by hand are kept), so deals keep reading only the Eligible Pool. Until the table is set, the
+sync button is off.
+
+`ELIGIBILITY_SOURCE=learning_portal` is the old tool's way (the portal's eligible-users API with
+the tool's filters, contact details from the BigQuery `students` table); it is not used now.
 
 ### BigQuery
 
 1. Create a service account with **BigQuery Data Viewer** on the dataset and **BigQuery Job User**
    on the project.
-2. `GOOGLE_APPLICATION_CREDENTIALS_JSON` = the key JSON or its base64 encoding.
-3. Set `BIGQUERY_PROJECT_ID`, `BIGQUERY_DATASET`, `BIGQUERY_LOCATION` and the tables. Table names
-   may be `table`, `dataset.table` or `project.dataset.table`.
+2. `GOOGLE_APPLICATION_CREDENTIALS_JSON` in `apps/api/.env` = the key JSON on one line, in single
+   quotes. This is the only BigQuery setting in `.env`; the project comes from the key's `project_id`.
+3. Table names live in the code, in [config/bigqueryTables.js](apps/api/src/config/bigqueryTables.js).
+   Use full names, `project.dataset.table`. Only `applications` is required; GRIT, assessment and
+   interview tables are optional. (`BIGQUERY_*` settings in `.env` still override them if ever needed.)
 4. Default column names are in [config/bigquery.js](apps/api/src/config/bigquery.js); override any
    with `BIGQUERY_COLUMNS_JSON`, e.g. `{"applications":{"studentId":"uid","jobId":"job_id"}}`.
    Applications are matched on the **Learning Portal job ID**.
@@ -386,7 +407,7 @@ Missing GRIT/assessment/interview tables or rows show as N/A; they never fail th
 
 ### Gemini
 
-`GEMINI_API_KEY` from Google AI Studio; `GEMINI_MODEL=gemini-2.5-flash-lite`. Output is strict JSON
+`GEMINI_API_KEY` from Google AI Studio; `GEMINI_MODEL=gemini-3.5-flash-lite` (2.5 models are closed to new users). Output is strict JSON
 validated with Zod; the prompt forbids inventing experience and treats resume text as untrusted.
 One candidate's failure is recorded and the rest continue; failed candidates are re-analysed when
 the step is retried.
@@ -403,11 +424,28 @@ Throttling and outages are retried; rejected addresses fail that one email only.
 
 ### NxtDial
 
-`NXTDIAL_BASE_URL`, `NXTDIAL_API_KEY`, `NXTDIAL_AGENT_ID`, `NXTDIAL_FROM_NUMBER`. Reminder calls go to
-`POST /api/alert` as multi-number requests of `NXTDIAL_CHUNK_SIZE` with
-`variables: { company, role, deadline }`. Only eligible non-applicants with a valid phone are called,
-once per reminder. 429 waits for `Retry-After`; 5xx retries with backoff; 401/403 fail without
-retrying. `NXTDIAL_DAILY_REQUEST_LIMIT` (default 5,000) caps daily requests.
+Required: `NXTDIAL_BASE_URL`, `NXTDIAL_API_KEY` (an `acai_…` key from NxtDial → Developer) and
+`NXTDIAL_FROM_NUMBER` (E.164, e.g. `+9180…`). Nothing is called automatically:
+
+1. At the 10 h and 20 h checkpoints, if applications are below the expected pool, the CRM who added
+   the deal gets an email with a link to **Boost applications** (`/crm/deals/<id>/boost`).
+2. On that page the CRM either sends a reminder email to students who have not applied, or starts
+   **AI calls**.
+3. AI calls: the first time, the app writes a ~70-word spoken summary of the job (Gemini, with a
+   rule-based fallback), creates a scoring sheet (`NXTDIAL_RATING_TEMPLATE`: Interested, Will Apply,
+   Reason Not Applied, Questions Asked, Call Back Requested) and a two-way agent for the job
+   (`POST /api/agents`, `callTimeoutSeconds = NXTDIAL_CALL_MAX_SECONDS`, default 120). The welcome
+   message and prompt use the per-call variables `{name}`, `{jd}` and `{deadline}`.
+   `NXTDIAL_AGENT_ID` is optional: set it to reuse one agent for every job instead.
+4. Non-applicants with a valid mobile, not already reached, are sent as one NxtDial **batch**
+   (`POST /api/batches`, then `/start` with `items[].metadata = { jd, deadline }`), so they are called
+   one by one.
+5. Every `NXTDIAL_RESULTS_SYNC_MINUTES` the app reads `GET /api/batches/<id>/results` and stores status,
+   duration, recording, summary, rating and the scoring-sheet answers; the page refreshes itself.
+
+The NxtDial server needs three additions (in the `screeningtool` repo): API keys may use
+`/api/rating-templates`, the batch `/results` endpoint, and a spoken goodbye when the time limit ends a
+call.
 
 ### Priority
 
@@ -453,8 +491,8 @@ times; the 21-hour workflow needs the worker to wake up tasks.
 3. Alternative: set `VITE_API_BASE_URL=https://<api-host>` and on the API
    `COOKIE_SAMESITE=none` and `CORS_ORIGINS=https://<your-vercel-domain>`. Browsers that block
    third-party cookies (Safari) may not keep the session this way.
-4. Add `https://<your-vercel-domain>/redirect.html` as a **Single-page application** redirect URI
-   in the Entra app registration, and set `FRONTEND_URL` on the API (public links are built from it).
+4. Add `https://<your-vercel-domain>` to **Authorized JavaScript origins** of the Google OAuth
+   client, and set `FRONTEND_URL` on the API (public links are built from it).
 
 ### CI/CD
 
@@ -508,9 +546,8 @@ the browser cancelled are logged only at `LOG_LEVEL=debug`.
 | Symptom | Check |
 |---|---|
 | A deal fails with "… is not set up yet: add …" | Add the listed keys to `apps/api/.env`, restart the API, then press **Retry Failed Step**. The startup warnings list everything still missing. |
-| "Access Denied" after Microsoft sign-in | Add the email with `npm run users -- add …`; check `isActive` and `ALLOWED_EMAIL_DOMAINS`. |
-| Microsoft popup shows `AADSTS50011` (redirect URI mismatch) | Add the exact `https://<domain>/redirect.html` as a **Single-page application** redirect URI. |
-| Microsoft says "Need admin approval" | An Entra admin grants consent: app registration → **API permissions** → **Grant admin consent**. |
+| "Access Denied" after Google sign-in | Add the email with `npm run users -- add …`; check `isActive` and `ALLOWED_EMAIL_DOMAINS`. |
+| Google button says "The given origin is not allowed" | Add the exact site address (e.g. `http://localhost:5173`) to **Authorized JavaScript origins** of the OAuth client, then wait a few minutes. |
 | "Allow pop-ups for this site" on the login page | The browser blocked the sign-in popup; allow pop-ups for the site. |
 | Logged in, but the next request is 401 in production | Cross-site cookie blocked: use the Vercel `/api` rewrite, or `COOKIE_SAMESITE=none` + HTTPS. |
 | Deals stay "Pending" | The worker is not running (`GET /ready` shows the last worker heartbeat). |
@@ -531,14 +568,15 @@ These could not be verified from the information available and are configurable:
    load) re-send the create call with the same `job_id`. Confirm the portal upserts.
 2. **Student job URL**: emails link to the prod apply form unless `LEARNING_PORTAL_JOB_URL_TEMPLATE`
    points to a student-facing job page.
-3. **Eligibility source**: like the tool, the eligible-student list is read from **beta** and access is
-   granted in **prod** (`LEARNING_PORTAL_ELIGIBILITY_ENV`); confirm beta returns prod user IDs.
+3. **Eligible Pool IDs**: the Student ID on the Eligible Pool page must be the student's prod
+   Learning Portal user ID, because access is granted in **prod** with it.
 4. **n8n deal webhook**: it must answer `action: "fetch"` with the deal JSON and apply `action: "update"`
    properties to the HubSpot deal (see HubSpot above).
 5. **BigQuery schemas**: table and column names for applications, students, GRIT, assessments and
    interviews.
-6. **NxtDial response**: call IDs are read from `calls[].id` (or the request `id`) in the
-   `/api/alert` response; adjust `collectCallIds` if the documented shape differs.
+6. **NxtDial agent limit**: an organisation has 3 agents by default and an agent with calls cannot be
+   deleted. One agent is created per job, so ask the NxtDial super-admin to raise the limit, or set
+   `NXTDIAL_AGENT_ID` to reuse one agent.
 7. **Application window**: 21 hours as specified (the handwritten note said 24); it is
    `APPLICATION_WINDOW_HOURS`.
 8. **Priority weights**: the defaults (40/25/20/15) are placeholders until the team agrees on them.

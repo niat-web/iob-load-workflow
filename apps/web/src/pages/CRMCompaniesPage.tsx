@@ -5,11 +5,13 @@ import { Link } from "react-router";
 import { useCrmCompanies } from "../api/crm";
 import { DataTable } from "../components/DataTable";
 import { EmptyState } from "../components/EmptyState";
+import { Pagination } from "../components/Pagination";
 import { SearchInput } from "../components/SearchInput";
 import { TruncatedText } from "../components/TruncatedText";
 import { Button, IconButton, buttonClass } from "../components/ui/Button";
 import type { CompanySummary } from "../types/api";
 import { cn } from "../utils/cn";
+import { DEFAULT_PAGE_SIZE } from "../utils/pagination";
 import { formatDateTime, formatNumber } from "../utils/format";
 
 const numeric = { headerClassName: "text-right", cellClassName: "text-right tabular-nums" };
@@ -79,10 +81,19 @@ const columns: ColumnDef<CompanySummary>[] = [
 export function CRMCompaniesPage() {
   const companies = useCrmCompanies();
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const term = search.trim().toLowerCase();
-  const rows = useMemo(
+  const matches = useMemo(
     () => companies.data?.items.filter((company) => company.name.toLowerCase().includes(term)),
     [companies.data, term],
+  );
+  const total = matches?.length ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const rows = useMemo(
+    () => matches?.slice((currentPage - 1) * pageSize, currentPage * pageSize),
+    [matches, currentPage, pageSize],
   );
 
   return (
@@ -91,7 +102,10 @@ export function CRMCompaniesPage() {
       <div className="flex flex-wrap items-center gap-2.5">
         <SearchInput
           value={search}
-          onChange={setSearch}
+          onChange={(value) => {
+            setSearch(value);
+            setPage(1);
+          }}
           delay={0}
           placeholder="Search company..."
           label="Search companies"
@@ -118,7 +132,14 @@ export function CRMCompaniesPage() {
               message="No companies match your search."
               description="Try a different name."
               action={
-                <Button variant="secondary" size="sm" onClick={() => setSearch("")}>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    setSearch("");
+                    setPage(1);
+                  }}
+                >
                   Clear search
                 </Button>
               }
@@ -130,6 +151,18 @@ export function CRMCompaniesPage() {
               description="A company appears here once its first deal is fetched from HubSpot."
             />
           )
+        }
+        footer={
+          total > 0 ? (
+            <Pagination
+              pagination={{ page: currentPage, limit: pageSize, total, totalPages }}
+              onPageChange={setPage}
+              onPageSizeChange={(size) => {
+                setPageSize(size);
+                setPage(1);
+              }}
+            />
+          ) : null
         }
       />
     </div>

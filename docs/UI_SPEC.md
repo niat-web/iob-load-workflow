@@ -64,7 +64,7 @@ page stays readable at 125% Windows display scaling.
 | Route | Access | Content |
 |---|---|---|
 | `/` | any | Redirects: not signed in → `/login`; CRM → `/crm`; PSM → `/psm`; ADMIN → `/crm` |
-| `/login` | public | **Sign in with Microsoft** button centred on the page (plus dev-login email box only when `devLoginEnabled`) |
+| `/login` | public | **Sign in with Google** button centred on the page (plus dev-login email box only when `devLoginEnabled`) |
 | `/crm` | CRM, ADMIN | Dashboard: "Add a HubSpot Deal" card + deals table |
 | `/crm/deals` | CRM, ADMIN | Deals table only (same filters, actions and drawers) |
 | `/crm/companies` | CRM, ADMIN | Companies with deal counts by state; **View deals** opens `/crm/deals?company=…` |
@@ -73,7 +73,7 @@ page stays readable at 125% Windows display scaling.
 | `/psm/jobs/:jobId/review` | PSM, ADMIN | Candidate review |
 | `/public/candidate-pool/:token` | public | Read-only candidate pool (no header, no auth) |
 
-Unknown email after Microsoft sign-in → show an **Access Denied** state. A signed-in user opening a
+Unknown email after Google sign-in → show an **Access Denied** state. A signed-in user opening a
 page their role cannot access → Access Denied state (not a redirect loop).
 
 ## Page 1: CRM Dashboard (`/crm`)

@@ -14,7 +14,7 @@ candidate pool shared with the company. It replaces the manual CRM_Job_Loading t
 | **ADMIN** | Everything above, plus managing users and their HubSpot owners | All screens + Settings → Users |
 
 Sign-in:
-- **Microsoft:** the company account (needs `MICROSOFT_CLIENT_ID` and `MICROSOFT_TENANT_ID`).
+- **Google:** the company Google account (needs `GOOGLE_CLIENT_ID`).
 - **Email:** for local use only; turned off automatically in production.
 
 Only users in the user list can sign in. Admins add them under **Settings → Users** or with the CLI.
@@ -33,14 +33,16 @@ flowchart TD
     C --> G2{{Step by step: Approve Load Beta / Prod}}
     G2 --> D[Load job into Learning Portal<br/>Beta, then Prod]
     D --> W[Write job ID + owners to HubSpot<br/>n8n webhook]
-    D --> E[Find eligible students<br/>Portal + BigQuery]
+    D --> E[Find eligible students<br/>Eligible Pool page]
     E --> G3{{Step by step: Approve Give access}}
     G3 --> H[Give students access<br/>Learning Portal Prod]
     H --> G4{{Step by step: Approve Email and start window}}
     G4 --> I[Email eligible students<br/>AWS SES]
     I --> J[21-hour application window]
-    J --> R1[10 h reminder<br/>email + AI call to non-applicants]
-    R1 --> R2[20 h reminder<br/>email + AI call to non-applicants]
+    J --> R1[10 h checkpoint<br/>below target: email the CRM a Boost link]
+    R1 --> R2[20 h checkpoint<br/>below target: email the CRM a Boost link]
+    R1 -.-> BP[Boost page: CRM sends reminder email<br/>or starts AI calls, 2 min, two-way]
+    R2 -.-> BP
     J -.->|applications reach expected pool| P[Skip reminders<br/>Email the CRM who added the deal]
     R2 --> K[Window closes at 21 h<br/>Fetch applied pool from BigQuery]
     P --> K
@@ -74,10 +76,10 @@ straight through.
 | 3 | Prepare job | Builds the job title, description, eligibility and disclaimer (AI, or a rule-based fallback) | Gemini (optional) |
 | 4 | Load job | Creates the organisation if needed and the job in **Beta**, then **Prod**, with `job_extra_details.crm / profiling_poc / ise` | Learning Portal API |
 | 5 | Write back | `POST {action:"update", dealId, properties:{job_id}}`, then `{crm, profiling_poc, ise}` owner IDs | n8n → HubSpot |
-| 6 | Eligible students | Eligible IDs from the portal (Beta), contact details from BigQuery | Learning Portal, BigQuery |
+| 6 | Eligible students | Students marked **Eligible** on the Eligible Pool page for the deal's products (NIAT, Academy, …) and pass-out year, with their email and mobile | MongoDB (Eligible Pool) |
 | 7 | Give access | Grants the job to eligible students in Prod | Learning Portal API |
 | 8 | Notify | Initial job email to every eligible student | AWS SES |
-| 9 | Window | 21 h. Reminders at 10 h and 20 h: email + AI phone call to non-applicants | SES, NxtDial |
+| 9 | Window | 21 h. At 10 h and 20 h, if applications are below the expected pool, the CRM gets an email with a **Boost applications** link. There the CRM sends a reminder email or starts AI calls (agent built from the JD, `{name}` and `{jd}` per call, two-way, up to 2 minutes). Call status, answers and ratings come back automatically | SES, NxtDial |
 | 10 | Pool reached | When applications ≥ expected pool: reminders skipped, **one email to the CRM who added the deal** | SES |
 | 11 | Close + fetch | At 21 h the applied pool is read | BigQuery |
 | 12 | AI analysis | Each resume scored against the job | Gemini |
@@ -116,11 +118,11 @@ straight through.
 | MongoDB Atlas | All app data and the task queue | `MONGODB_URI` | ✅ Set |
 | HubSpot (n8n webhook) | Read deal, write job ID and owners | `HUBSPOT_DEAL_WEBHOOK_URL` | ✅ Set. n8n must reply to `fetch` with the deal and handle `update` |
 | Learning Portal | Organisation, job, eligibility, access | `BETA_API_KEY`, `PROD_API_KEY`, `LEARNING_PORTAL_BETA_BASE_URL`, `LEARNING_PORTAL_PROD_BASE_URL` | ✅ Set |
-| Microsoft sign-in | Company login | `MICROSOFT_CLIENT_ID`, `MICROSOFT_TENANT_ID` | ⏳ Pending |
+| Google sign-in | Company login | `GOOGLE_CLIENT_ID` | ⏳ Pending |
 | Gemini | Job content, resume analysis | `GEMINI_API_KEY` | ⏳ Pending |
-| BigQuery | Student details, applied pool, scores | `BIGQUERY_PROJECT_ID`, `BIGQUERY_DATASET`, `BIGQUERY_APPLICATIONS_TABLE`, `GOOGLE_APPLICATION_CREDENTIALS_JSON` | ⏳ Pending (HoD approval for PII) |
+| BigQuery | Student details, applied pool, scores | `GOOGLE_APPLICATION_CREDENTIALS_JSON` (table names in `config/bigqueryTables.js`) | ⏳ Pending (HoD approval for PII) |
 | AWS SES | All emails | `SES_FROM_EMAIL`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | ⏳ Pending |
-| NxtDial | AI reminder calls | `NXTDIAL_BASE_URL`, `NXTDIAL_API_KEY`, `NXTDIAL_AGENT_ID`, `NXTDIAL_FROM_NUMBER` | ⏳ Pending |
+| NxtDial | AI calls from the Boost page | `NXTDIAL_BASE_URL`, `NXTDIAL_API_KEY`, `NXTDIAL_FROM_NUMBER` (`NXTDIAL_AGENT_ID` optional) | ⏳ Pending |
 
 Missing settings never stop the app. It starts, lists what is missing, and only the step that needs a
 missing key fails with a clear message. Add the key, restart the API, then press **Retry Failed Step**.
@@ -138,6 +140,6 @@ missing key fails with a clear message. Add the key, restart the API, then press
 1. n8n deal webhook: return the deal JSON for `action: "fetch"` (it currently returns an empty reply)
    and apply `action: "update"`.
 2. Business HoD approval for BigQuery student PII, then the BigQuery credentials.
-3. Microsoft app registration (client ID, tenant ID).
+3. Google OAuth client (Client ID).
 4. Gemini, AWS SES and NxtDial credentials.
 5. Deployment to Northflank and Vercel. After that, stop the local worker so it doesn't process real tasks.

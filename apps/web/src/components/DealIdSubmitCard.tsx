@@ -1,9 +1,12 @@
 import { Link2, LoaderCircle, Send } from "lucide-react";
 import { useId, useState, type FormEvent, type ReactNode } from "react";
 import { errorMessage } from "../api/client";
-import { useHubspotOwners, useProcessDeal } from "../api/crm";
+import { useHubspotOwners, useProcessDeal, type ProcessDealInput } from "../api/crm";
 import type { FlowMode, ProcessDealResponse } from "../types/api";
 import { cn } from "../utils/cn";
+import { formatNumber } from "../utils/format";
+import { ConfirmDialog } from "./ConfirmDialog";
+import { DetailList } from "./DetailList";
 import { HubspotOwnerSelect } from "./HubspotOwnerSelect";
 import { useToast } from "./toast-context";
 import { toolbarFieldClass } from "./ui/styles";
@@ -13,12 +16,20 @@ interface DealIdSubmitCardProps {
 }
 
 const FLOW_MODES: { value: FlowMode; label: string; hint: string }[] = [
-  { value: "AUTOMATIC", label: "Automatic", hint: "Every step runs by itself." },
-  { value: "STEP_BY_STEP", label: "Step by step", hint: "Stops before each step for your approval." },
+  {
+    value: "AUTOMATIC",
+    label: "Automatic",
+    hint: "Every step runs by itself.",
+  },
+  {
+    value: "STEP_BY_STEP",
+    label: "Step by step",
+    hint: "Stops before each step for your approval.",
+  },
 ];
 
 type OwnerField = "crm" | "profiling" | "ise";
-type FieldErrors = Partial<Record<"dealId" | "expectedPool" | "crm", string>>;
+type FieldErrors = Partial<Record<"dealId" | "expectedPool" | "jdCount" | "crm", string>>;
 
 const invalidClass = "border-red-400 focus:border-red-500 focus:ring-red-500/15";
 
@@ -54,13 +65,21 @@ function Field({
 export function DealIdSubmitCard({ onSubmitted }: DealIdSubmitCardProps) {
   const id = useId();
   const titleId = `${id}-title`;
-  const ids = { pool: `${id}-pool`, crm: `${id}-crm`, profiling: `${id}-profiling`, ise: `${id}-ise` };
+  const ids = {
+    pool: `${id}-pool`,
+    jd: `${id}-jd`,
+    crm: `${id}-crm`,
+    profiling: `${id}-profiling`,
+    ise: `${id}-ise`,
+  };
   const [value, setValue] = useState("");
   const [expectedPool, setExpectedPool] = useState("");
+  const [jdCount, setJdCount] = useState("1");
   const [picks, setPicks] = useState<Partial<Record<OwnerField, string>>>({});
   const [flowMode, setFlowMode] = useState<FlowMode>("AUTOMATIC");
   const [errors, setErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
+  const [pending, setPending] = useState<ProcessDealInput | null>(null);
   const toast = useToast();
   const mutation = useProcessDeal();
   const ownersQuery = useHubspotOwners();
@@ -83,36 +102,53 @@ export function DealIdSubmitCard({ onSubmitted }: DealIdSubmitCardProps) {
     event.preventDefault();
     const dealId = value.trim();
     const pool = Number(expectedPool);
+    const jd = Number(jdCount);
     const crmOwnerId = ownerValue("crm");
     const nextErrors: FieldErrors = {};
     if (!dealId) nextErrors.dealId = "Enter a HubSpot Deal ID.";
     if (!expectedPool.trim()) nextErrors.expectedPool = "Enter the expected pool.";
     else if (!Number.isInteger(pool) || pool < 1) nextErrors.expectedPool = "Enter a whole number of 1 or more.";
+    if (!jdCount.trim()) nextErrors.jdCount = "Enter the JD count.";
+    else if (!Number.isInteger(jd) || jd < 1) nextErrors.jdCount = "Enter a whole number of 1 or more.";
     if (!crmOwnerId) nextErrors.crm = "Choose the CRM owner.";
     setErrors(nextErrors);
     setFormError(null);
     if (Object.keys(nextErrors).length) return;
 
-    mutation.mutate(
-      {
-        dealId,
-        flowMode,
-        expectedPoolCount: pool,
-        crmOwnerId,
-        profilingPocId: ownerValue("profiling") || undefined,
-        iseId: ownerValue("ise") || undefined,
+    mutation.reset();
+    setPending({
+      dealId,
+      flowMode,
+      expectedPoolCount: pool,
+      jdCount: jd,
+      crmOwnerId,
+      profilingPocId: ownerValue("profiling") || undefined,
+      iseId: ownerValue("ise") || undefined,
+    });
+  };
+
+  const ownerName = (ownerId?: string) =>
+    ownerId ? (owners.find((owner) => owner.id === ownerId)?.name ?? ownerId) : "Not set";
+
+  const confirmSubmit = () => {
+    if (!pending) return;
+    mutation.mutate(pending, {
+      onSuccess: (result) => {
+        setPending(null);
+        setValue("");
+        setExpectedPool("");
+        setJdCount("1");
+        if (result.duplicate) toast.info("Deal already submitted");
+        else
+          toast.success(
+            flowMode === "STEP_BY_STEP"
+              ? "Deal submitted. It will wait for your approval at each step."
+              : "Deal submitted",
+          );
+        onSubmitted?.(result);
       },
-      {
-        onSuccess: (result) => {
-          setValue("");
-          setExpectedPool("");
-          if (result.duplicate) toast.info("Deal already submitted");
-          else toast.success(flowMode === "STEP_BY_STEP" ? "Deal submitted. It will wait for your approval at each step." : "Deal submitted");
-          onSubmitted?.(result);
-        },
-        onError: (err) => setFormError(errorMessage(err, "This Deal ID could not be submitted.")),
-      },
-    );
+      onError: (err) => setFormError(errorMessage(err, "This Deal ID could not be submitted.")),
+    });
   };
 
   return (
@@ -134,9 +170,7 @@ export function DealIdSubmitCard({ onSubmitted }: DealIdSubmitCardProps) {
           <h2 id={titleId} className="mt-4 text-[22px] leading-tight font-bold tracking-tight text-ink">
             Add a HubSpot Deal
           </h2>
-          <p className="mt-1.5 text-sm text-muted">
-            Enter a HubSpot Deal ID or paste the deal link to get started.
-          </p>
+          <p className="mt-1.5 text-sm text-muted">Enter a HubSpot Deal ID or paste the deal link to get started.</p>
         </div>
 
         <form
@@ -168,7 +202,9 @@ export function DealIdSubmitCard({ onSubmitted }: DealIdSubmitCardProps) {
                 aria-describedby={errors.dealId ? `${id}-error` : undefined}
                 className={cn(
                   "h-11 w-full rounded-[10px] border bg-surface pr-3.5 pl-11 text-sm text-ink outline-none transition-[border-color,box-shadow] placeholder:text-muted focus:ring-3",
-                  errors.dealId ? invalidClass : "border-field hover:border-slate-300 focus:border-primary focus:ring-primary/15",
+                  errors.dealId
+                    ? invalidClass
+                    : "border-field hover:border-slate-300 focus:border-primary focus:ring-primary/15",
                 )}
               />
             </div>
@@ -179,7 +215,7 @@ export function DealIdSubmitCard({ onSubmitted }: DealIdSubmitCardProps) {
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
             <Field id={ids.pool} label="Expected Pool" required error={errors.expectedPool}>
               <input
                 id={ids.pool}
@@ -190,12 +226,38 @@ export function DealIdSubmitCard({ onSubmitted }: DealIdSubmitCardProps) {
                 value={expectedPool}
                 onChange={(e) => {
                   setExpectedPool(e.target.value);
-                  if (errors.expectedPool) setErrors((current) => ({ ...current, expectedPool: undefined }));
+                  if (errors.expectedPool)
+                    setErrors((current) => ({
+                      ...current,
+                      expectedPool: undefined,
+                    }));
                 }}
                 placeholder="e.g. 70"
                 aria-invalid={errors.expectedPool ? true : undefined}
                 aria-describedby={errors.expectedPool ? `${ids.pool}-error` : undefined}
                 className={cn(toolbarFieldClass, errors.expectedPool && invalidClass)}
+              />
+            </Field>
+            <Field id={ids.jd} label="JD Count" required error={errors.jdCount}>
+              <input
+                id={ids.jd}
+                type="number"
+                inputMode="numeric"
+                min={1}
+                step={1}
+                value={jdCount}
+                onChange={(e) => {
+                  setJdCount(e.target.value);
+                  if (errors.jdCount)
+                    setErrors((current) => ({
+                      ...current,
+                      jdCount: undefined,
+                    }));
+                }}
+                placeholder="e.g. 1"
+                aria-invalid={errors.jdCount ? true : undefined}
+                aria-describedby={errors.jdCount ? `${ids.jd}-error` : undefined}
+                className={cn(toolbarFieldClass, errors.jdCount && invalidClass)}
               />
             </Field>
             <Field id={ids.crm} label="CRM Owner" required error={errors.crm}>
@@ -228,7 +290,7 @@ export function DealIdSubmitCard({ onSubmitted }: DealIdSubmitCardProps) {
             </Field>
           </div>
 
-          {formError && (
+          {formError && pending === null && (
             <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
               {formError}
             </p>
@@ -282,6 +344,55 @@ export function DealIdSubmitCard({ onSubmitted }: DealIdSubmitCardProps) {
           </div>
         </form>
       </div>
+      <ConfirmDialog
+        open={pending !== null}
+        title="Submit this deal?"
+        confirmLabel="Confirm and submit"
+        cancelLabel="Edit"
+        pending={mutation.isPending}
+        error={mutation.isError ? formError : null}
+        onCancel={() => {
+          setPending(null);
+          setFormError(null);
+          mutation.reset();
+        }}
+        onConfirm={confirmSubmit}
+        message={
+          pending && (
+            <>
+              <p>Please check the details before submitting.</p>
+              <DetailList
+                className="mt-4 rounded-lg bg-slate-50 p-4"
+                items={[
+                  {
+                    label: "HubSpot Deal",
+                    value: <span className="break-all">{pending.dealId}</span>,
+                    wide: true,
+                  },
+                  {
+                    label: "Expected Pool",
+                    value: formatNumber(pending.expectedPoolCount ?? null),
+                  },
+                  {
+                    label: "JD Count",
+                    value: formatNumber(pending.jdCount ?? null),
+                  },
+                  { label: "CRM Owner", value: ownerName(pending.crmOwnerId) },
+                  {
+                    label: "Profiling POC",
+                    value: ownerName(pending.profilingPocId),
+                  },
+                  { label: "ISE", value: ownerName(pending.iseId) },
+                  {
+                    label: "Flow",
+                    value: pending.flowMode === "STEP_BY_STEP" ? "Step by step" : "Automatic",
+                  },
+                ]}
+              />
+            </>
+          )
+        }
+      />
     </section>
   );
 }

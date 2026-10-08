@@ -94,8 +94,8 @@ export function mapEnrollPlans(product) {
   if (["NET", "PAP", "SJET", "Experienced", "Edge"].some((tag) => text.includes(tag))) {
     plans.push("NXTWAVE_EXTERNAL_JOB_PORTAL");
   }
-  if (lower.includes("niat")) plans.push("NIAT");
-  return plans;
+  if (lower.includes("niat") || lower.includes("academy")) plans.push("NIAT");
+  return [...new Set(plans)];
 }
 
 export function enrollPlansFor(props, job = {}) {

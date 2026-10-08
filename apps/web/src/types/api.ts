@@ -27,7 +27,7 @@ export type ApiErrorCode =
   | "VALIDATION_ERROR"
   | "INVALID_DEAL_ID"
   | "UNAUTHENTICATED"
-  | "INVALID_MICROSOFT_TOKEN"
+  | "INVALID_GOOGLE_TOKEN"
   | "ACCESS_DENIED"
   | "FORBIDDEN"
   | "CSRF_REJECTED"
@@ -38,8 +38,8 @@ export type ApiErrorCode =
   | "LINK_EXPIRED"
   | "RATE_LIMITED"
   | "INTERNAL_ERROR"
-  | "MICROSOFT_NOT_CONFIGURED"
-  | "MICROSOFT_UNAVAILABLE";
+  | "GOOGLE_NOT_CONFIGURED"
+  | "GOOGLE_UNAVAILABLE";
 
 export interface ApiErrorBody {
   error: {
@@ -81,8 +81,7 @@ export interface User {
 }
 
 export interface AuthConfig {
-  microsoftClientId: string | null;
-  microsoftTenantId: string | null;
+  googleClientId: string | null;
   devLoginEnabled: boolean;
 }
 
@@ -181,6 +180,21 @@ export interface ApprovalRecord {
 }
 
 export interface CrmDealDetail extends CrmDealRow {
+  hubspotRecordUrl: string | null;
+  ingestedAt: string | null;
+  companyWebsite: string | null;
+  companyLinkedin: string | null;
+  companyLogoUrl: string | null;
+  jdCount: number | null;
+  jobType: string | null;
+  experienceType: string | null;
+  jobSource: string | null;
+  applicationMode: string | null;
+  internshipDuration: string | null;
+  enrollPlans: string[];
+  eligibility: string | null;
+  compensationDescription: string | null;
+  deadline: string | null;
   approvals: ApprovalRecord[];
   cancelledBy: string | null;
   cancelledAt: string | null;
@@ -235,6 +249,7 @@ export interface CrmDealFilters {
 export interface PreviewItem {
   label: string;
   value: string | null;
+  href?: string;
   wide?: boolean;
 }
 
@@ -430,4 +445,179 @@ export interface PublicPool {
   submittedAt: string;
   expiresAt: string;
   candidates: PublicCandidate[];
+}
+
+export const ELIGIBILITY_STATUSES = ["Eligible", "Placed", "Mint", "Do not Provided", "Not Interested"] as const;
+
+export const EDITABLE_PRODUCTS = ["NIAT", "Academy", "Intensive", "External", "Other"] as const;
+
+export type PoolProduct = "NIAT" | "Academy" | "Intensive" | "External" | "Other" | "Unknown";
+
+export interface EligiblePoolStudent {
+  studentId: string;
+  niatId: string | null;
+  studentName: string;
+  mobile: string | null;
+  email: string | null;
+  productGroup: PoolProduct;
+  campus: string | null;
+  batch: string | null;
+  eligibilityStatus: string | null;
+  remarks: string | null;
+  syncedAt: string | null;
+  updatedAt: string | null;
+  manual: boolean;
+  updatedBy: string | null;
+}
+
+export type PoolStudentInput = Partial<
+  Omit<EligiblePoolStudent, "productGroup" | "syncedAt" | "updatedAt" | "manual" | "updatedBy">
+>;
+
+export interface EligiblePoolSync {
+  status: "IDLE" | "RUNNING" | "DONE" | "FAILED";
+  startedAt: string | null;
+  finishedAt: string | null;
+  startedBy: string | null;
+  rowsRead: number;
+  removed: number;
+  error: string | null;
+}
+
+export interface EligiblePoolSummary {
+  total: number;
+  products: { product: PoolProduct; count: number }[];
+  statuses: { status: string; count: number }[];
+  campuses: { campus: string; count: number }[];
+  sync: EligiblePoolSync;
+  syncConfigured: boolean;
+}
+
+export interface EligiblePoolQuery {
+  search?: string;
+  product?: string;
+  status?: string;
+  campus?: string;
+  sort?: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface BigQueryColumn {
+  name: string;
+  type: string;
+  mode: string;
+}
+
+export interface BigQueryDatasets {
+  projectId: string;
+  datasets: { id: string; location: string | null }[];
+}
+
+export interface BigQueryTableInfo {
+  id: string;
+  type: string | null;
+  rowCount: number | null;
+  columns: BigQueryColumn[];
+  updatedAt: string | null;
+}
+
+export interface BigQueryTables {
+  datasetId: string;
+  tables: BigQueryTableInfo[];
+}
+
+export type BigQueryCell = string | number | boolean | null;
+
+export interface BigQueryRows {
+  datasetId: string;
+  tableId: string;
+  type: string | null;
+  columns: BigQueryColumn[];
+  rows: Record<string, BigQueryCell>[];
+  pagination: Pagination;
+}
+
+export type AiCallStatus = "QUEUED" | "CALLING" | "COMPLETED" | "NO_ANSWER" | "BUSY" | "FAILED" | "CANCELLED";
+
+export interface BoostCallRow {
+  id: string;
+  batchId: string;
+  studentId: string;
+  name: string;
+  phone: string;
+  status: AiCallStatus;
+  durationSeconds: number | null;
+  interested: string | null;
+  willApply: string | null;
+  reason: string | null;
+  questions: string | null;
+  callBack: string | null;
+  overallRating: number | null;
+  remarks: string | null;
+  summary: string | null;
+  recordingUrl: string | null;
+  error: string | null;
+  calledAt: string | null;
+  endedAt: string | null;
+}
+
+export interface BoostEmailRun {
+  at: string;
+  by: string | null;
+  recipients: number;
+  sent: number;
+  skipped: number;
+  failed: number;
+}
+
+export interface BoostCallRun {
+  batchId: string;
+  at: string;
+  by: string | null;
+  agentId: string | null;
+  queued: number;
+  skippedNoPhone: number;
+}
+
+export interface BoostCrmAlert {
+  reminder: string;
+  at: string;
+  to: string | null;
+  appliedCount: number;
+  expectedPoolCount: number | null;
+  notApplied: number;
+  outcome: string | null;
+}
+
+export interface BoostOverview {
+  deal: {
+    id: string;
+    hubspotDealId: string;
+    companyName: string | null;
+    jobRole: string | null;
+    expectedPoolCount: number | null;
+    appliedCount: number;
+    eligibleCount: number;
+    applicationEndAt: string | null;
+    windowOpen: boolean;
+    poolTargetReached: boolean;
+  };
+  notApplied: { total: number; withEmail: number; withPhone: number };
+  emails: { availableAt: string | null; runs: BoostEmailRun[] };
+  calls: {
+    setupProblem: string | null;
+    agentId: string | null;
+    agentCreatedAt: string | null;
+    spokenJd: string | null;
+    maxSeconds: number;
+    active: boolean;
+    counts: Record<AiCallStatus, number>;
+    interested: number;
+    willApply: number;
+    runs: BoostCallRun[];
+    lastSyncedAt: string | null;
+    items: BoostCallRow[];
+  };
+  crmAlerts: BoostCrmAlert[];
 }

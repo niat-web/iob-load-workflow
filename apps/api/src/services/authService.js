@@ -8,71 +8,72 @@ import { logger } from "../utils/logger.js";
 
 const KEYS_TTL_MS = 60 * 60 * 1000;
 const MAX_TOKEN_AGE_SECONDS = 10 * 60;
-const invalidToken = (message = "Microsoft sign-in could not be verified") =>
-  new AppError(401, "INVALID_MICROSOFT_TOKEN", message);
+const GOOGLE_CERTS_URL = "https://www.googleapis.com/oauth2/v3/certs";
+const GOOGLE_ISSUERS = ["https://accounts.google.com", "accounts.google.com"];
+const invalidToken = (message = "Google sign-in could not be verified") =>
+  new AppError(401, "INVALID_GOOGLE_TOKEN", message);
+const googleUnavailable = () =>
+  new AppError(503, "GOOGLE_UNAVAILABLE", "Google sign-in is unavailable right now. Try again.");
 
-async function downloadMicrosoftKeys() {
-  const url = `https://login.microsoftonline.com/${config.auth.microsoftTenantId}/discovery/v2.0/keys`;
+async function downloadGoogleKeys() {
   let response;
   try {
-    response = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    response = await fetch(GOOGLE_CERTS_URL, { signal: AbortSignal.timeout(10000) });
   } catch (error) {
-    logger.warn({ err: error }, "Could not download Microsoft signing keys");
-    throw new AppError(503, "MICROSOFT_UNAVAILABLE", "Microsoft sign-in is unavailable right now. Try again.");
+    logger.warn({ err: error }, "Could not download Google signing keys");
+    throw googleUnavailable();
   }
-  if (!response.ok) throw new AppError(503, "MICROSOFT_UNAVAILABLE", "Microsoft sign-in is unavailable right now. Try again.");
+  if (!response.ok) throw googleUnavailable();
   const body = await response.json();
   return Array.isArray(body?.keys) ? body.keys : [];
 }
 
-let loadMicrosoftKeys = downloadMicrosoftKeys;
+let loadGoogleKeys = downloadGoogleKeys;
 let keyCache = { keys: [], loadedAt: 0 };
 
-export function setMicrosoftKeySource(source) {
-  loadMicrosoftKeys = source ?? downloadMicrosoftKeys;
+export function setGoogleKeySource(source) {
+  loadGoogleKeys = source ?? downloadGoogleKeys;
   keyCache = { keys: [], loadedAt: 0 };
 }
 
-async function microsoftSigningKey(kid) {
+async function googleSigningKey(kid) {
   const fresh = Date.now() - keyCache.loadedAt < KEYS_TTL_MS;
   let jwk = fresh ? keyCache.keys.find((key) => key.kid === kid) : null;
   if (!jwk) {
-    keyCache = { keys: await loadMicrosoftKeys(), loadedAt: Date.now() };
+    keyCache = { keys: await loadGoogleKeys(), loadedAt: Date.now() };
     jwk = keyCache.keys.find((key) => key.kid === kid);
   }
   if (!jwk) throw invalidToken();
   return crypto.createPublicKey({ key: jwk, format: "jwk" });
 }
 
-export async function verifyMicrosoftIdToken(idToken) {
-  const { microsoftClientId: clientId, microsoftTenantId: tenantId } = config.auth;
-  if (!clientId || !tenantId) {
-    throw new AppError(503, "MICROSOFT_NOT_CONFIGURED", "Microsoft sign-in is not configured");
-  }
-  const decoded = jwt.decode(idToken, { complete: true });
+export async function verifyGoogleIdToken(credential) {
+  const clientId = config.auth.googleClientId;
+  if (!clientId) throw new AppError(503, "GOOGLE_NOT_CONFIGURED", "Google sign-in is not configured");
+  const decoded = jwt.decode(credential, { complete: true });
   if (!decoded?.header?.kid) throw invalidToken();
-  const key = await microsoftSigningKey(decoded.header.kid);
+  const key = await googleSigningKey(decoded.header.kid);
 
   let payload;
   try {
-    payload = jwt.verify(idToken, key, {
+    payload = jwt.verify(credential, key, {
       algorithms: ["RS256"],
       audience: clientId,
-      issuer: `https://login.microsoftonline.com/${tenantId}/v2.0`,
+      issuer: GOOGLE_ISSUERS,
       clockTolerance: 60,
     });
   } catch {
     throw invalidToken();
   }
-  if (String(payload.tid ?? "").toLowerCase() !== tenantId) {
-    throw invalidToken("Sign in with your company Microsoft account");
-  }
   if (!payload.iat || Date.now() / 1000 - payload.iat > MAX_TOKEN_AGE_SECONDS) {
     throw invalidToken("This sign-in has expired. Sign in again.");
   }
-  const email = String(payload.email ?? payload.preferred_username ?? "").trim().toLowerCase();
-  if (!/^[^@\s]+@[^@\s]+$/.test(email)) throw invalidToken("This Microsoft account has no email address");
-  return { email, name: payload.name ?? "", picture: null };
+  const email = String(payload.email ?? "").trim().toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+$/.test(email)) throw invalidToken("This Google account has no email address");
+  if (payload.email_verified !== true && payload.email_verified !== "true") {
+    throw invalidToken("This Google account's email address is not verified");
+  }
+  return { email, name: payload.name ?? "", picture: payload.picture ?? null };
 }
 
 export async function resolveUser({ email, name, picture }) {

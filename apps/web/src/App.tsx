@@ -5,22 +5,25 @@ import { createQueryClient } from "./api/queryClient";
 import { AuthProvider } from "./auth/AuthProvider";
 import { RequireRole } from "./auth/RequireRole";
 import { RoleRedirect } from "./auth/RoleRedirect";
-import { ALL_ROLES, CRM_ROLES, PSM_ROLES } from "./auth/roles";
+import { ADMIN_ROLES, ALL_ROLES, CRM_ROLES, PSM_ROLES } from "./auth/roles";
 import { LoadingSkeleton, PageLoader } from "./components/LoadingSkeleton";
 import { ToastProvider } from "./components/Toast";
 import { cardClass } from "./components/ui/styles";
 import { NotFoundPage } from "./pages/NotFoundPage";
+import { pageLoaders } from "./pages/pageLoaders";
 import { RouteErrorPage } from "./pages/RouteErrorPage";
 
-const LoginPage = lazy(() => import("./pages/LoginPage").then((m) => ({ default: m.LoginPage })));
-const CRMPage = lazy(() => import("./pages/CRMPage").then((m) => ({ default: m.CRMPage })));
-const CRMDealsPage = lazy(() => import("./pages/CRMDealsPage").then((m) => ({ default: m.CRMDealsPage })));
-const CRMCompaniesPage = lazy(() => import("./pages/CRMCompaniesPage").then((m) => ({ default: m.CRMCompaniesPage })));
-const SettingsPage = lazy(() => import("./pages/SettingsPage").then((m) => ({ default: m.SettingsPage })));
-const PSMJobsPage = lazy(() => import("./pages/PSMJobsPage").then((m) => ({ default: m.PSMJobsPage })));
-const PSMReviewPage = lazy(() => import("./pages/PSMReviewPage").then((m) => ({ default: m.PSMReviewPage })));
+const LoginPage = lazy(() => pageLoaders.login().then((m) => ({ default: m.LoginPage })));
+const CRMPage = lazy(() => pageLoaders.crm().then((m) => ({ default: m.CRMPage })));
+const CRMDealsPage = lazy(() => pageLoaders.crmDeals().then((m) => ({ default: m.CRMDealsPage })));
+const CRMCompaniesPage = lazy(() => pageLoaders.crmCompanies().then((m) => ({ default: m.CRMCompaniesPage })));
+const BoostPage = lazy(() => pageLoaders.boost().then((m) => ({ default: m.BoostPage })));
+const EligiblePoolPage = lazy(() => pageLoaders.eligiblePool().then((m) => ({ default: m.EligiblePoolPage })));
+const SettingsPage = lazy(() => pageLoaders.settings().then((m) => ({ default: m.SettingsPage })));
+const PSMJobsPage = lazy(() => pageLoaders.psmJobs().then((m) => ({ default: m.PSMJobsPage })));
+const PSMReviewPage = lazy(() => pageLoaders.psmReview().then((m) => ({ default: m.PSMReviewPage })));
 const PublicCandidatePoolPage = lazy(() =>
-  import("./pages/PublicCandidatePoolPage").then((m) => ({ default: m.PublicCandidatePoolPage })),
+  pageLoaders.publicPool().then((m) => ({ default: m.PublicCandidatePoolPage })),
 );
 
 function ContentFallback() {
@@ -74,7 +77,10 @@ const router = createBrowserRouter([
           { path: "/crm", element: internal(CRM_ROLES, <CRMPage />) },
           { path: "/crm/deals", element: internal(CRM_ROLES, <CRMDealsPage />) },
           { path: "/crm/companies", element: internal(CRM_ROLES, <CRMCompaniesPage />) },
+          { path: "/crm/deals/:jobId/boost", element: internal(CRM_ROLES, <BoostPage />) },
+          { path: "/admin/eligible-pool", element: internal(ADMIN_ROLES, <EligiblePoolPage />) },
           { path: "/settings", element: internal(ALL_ROLES, <SettingsPage />) },
+          { path: "/settings/:section", element: internal(ALL_ROLES, <SettingsPage />) },
           { path: "/psm", element: internal(PSM_ROLES, <PSMJobsPage />) },
           { path: "/psm/jobs/:jobId/review", element: internal(PSM_ROLES, <PSMReviewPage />) },
           { path: "*", element: <NotFoundPage /> },

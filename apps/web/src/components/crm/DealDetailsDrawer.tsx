@@ -1,9 +1,10 @@
 import { ArrowUpRight, Copy } from "lucide-react";
+import { Link } from "react-router";
 import { hasStatus } from "../../api/client";
 import { useCrmDeal } from "../../api/crm";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 import type { CrmDealDetail, CrmDealRow, HubspotWriteBack, ReminderInfo, Tone } from "../../types/api";
-import { DASH, formatDateTime, formatNumber, orDash } from "../../utils/format";
+import { DASH, formatDate, formatDateTime, formatNumber, orDash } from "../../utils/format";
 import { DetailList, DetailSection } from "../DetailList";
 import { Drawer } from "../Drawer";
 import { EmptyState } from "../EmptyState";
@@ -90,9 +91,6 @@ function LearningPortalSection({ portal }: { portal: CrmDealDetail["learningPort
               <StatusBadge label="Not loaded" tone="gray" />
             ),
           })),
-          { label: "Job ID", value: <span className="break-all tabular-nums">{orDash(portal.jobId)}</span>, wide: true },
-          { label: "Organisation ID", value: <span className="break-all tabular-nums">{orDash(portal.organisationId)}</span>, wide: true },
-          { label: "Order", value: formatNumber(portal.order) },
           { label: "HubSpot Job ID", value: <StatusBadge label={writeBack.label} tone={writeBack.tone} /> },
         ]}
       />
@@ -107,6 +105,151 @@ function ExternalLink({ href, children }: { href: string; children: string }) {
       <ArrowUpRight className="size-3.5" aria-hidden />
       <span className="sr-only">(opens in a new tab)</span>
     </a>
+  );
+}
+
+function CopyValue({ value, label }: { value: string | null; label: string }) {
+  const copy = useCopyToClipboard();
+  if (!value) return <>{DASH}</>;
+  return (
+    <span className="inline-flex max-w-full items-center gap-1.5">
+      <span className="rounded-md bg-slate-100 px-2 py-0.5 font-mono text-xs break-all text-slate-700">{value}</span>
+      <IconButton
+        label={`Copy ${label}`}
+        className="size-7 shrink-0 border-transparent shadow-none"
+        onClick={() => void copy(value, `${label} copied`)}
+      >
+        <Copy className="size-3.5" aria-hidden />
+      </IconButton>
+    </span>
+  );
+}
+
+function Chips({ values, tone = "gray" }: { values: string[]; tone?: "gray" | "primary" }) {
+  if (values.length === 0) return <>{DASH}</>;
+  return (
+    <span className="flex flex-wrap gap-1.5">
+      {values.map((value) => (
+        <span
+          key={value}
+          className={
+            tone === "primary"
+              ? "rounded-md bg-primary-soft px-2 py-0.5 text-xs text-primary"
+              : "rounded-md bg-slate-100 px-2 py-0.5 text-xs text-slate-700"
+          }
+        >
+          {value}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+function deadlineText(value: string | null) {
+  const formatted = formatDateTime(value);
+  return formatted === DASH ? orDash(value) : formatted;
+}
+
+function JobMetaSection({ deal }: { deal: CrmDealDetail }) {
+  return (
+    <DetailSection title="Job Meta">
+      <DetailList
+        items={[
+          { label: "Order ID", value: formatNumber(deal.learningPortal.order) },
+          { label: "Ingestion Date", value: formatDate(deal.ingestedAt) },
+          { label: "Job Deal ID", value: <span className="tabular-nums">{deal.hubspotDealId}</span> },
+          { label: "Experience Type", value: orDash(deal.experienceType) },
+          { label: "Job ID", value: <CopyValue value={deal.learningPortal.jobId} label="Job ID" />, wide: true },
+          { label: "Job Type", value: orDash(deal.jobType) },
+          { label: "Job Source", value: orDash(deal.jobSource) },
+          {
+            label: "HubSpot Record",
+            wide: true,
+            value: deal.hubspotRecordUrl ? <ExternalLink href={deal.hubspotRecordUrl}>Open HubSpot Record</ExternalLink> : DASH,
+          },
+        ]}
+      />
+    </DetailSection>
+  );
+}
+
+function CompanyProfileSection({ deal }: { deal: CrmDealDetail }) {
+  return (
+    <DetailSection title="Company Profile">
+      <DetailList
+        items={[
+          { label: "Company Name", value: orDash(deal.companyName) },
+          {
+            label: "Website",
+            value: deal.companyWebsite ? <ExternalLink href={deal.companyWebsite}>{deal.companyWebsite}</ExternalLink> : DASH,
+          },
+          {
+            label: "Organization ID",
+            value: <CopyValue value={deal.learningPortal.organisationId} label="Organization ID" />,
+            wide: true,
+          },
+          {
+            label: "LinkedIn",
+            value: deal.companyLinkedin ? <ExternalLink href={deal.companyLinkedin}>LinkedIn Company Page</ExternalLink> : DASH,
+          },
+          {
+            label: "Company Logo",
+            value: deal.companyLogoUrl ? (
+              <span className="inline-flex items-center gap-2.5">
+                <img
+                  src={deal.companyLogoUrl}
+                  alt={`${deal.companyName ?? "Company"} logo`}
+                  className="size-10 rounded-md border bg-surface object-contain p-1"
+                  loading="lazy"
+                />
+                <ExternalLink href={deal.companyLogoUrl}>View URL</ExternalLink>
+              </span>
+            ) : (
+              DASH
+            ),
+          },
+        ]}
+      />
+    </DetailSection>
+  );
+}
+
+function RequirementsSection({ deal }: { deal: CrmDealDetail }) {
+  const owner = [deal.crmOwnerName, deal.crmOwnerEmail].filter(Boolean).join(" · ");
+  return (
+    <DetailSection title="Requirements & Setup">
+      <DetailList
+        items={[
+          { label: "Job Title", value: orDash(deal.jobRole) },
+          { label: "JD Count", value: formatNumber(deal.jdCount) },
+          { label: "Location", value: orDash(deal.location) },
+          { label: "CTC / Stipend Package", value: orDash(deal.ctc) },
+          { label: "Positions Available", value: formatNumber(deal.openings) },
+          { label: "Application Mode", value: orDash(deal.applicationMode) },
+          { label: "Internship Duration", value: orDash(deal.internshipDuration) },
+          { label: "Employment Type", value: orDash(deal.employmentType) },
+          { label: "Eligibility", value: orDash(deal.eligibility) },
+          { label: "Batch", value: orDash(deal.batch) },
+          { label: "Campus", value: orDash(deal.campus) },
+          { label: "Program", value: orDash(deal.program) },
+          { label: "Deadline", value: deadlineText(deal.deadline) },
+          { label: "CRM Owner", value: owner || DASH },
+          { label: "Profiling Done By", value: deal.profilingPoc?.name ?? DASH },
+          { label: "ISE", value: deal.ise?.name ?? DASH },
+          {
+            label: "Compensation Description",
+            wide: true,
+            value: deal.compensationDescription ? (
+              <span className="block font-normal whitespace-pre-wrap">{deal.compensationDescription}</span>
+            ) : (
+              DASH
+            ),
+          },
+          { label: "Skills Target", wide: true, value: <Chips values={deal.skills} /> },
+          { label: "Target Enroll Plans", wide: true, value: <Chips values={deal.enrollPlans} tone="primary" /> },
+        ]}
+      />
+    </DetailSection>
   );
 }
 
@@ -131,7 +274,6 @@ function Reminder({ label, info }: { label: string; info: ReminderInfo | null })
 
 function DealDetailBody({ deal }: { deal: CrmDealDetail }) {
   const copy = useCopyToClipboard();
-  const owner = [deal.crmOwnerName, deal.crmOwnerEmail].filter(Boolean).join(" · ");
 
   return (
     <div className="space-y-6">
@@ -147,40 +289,11 @@ function DealDetailBody({ deal }: { deal: CrmDealDetail }) {
         )}
       </div>
 
-      <DetailSection title="Job">
-        <DetailList
-          items={[
-            { label: "Company", value: orDash(deal.companyName) },
-            { label: "Job Role", value: orDash(deal.jobRole) },
-            { label: "Location", value: orDash(deal.location) },
-            { label: "CTC", value: orDash(deal.ctc) },
-            { label: "Employment Type", value: orDash(deal.employmentType) },
-            { label: "Openings", value: formatNumber(deal.openings) },
-            { label: "Batch", value: orDash(deal.batch) },
-            { label: "Campus", value: orDash(deal.campus) },
-            { label: "Program", value: orDash(deal.program) },
-            { label: "CRM Owner", value: owner || DASH },
-            { label: "Profiling POC", value: deal.profilingPoc?.name ?? DASH },
-            { label: "ISE", value: deal.ise?.name ?? DASH },
-            {
-              label: "Skills",
-              wide: true,
-              value:
-                deal.skills.length > 0 ? (
-                  <span className="flex flex-wrap gap-1.5">
-                    {deal.skills.map((skill) => (
-                      <span key={skill} className="rounded-md bg-slate-100 px-2 py-0.5 text-xs text-slate-700">
-                        {skill}
-                      </span>
-                    ))}
-                  </span>
-                ) : (
-                  DASH
-                ),
-            },
-          ]}
-        />
-      </DetailSection>
+      <JobMetaSection deal={deal} />
+
+      <CompanyProfileSection deal={deal} />
+
+      <RequirementsSection deal={deal} />
 
       <DetailSection title="Applications">
         <DetailList
@@ -193,6 +306,14 @@ function DealDetailBody({ deal }: { deal: CrmDealDetail }) {
             { label: "Application Closes", value: formatDateTime(deal.applicationEndAt) },
           ]}
         />
+        {deal.applicationStartAt && (
+          <Link
+            to={`/crm/deals/${encodeURIComponent(deal.id)}/boost`}
+            className="mt-4 inline-flex h-9 items-center gap-2 rounded-lg bg-primary-soft px-3.5 text-sm font-semibold text-primary hover:bg-primary/10"
+          >
+            Boost applications: reminder email or AI calls
+          </Link>
+        )}
       </DetailSection>
 
       <FlowSection deal={deal} />

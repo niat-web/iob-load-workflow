@@ -24,7 +24,7 @@ export default defineConfig({
     target: "es2022",
     sourcemap: false,
     rolldownOptions: {
-      input: { main: "index.html", redirect: "redirect.html" },
+      input: { main: "index.html" },
       output: {
         codeSplitting: {
           groups: [

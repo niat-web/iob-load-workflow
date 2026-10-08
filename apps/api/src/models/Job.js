@@ -20,6 +20,43 @@ const loadSchema = new mongoose.Schema(
   { _id: false },
 );
 
+const boostAlertSchema = new mongoose.Schema(
+  {
+    reminder: { type: String, required: true },
+    at: { type: Date, required: true },
+    to: { type: String, default: null },
+    appliedCount: { type: Number, default: 0 },
+    expectedPoolCount: { type: Number, default: null },
+    notApplied: { type: Number, default: 0 },
+    outcome: { type: String, default: null },
+  },
+  { _id: false },
+);
+
+const boostEmailRunSchema = new mongoose.Schema(
+  {
+    at: { type: Date, required: true },
+    by: { type: String, default: null },
+    recipients: { type: Number, default: 0 },
+    sent: { type: Number, default: 0 },
+    skipped: { type: Number, default: 0 },
+    failed: { type: Number, default: 0 },
+  },
+  { _id: false },
+);
+
+const boostCallRunSchema = new mongoose.Schema(
+  {
+    batchId: { type: String, required: true },
+    at: { type: Date, required: true },
+    by: { type: String, default: null },
+    agentId: { type: String, default: null },
+    queued: { type: Number, default: 0 },
+    skippedNoPhone: { type: Number, default: 0 },
+  },
+  { _id: false },
+);
+
 const ownerSchema = new mongoose.Schema(
   {
     id: { type: String, default: null },
@@ -74,6 +111,13 @@ const jobSchema = new mongoose.Schema(
     openings: { type: Number, default: null },
     applicationDeadline: { type: String, default: null },
     importantInstructions: { type: String, default: null },
+    jdCount: { type: Number, default: null },
+    jobType: { type: String, default: null },
+    experienceType: { type: String, default: null },
+    jobSource: { type: String, default: null },
+    applicationMode: { type: String, default: null },
+    internshipDuration: { type: String, default: null },
+    enrollPlans: { type: [String], default: [] },
 
     expectedPoolCount: { type: Number, default: null },
     appliedCount: { type: Number, default: 0 },
@@ -89,6 +133,17 @@ const jobSchema = new mongoose.Schema(
     reminders: {
       r10h: { type: reminderSchema, default: null },
       r20h: { type: reminderSchema, default: null },
+    },
+    boost: {
+      crmAlerts: { type: [boostAlertSchema], default: [] },
+      emailRuns: { type: [boostEmailRunSchema], default: [] },
+      callRuns: { type: [boostCallRunSchema], default: [] },
+      callAgentId: { type: String, default: null },
+      callAgentCreatedAt: { type: Date, default: null },
+      spokenJd: { type: String, default: null },
+      lastCallSyncAt: { type: Date, default: null },
+      emailLockAt: { type: Date, default: null },
+      callLockAt: { type: Date, default: null },
     },
 
     crmOwnerId: { type: String, default: null },

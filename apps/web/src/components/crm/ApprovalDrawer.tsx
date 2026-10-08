@@ -23,8 +23,24 @@ const environmentLabel = (name: string) => name.charAt(0).toUpperCase() + name.s
 
 const hoursLabel = (hours: number) => (hours < 1 ? `${Math.round(hours * 60)} min` : `${hours} h`);
 
+const linkText = (item: PreviewItem) => {
+  const value = item.value ?? "";
+  return value.length > 48 ? "Open link" : value;
+};
+
 const previewItems = (items: PreviewItem[]) =>
-  items.map((item) => ({ label: item.label, value: item.value ?? DASH, wide: item.wide }));
+  items.map((item) => ({
+    label: item.label,
+    wide: item.wide,
+    value: item.href ? (
+      <a href={item.href} target="_blank" rel="noopener noreferrer" className={linkClass}>
+        {linkText(item)}
+        <span className="sr-only"> (opens in a new tab)</span>
+      </a>
+    ) : (
+      (item.value ?? DASH)
+    ),
+  }));
 
 function TextBlock({ text }: { text: string }) {
   if (!text) return <p className="text-sm text-muted">{DASH}</p>;

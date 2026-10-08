@@ -2,6 +2,7 @@ import { config } from "../../config/env.js";
 import { TASK_TYPE } from "../../config/statuses.js";
 import { Job, LearningPortalOrganisation } from "../../models/index.js";
 import { AUDIT, audit } from "../../services/auditService.js";
+import { hubspotRecordUrl } from "../../services/dealMapper.js";
 import { latestSnapshot } from "../../services/dealSnapshotService.js";
 import { integrations } from "../../services/integrations.js";
 import { appendTrackerRow } from "../../services/learningPortal/jobLoadingSheet.js";
@@ -26,7 +27,10 @@ async function hubspotWriteBack({ job }) {
   const dealIds = await integrations.hubspot.findJobPipelineDealIds(job.hubspotDealId);
   const owners = ownerProperties(job);
   for (const dealId of dealIds) {
-    await integrations.hubspot.updateDeal(dealId, { [config.hubspot.jobIdProperty]: job.learningPortalJobId });
+    await integrations.hubspot.updateDeal(dealId, {
+      [config.hubspot.jobIdProperty]: job.learningPortalJobId,
+      ...(job.jdCount > 0 ? { jd_count: job.jdCount } : {}),
+    });
     if (!Object.keys(owners).length) continue;
     await integrations.hubspot.updateDeal(dealId, owners).catch((error) => {
       logger.warn({ err: error, dealId }, "Could not set the CRM, Profiling POC and ISE owners on the HubSpot deal");
@@ -50,12 +54,6 @@ async function hubspotWriteBackFailed({ job, error }) {
   );
 }
 
-function hubspotLink(job) {
-  if (job.hubspotDealUrl) return job.hubspotDealUrl;
-  const portalId = config.hubspot.portalId;
-  return portalId ? `https://app.hubspot.com/contacts/${portalId}/record/0-3/${job.hubspotDealId}` : "";
-}
-
 async function trackLoadedJob({ job }) {
   if (job.trackerRecordedAt || !job.learningPortalPayload || !integrations.sheets.enabled) return;
   const details = job.learningPortalPayload.job_details;
@@ -68,7 +66,7 @@ async function trackLoadedJob({ job }) {
   await appendTrackerRow({
     Date: loadedAt.slice(0, 10),
     "Job Deal ID": job.hubspotDealId,
-    "HubSpot Link": hubspotLink(job),
+    "HubSpot Link": hubspotRecordUrl(job) ?? "",
     "Job ID": job.learningPortalJobId,
     Experience: String(props.product ?? "").includes("Experienced") ? "Yes" : "No",
     "Job Type": details.job_type,
@@ -76,7 +74,7 @@ async function trackLoadedJob({ job }) {
     "Organization ID": job.learningPortalOrgId,
     "Company Name": job.companyName,
     "Company Website URL": job.companyWebsite ?? "NA",
-    "Company Logo URL": organisation?.logoUrl ?? "NA",
+    "Company Logo URL": organisation?.logoUrl ?? job.companyLogoUrl ?? "NA",
     "Company LinkedIn URL": job.companyLinkedin ?? "NA",
     "Job Title": details.job_title,
     Location: (details.locations ?? []).join(", "),
@@ -93,7 +91,7 @@ async function trackLoadedJob({ job }) {
     CRM: job.crmOwnerName ?? "NA",
     "Profiling Done By": job.profilingPoc?.name ?? "NA",
     "Enroll Plans": (details.enroll_plans ?? []).join(", "),
-    "JD Count": "1",
+    "JD Count": String(job.jdCount ?? 1),
     "Internal Student List Link": "",
     "Max Update datetime": loadedAt,
     Remarks: `Loaded in ${environments} successfully (Job Flow Automation)`,

@@ -1,22 +1,25 @@
 import { FilterX, SearchX } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useLocation } from "react-router";
 import { usePsmJobFilters, usePsmJobs } from "../api/psm";
 import { DataTable } from "../components/DataTable";
 import { EmptyState } from "../components/EmptyState";
-import { FilterSelect } from "../components/FilterSelect";
+import { FilterMenu } from "../components/FilterMenu";
 import { Pagination } from "../components/Pagination";
 import { buildPsmJobColumns } from "../components/psm/psmJobColumns";
 import { SearchInput } from "../components/SearchInput";
 import { Button } from "../components/ui/Button";
 import { useClampPage, useUrlFilters } from "../hooks/useUrlFilters";
+import { DEFAULT_PAGE_SIZE } from "../utils/pagination";
 import type { PsmJobsQuery } from "../types/api";
 
 const FILTER_KEYS = ["q", "company", "psmStatus", "priorityStatus", "aiStatus"] as const;
-const PAGE_SIZE = 20;
+
+const splitValues = (value: string) => (value ? value.split("|").filter(Boolean) : []);
 
 export function PSMJobsPage() {
   const { filters, page, hasFilters, setFilter, setPage, clearFilters } = useUrlFilters(FILTER_KEYS);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const location = useLocation();
   const backTo = `/psm${location.search}`;
 
@@ -28,9 +31,9 @@ export function PSMJobsPage() {
       priorityStatus: filters.priorityStatus || undefined,
       aiStatus: filters.aiStatus || undefined,
       page,
-      limit: PAGE_SIZE,
+      limit: pageSize,
     }),
-    [filters, page],
+    [filters, page, pageSize],
   );
 
   const jobs = usePsmJobs(query);
@@ -38,7 +41,7 @@ export function PSMJobsPage() {
   const pagination = jobs.data?.pagination;
   useClampPage(page, pagination?.totalPages, setPage);
 
-  const offset = ((pagination?.page ?? page) - 1) * (pagination?.limit ?? PAGE_SIZE);
+  const offset = ((pagination?.page ?? page) - 1) * (pagination?.limit ?? pageSize);
   const columns = useMemo(() => buildPsmJobColumns(offset, backTo), [offset, backTo]);
 
   return (
@@ -53,37 +56,21 @@ export function PSMJobsPage() {
           label="Search candidate pools"
           className="w-full sm:w-80"
         />
-        <FilterSelect
-          value={filters.company}
-          onChange={(v) => setFilter("company", v)}
-          options={options.data?.companies ?? []}
-          placeholder="All Companies"
-          label="Filter by company"
-          className="w-[calc(50%-4px)] sm:w-44"
-        />
-        <FilterSelect
-          value={filters.psmStatus}
-          onChange={(v) => setFilter("psmStatus", v)}
-          options={options.data?.psmStatuses ?? []}
-          placeholder="All PSM Status"
-          label="Filter by PSM review status"
-          className="w-[calc(50%-4px)] sm:w-44"
-        />
-        <FilterSelect
-          value={filters.priorityStatus}
-          onChange={(v) => setFilter("priorityStatus", v)}
-          options={options.data?.priorityStatuses ?? []}
-          placeholder="All Priority"
-          label="Filter by priority status"
-          className="w-[calc(50%-4px)] sm:w-44"
-        />
-        <FilterSelect
-          value={filters.aiStatus}
-          onChange={(v) => setFilter("aiStatus", v)}
-          options={options.data?.aiStatuses ?? []}
-          placeholder="All AI Status"
-          label="Filter by AI analysis status"
-          className="w-[calc(50%-4px)] sm:w-40"
+        <FilterMenu
+          categories={[
+            { key: "company", label: "Company", options: options.data?.companies ?? [] },
+            { key: "psmStatus", label: "PSM Status", options: options.data?.psmStatuses ?? [] },
+            { key: "priorityStatus", label: "Priority", options: options.data?.priorityStatuses ?? [] },
+            { key: "aiStatus", label: "AI Status", options: options.data?.aiStatuses ?? [] },
+          ]}
+          values={{
+            company: splitValues(filters.company),
+            psmStatus: splitValues(filters.psmStatus),
+            priorityStatus: splitValues(filters.priorityStatus),
+            aiStatus: splitValues(filters.aiStatus),
+          }}
+          onChange={(key, values) => setFilter(key as (typeof FILTER_KEYS)[number], values.join("|"))}
+          onClear={clearFilters}
         />
         <Button
           variant="ghost"
@@ -121,7 +108,15 @@ export function PSMJobsPage() {
         }
         footer={
           pagination && pagination.total > 0 ? (
-            <Pagination pagination={pagination} onPageChange={setPage} disabled={jobs.isPlaceholderData} />
+            <Pagination
+              pagination={pagination}
+              onPageChange={setPage}
+              onPageSizeChange={(size) => {
+                setPageSize(size);
+                setPage(1);
+              }}
+              disabled={jobs.isPlaceholderData}
+            />
           ) : null
         }
       />

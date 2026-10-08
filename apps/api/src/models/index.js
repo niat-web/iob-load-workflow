@@ -9,4 +9,5 @@ export {
   CandidateAnalysis,
   CandidatePriorityHistory,
 } from "./students.js";
-export { NotificationLog, AiCallLog, PublicLink } from "./messaging.js";
+export { NotificationLog, AiCall, AI_CALL_FINAL, AI_CALL_STATUSES, PublicLink } from "./messaging.js";
+export { EligiblePoolStudent, EligiblePoolSync } from "./eligiblePool.js";

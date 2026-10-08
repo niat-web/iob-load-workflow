@@ -234,25 +234,38 @@ export function psmChips(job) {
   };
 }
 
+const asList = (value) => (Array.isArray(value) ? value : value ? [value] : []);
+
 export function psmFilterQuery({ psmStatus, priorityStatus, aiStatus }) {
-  const and = [];
   const afterPriority = STATUS_ORDER.slice(rankOf(S.PRIORITY_GENERATED));
   const failedIn = (steps) => ({ status: S.FAILED, failedStep: { $in: steps } });
   const inStatuses = (steps) => ({ $or: [{ status: { $in: steps } }, failedIn(steps)] });
-
-  if (psmStatus === "READY") and.push(inStatuses([S.READY_FOR_PSM]));
-  if (psmStatus === "UNDER_REVIEW") and.push(inStatuses([S.PSM_REVIEW_IN_PROGRESS]));
-  if (psmStatus === "COMPLETED") and.push(inStatuses(SUBMITTED_STATUSES));
-
-  if (priorityStatus === "GENERATED") and.push(inStatuses(afterPriority));
-  if (priorityStatus === "PENDING") and.push(inStatuses(STATUS_ORDER.slice(0, rankOf(S.PRIORITY_GENERATED))));
-
-  if (aiStatus === "COMPLETED") and.push(inStatuses(afterPriority));
-  if (aiStatus === "IN_PROGRESS") and.push({ status: { $in: [S.AI_ANALYSIS, S.PRIORITY_GENERATING] } });
-  if (aiStatus === "FAILED") and.push(failedIn([S.AI_ANALYSIS, S.PRIORITY_GENERATING]));
-  if (aiStatus === "PENDING") {
-    const before = [S.APPLICATIONS_CLOSED, S.FETCHING_APPLIED_POOL, S.APPLIED_POOL_READY];
-    and.push(inStatuses(before));
+  const conditions = {
+    psm: {
+      READY: () => inStatuses([S.READY_FOR_PSM]),
+      UNDER_REVIEW: () => inStatuses([S.PSM_REVIEW_IN_PROGRESS]),
+      COMPLETED: () => inStatuses(SUBMITTED_STATUSES),
+    },
+    priority: {
+      GENERATED: () => inStatuses(afterPriority),
+      PENDING: () => inStatuses(STATUS_ORDER.slice(0, rankOf(S.PRIORITY_GENERATED))),
+    },
+    ai: {
+      COMPLETED: () => inStatuses(afterPriority),
+      IN_PROGRESS: () => ({ status: { $in: [S.AI_ANALYSIS, S.PRIORITY_GENERATING] } }),
+      FAILED: () => failedIn([S.AI_ANALYSIS, S.PRIORITY_GENERATING]),
+      PENDING: () => inStatuses([S.APPLICATIONS_CLOSED, S.FETCHING_APPLIED_POOL, S.APPLIED_POOL_READY]),
+    },
+  };
+  const and = [];
+  for (const [group, values] of [
+    ["psm", asList(psmStatus)],
+    ["priority", asList(priorityStatus)],
+    ["ai", asList(aiStatus)],
+  ]) {
+    const any = values.map((value) => conditions[group][value]?.()).filter(Boolean);
+    if (any.length === 1) and.push(any[0]);
+    else if (any.length > 1) and.push({ $or: any });
   }
   return and.length ? { $and: and } : {};
 }
@@ -287,7 +300,7 @@ export const TASK_TYPE = Object.freeze({
   PRIORITY_GENERATION: "PRIORITY_GENERATION",
   CRM_NOTIFICATION: "CRM_NOTIFICATION",
   RETRY_NOTIFICATION: "RETRY_NOTIFICATION",
-  RETRY_AI_CALLS: "RETRY_AI_CALLS",
+  CALL_RESULTS_SYNC: "CALL_RESULTS_SYNC",
   HUBSPOT_DEAL_UPDATE: "HUBSPOT_DEAL_UPDATE",
   HUBSPOT_WRITE_BACK: "HUBSPOT_WRITE_BACK",
   TRACK_LOADED_JOB: "TRACK_LOADED_JOB",
@@ -314,6 +327,8 @@ export const NOTIFICATION_TYPE = Object.freeze({
   JOB_UPDATED: "JOB_UPDATED",
   CRM_POOL_READY: "CRM_POOL_READY",
   POOL_TARGET_REACHED: "POOL_TARGET_REACHED",
+  APPLICATIONS_BELOW_TARGET: "APPLICATIONS_BELOW_TARGET",
+  BOOST_REMINDER: "BOOST_REMINDER",
 });
 
 export const CANDIDATE_STATUS = ["RECOMMENDED", "CONSIDER", "NOT_RECOMMENDED"];

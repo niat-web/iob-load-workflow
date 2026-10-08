@@ -157,3 +157,26 @@ ${button("View Candidate Pool", publicLink)}
     text: `Hi ${job.crmOwnerName ?? ""},\n\nThe candidate pool for the following opportunity has been reviewed and finalized.\n\n${textDetails(rows)}\n\nView Candidate Pool: ${publicLink}\n\nRegards`,
   };
 }
+
+export function applicationsBelowTargetEmail(job, recipient, { appliedCount, expectedPoolCount, notApplied, link }) {
+  const rows = [
+    ["Company", job.companyName],
+    ["Role", job.jobRole],
+    ["Deal ID", job.hubspotDealId],
+    ["Applications", String(appliedCount ?? 0)],
+    ["Expected Pool", expectedPoolCount === null || expectedPoolCount === undefined ? null : String(expectedPoolCount)],
+    ["Not applied yet", String(notApplied ?? 0)],
+    ["Applications close", job.applicationEndAt ? `${formatDateTime(job.applicationEndAt)} IST` : null],
+  ];
+  return {
+    subject: `Applications below target – ${job.companyName} | ${job.jobRole}`,
+    html: layout({
+      preheader: `${appliedCount ?? 0} of ${expectedPoolCount ?? "?"} applications so far for ${job.companyName}.`,
+      bodyHtml: `<p style="margin:0 0 12px;">${escapeHtml(greeting(recipient?.studentName))}</p>
+<p style="margin:0 0 4px;">Applications for the deal you added are below the expected pool. Open the deal to send a reminder email or start AI calls to the students who have not applied yet.</p>
+${detailsTable(rows)}
+${button("Boost applications", link)}`,
+    }),
+    text: `${greeting(recipient?.studentName)}\n\nApplications for the deal you added are below the expected pool. Open the deal to send a reminder email or start AI calls to the students who have not applied yet.\n\n${textDetails(rows)}\n\nBoost applications: ${link}`,
+  };
+}

@@ -3,6 +3,7 @@ import { APPROVAL_GATE as GATE, APPROVAL_GATE_LABELS, loadGateFor } from "../con
 import { JobEligibleStudent, LearningPortalOrganisation } from "../models/index.js";
 import { now } from "../utils/clock.js";
 import { hoursFromNow } from "../utils/helpers.js";
+import { hubspotRecordUrl } from "./dealMapper.js";
 import { ALL_ENROLL_PLANS, payloadForEnvironment, testUsersFor } from "./learningPortal/nkbPayload.js";
 
 const DESCRIPTIONS = {
@@ -41,13 +42,24 @@ const loadedTargets = (job) => config.learningPortal.targets.filter((env) => job
 export const canEditPlans = (job) =>
   job.awaitingApproval?.gate === loadGateFor(config.learningPortal.targets[0]) && loadedTargets(job).length === 0;
 
+const link = (label, url) => ({ label, value: url ? String(url) : null, href: url ? String(url) : undefined });
+
 function dealPreview(job) {
   const owner = [job.crmOwnerName, job.crmOwnerEmail].filter(Boolean).join(" · ");
   return [
     { label: "Company", value: text(job.companyName) },
-    { label: "Website", value: text(job.companyWebsite) },
-    { label: "LinkedIn", value: text(job.companyLinkedin) },
+    link("Website", job.companyWebsite),
+    link("LinkedIn", job.companyLinkedin),
+    link("Company logo", job.companyLogoUrl),
+    link("HubSpot record", hubspotRecordUrl(job)),
     { label: "Job role", value: text(job.jobRole) },
+    { label: "JD count", value: text(job.jdCount) },
+    { label: "Job type", value: text(job.jobType) },
+    { label: "Experience type", value: text(job.experienceType) },
+    { label: "Job source", value: text(job.jobSource) },
+    { label: "Application mode", value: text(job.applicationMode) },
+    { label: "Internship duration", value: text(job.internshipDuration) },
+    { label: "Target enroll plans", value: list(job.enrollPlans) },
     { label: "Skills", value: list(job.skills) },
     { label: "Eligibility", value: text(job.eligibility) },
     { label: "Batch", value: text(job.batch) },
@@ -60,7 +72,8 @@ function dealPreview(job) {
     { label: "CRM owner", value: text(owner) },
     { label: "Profiling POC", value: text(job.profilingPoc?.name) },
     { label: "ISE", value: text(job.ise?.name) },
-    { label: "Important instructions", value: text(job.importantInstructions), wide: true },
+    { label: "Deadline", value: text(job.applicationDeadline) ?? `${config.workflow.applicationWindowHours} hours after students are emailed` },
+    { label: "Compensation description", value: text(job.importantInstructions), wide: true },
   ];
 }
 

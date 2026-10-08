@@ -7,20 +7,35 @@ import { AuthContext, type AuthContextValue, type AuthState } from "./AuthContex
 
 const LOADING: AuthState = { status: "loading", user: null, error: null };
 const SIGNED_OUT: AuthState = { status: "unauthenticated", user: null, error: null };
+const SESSION_RETRIES = 10;
+const SESSION_RETRY_MS = 3000;
+
+const serverStarting = (error: unknown) =>
+  !hasStatus(error, 400, 401, 403, 404, 409, 410, 429) && !(error instanceof DOMException && error.name === "AbortError");
+
+function loadSession(setState: (state: AuthState) => void, signal?: AbortSignal, attempt = 0) {
+  fetchMe(signal)
+    .then(({ user }) => setState({ status: "authenticated", user, error: null }))
+    .catch((error: unknown) => {
+      if (signal?.aborted) return;
+      if (hasStatus(error, 401)) {
+        setState(SIGNED_OUT);
+        return;
+      }
+      if (attempt < SESSION_RETRIES && serverStarting(error)) {
+        const timer = window.setTimeout(() => loadSession(setState, signal, attempt + 1), SESSION_RETRY_MS);
+        signal?.addEventListener("abort", () => window.clearTimeout(timer), { once: true });
+        return;
+      }
+      setState({ status: "error", user: null, error });
+    });
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const [state, setState] = useState<AuthState>(LOADING);
 
-  const checkSession = useCallback((signal?: AbortSignal) => {
-    fetchMe(signal)
-      .then(({ user }) => setState({ status: "authenticated", user, error: null }))
-      .catch((error: unknown) => {
-        if (signal?.aborted) return;
-        if (hasStatus(error, 401)) setState(SIGNED_OUT);
-        else setState({ status: "error", user: null, error });
-      });
-  }, []);
+  const checkSession = useCallback((signal?: AbortSignal) => loadSession(setState, signal), []);
 
   useEffect(() => {
     const controller = new AbortController();

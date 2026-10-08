@@ -93,6 +93,8 @@ const LEARNING_PORTAL_PROPERTIES = [
   "company_logo_link",
   "company_linkedin_profile",
   "hubspot_owner_id",
+  "jd_count",
+  "company_name",
 ];
 
 const extra = (process.env.HUBSPOT_EXTRA_PROPERTIES ?? "")

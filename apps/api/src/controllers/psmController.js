@@ -19,14 +19,22 @@ import { escapeRegex } from "../utils/helpers.js";
 
 const priorityPattern = /^P([1-9]\d{0,4})$/;
 
+const listOf = (item) =>
+  z
+    .string()
+    .max(4000)
+    .optional()
+    .transform((value) => [...new Set((value ?? "").split("|").map((part) => part.trim()).filter(Boolean))])
+    .pipe(z.array(item).max(200));
+
 export const psmListSchema = z.object({
   search: z.string().trim().max(200).optional(),
-  company: z.string().trim().max(200).optional(),
-  psmStatus: z.enum(["READY", "UNDER_REVIEW", "COMPLETED"]).optional(),
-  priorityStatus: z.enum(["PENDING", "GENERATED"]).optional(),
-  aiStatus: z.enum(["PENDING", "IN_PROGRESS", "COMPLETED", "FAILED"]).optional(),
+  company: listOf(z.string().max(200)),
+  psmStatus: listOf(z.enum(["READY", "UNDER_REVIEW", "COMPLETED"])),
+  priorityStatus: listOf(z.enum(["PENDING", "GENERATED"])),
+  aiStatus: listOf(z.enum(["PENDING", "IN_PROGRESS", "COMPLETED", "FAILED"])),
   page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(20),
+  limit: z.coerce.number().int().min(1).max(500).default(50),
   sort: z.enum(["updatedAt:desc", "updatedAt:asc", "companyName:asc", "companyName:desc"]).default("updatedAt:desc"),
 });
 
@@ -36,7 +44,7 @@ export const candidateListSchema = z.object({
   finalPriority: z.string().regex(priorityPattern).optional(),
   status: z.enum(CANDIDATE_STATUS).optional(),
   page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(20),
+  limit: z.coerce.number().int().min(1).max(500).default(50),
   sort: z.enum(["finalRank:asc", "aiRank:asc", "overallScore:desc"]).default("finalRank:asc"),
 });
 

@@ -1,5 +1,5 @@
 import { config } from "./config/env.js";
-import { connectDb, disconnectDb } from "./config/db.js";
+import { connectDbInBackground, disconnectDb } from "./config/db.js";
 import { reportMissingSettings } from "./config/startupReport.js";
 import { createApp } from "./app.js";
 import { bootstrapUsers } from "./services/authService.js";
@@ -8,8 +8,6 @@ import { startWorker } from "./workers/workflowWorker.js";
 
 async function main() {
   reportMissingSettings();
-  await connectDb();
-  await bootstrapUsers();
 
   const server = createApp().listen(config.port, () => {
     logger.info({ port: config.port, modes: config.modes }, "API listening");
@@ -17,12 +15,19 @@ async function main() {
   server.keepAliveTimeout = 65_000;
 
   const withWorker = config.processRole === "all" || process.argv.includes("--with-worker");
-  const worker = withWorker ? startWorker() : null;
-
+  let worker = null;
   let stopping = false;
+  const stopConnecting = connectDbInBackground({
+    onConnected: async () => {
+      await bootstrapUsers();
+      if (withWorker && !stopping) worker = startWorker();
+    },
+  });
+
   const shutdown = async (signal) => {
     if (stopping) return;
     stopping = true;
+    stopConnecting();
     logger.info({ signal }, "Shutting down");
     const force = setTimeout(() => process.exit(1), 30_000);
     force.unref();

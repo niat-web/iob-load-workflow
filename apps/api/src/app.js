@@ -1,8 +1,10 @@
+import compression from "compression";
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import express from "express";
 import helmet from "helmet";
 import { pinoHttp } from "pino-http";
+import { isDbReady } from "./config/db.js";
 import { config } from "./config/env.js";
 import { apiLimiter, csrfGuard, errorHandler, notFoundHandler, webhookLimiter } from "./middleware/common.js";
 import {
@@ -57,6 +59,7 @@ export function createApp() {
     }),
   );
   app.use(helmet());
+  app.use(compression({ threshold: 1024 }));
   app.use(
     cors({
       origin: (origin, callback) => callback(null, !origin || config.corsOrigins.includes(origin)),
@@ -74,6 +77,13 @@ export function createApp() {
   app.use(express.json({ limit: "200kb" }));
   app.use(cookieParser());
   app.use("/api", apiLimiter, csrfGuard);
+  app.use("/api", (req, res, next) => {
+    if (isDbReady()) return next();
+    res.set("Retry-After", "5");
+    return res.status(503).json({
+      error: { code: "DATABASE_CONNECTING", message: "The server is still connecting to the database. Please try again in a moment." },
+    });
+  });
   app.use("/api/auth", authRoutes());
   app.use("/api/crm", crmRoutes());
   app.use("/api/psm", psmRoutes());

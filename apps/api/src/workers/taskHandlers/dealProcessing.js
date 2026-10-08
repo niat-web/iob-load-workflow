@@ -29,7 +29,8 @@ const DEADLINE_SYNC_TOLERANCE_MS = 5 * 60 * 1000;
 const DEAL_FIELDS = [
   "companyName", "companyWebsite", "companyLinkedin", "companyLogoUrl", "jobRole", "jobDescription", "skills",
   "eligibility", "batch", "campus", "program", "location", "ctc", "employmentType", "openings",
-  "expectedPoolCount", "crmOwnerName", "crmOwnerEmail", "applicationDeadline", "importantInstructions",
+  "expectedPoolCount", "crmOwnerName", "crmOwnerEmail", "applicationDeadline", "importantInstructions", "jdCount",
+  "jobType", "experienceType", "jobSource", "applicationMode", "internshipDuration", "enrollPlans",
 ];
 
 export const pick = (mapped) => Object.fromEntries(DEAL_FIELDS.map((field) => [field, mapped[field] ?? null]));
@@ -69,7 +70,10 @@ async function createJob({ job }) {
   let current = await Job.findById(job._id);
   if (!current.learningPortalOrgId) {
     const organisation = await prepareOrganisation(current);
-    current = await save({ learningPortalOrgId: organisation.organisationId });
+    current = await save({
+      learningPortalOrgId: organisation.organisationId,
+      companyLogoUrl: current.companyLogoUrl ?? organisation.logoUrl ?? null,
+    });
   }
   if (!current.learningPortalJobId) {
     current = await save({ learningPortalJobId: portal.newId() });
@@ -78,7 +82,12 @@ async function createJob({ job }) {
   if (!current.learningPortalPayload) {
     const deadline = hoursFromNow(config.workflow.applicationWindowHours, now());
     const payload = await buildPortalPayload(current, snapshot.rawProperties, { deadline, order: await nextOrderNumber() });
-    current = await save({ learningPortalPayload: payload, learningPortalDeadline: deadline });
+    current = await save({
+      learningPortalPayload: payload,
+      learningPortalDeadline: deadline,
+      jobType: payload.job_details.job_type,
+      enrollPlans: payload.job_details.enroll_plans ?? [],
+    });
   }
 
   for (const env of portal.targets) {

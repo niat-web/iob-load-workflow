@@ -53,6 +53,10 @@ async function hubspotDealUpdate({ job }) {
   const changes = diffTrackedFields(previous?.mappedFields ?? {}, mapped);
   const fields = pick(mapped);
   delete fields.expectedPoolCount;
+  if (job.learningPortalPayload) {
+    delete fields.enrollPlans;
+    delete fields.jobType;
+  }
   if (!fields.crmOwnerEmail) delete fields.crmOwnerEmail;
 
   if (!changes.length) {

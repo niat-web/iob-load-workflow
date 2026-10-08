@@ -33,6 +33,13 @@ describe("PSM review, public link and CRM notification", () => {
 
     const filtered = await psm.get("/api/psm/jobs?psmStatus=COMPLETED");
     assert.equal(filtered.body.items.length, 0);
+    const either = await psm.get("/api/psm/jobs").query({ psmStatus: "COMPLETED|READY", aiStatus: "COMPLETED" });
+    assert.ok(either.body.items.some((item) => item.id === String(job._id)));
+    const both = await psm.get("/api/psm/jobs").query({ psmStatus: "READY", aiStatus: "FAILED|PENDING" });
+    assert.equal(both.body.items.length, 0);
+    const byCompanies = await psm.get("/api/psm/jobs").query({ company: `Nobody Inc|${row.companyName}` });
+    assert.ok(byCompanies.body.items.some((item) => item.id === String(job._id)));
+    assert.equal((await psm.get("/api/psm/jobs").query({ psmStatus: "READY|NOPE" })).status, 400);
 
     const start = await psm.post(`/api/psm/jobs/${job._id}/start-review`).set(XHR);
     assert.equal(start.body.job.psmStatus.label, "Under Review");

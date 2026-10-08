@@ -1,7 +1,9 @@
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { useId } from "react";
 import type { Pagination as PaginationInfo } from "../types/api";
 import { cn } from "../utils/cn";
 import { formatNumber } from "../utils/format";
+import { PAGE_SIZE_OPTIONS } from "../utils/pagination";
 
 type PageToken = number | "gap-start" | "gap-end";
 
@@ -20,13 +22,15 @@ function pageTokens(current: number, total: number): PageToken[] {
 interface PaginationProps {
   pagination: PaginationInfo;
   onPageChange: (page: number) => void;
+  onPageSizeChange?: (size: number) => void;
   disabled?: boolean;
 }
 
 const navButton =
   "focus-ring inline-flex h-8 min-w-8 items-center justify-center rounded-md px-2 text-sm tabular-nums transition-colors disabled:cursor-not-allowed disabled:opacity-40";
 
-export function Pagination({ pagination, onPageChange, disabled }: PaginationProps) {
+export function Pagination({ pagination, onPageChange, onPageSizeChange, disabled }: PaginationProps) {
+  const sizeId = useId();
   const { page, limit, total, totalPages } = pagination;
   const pages = Math.max(totalPages, 1);
   const from = total === 0 ? 0 : (page - 1) * limit + 1;
@@ -34,11 +38,39 @@ export function Pagination({ pagination, onPageChange, disabled }: PaginationPro
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5">
-      <p className="text-sm text-muted tabular-nums" aria-live="polite">
-        {total === 0
-          ? "0 results"
-          : `Showing ${formatNumber(from)}–${formatNumber(to)} of ${formatNumber(total)}`}
-      </p>
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+        {onPageSizeChange && (
+          <div className="flex items-center gap-2">
+            <label htmlFor={sizeId} className="text-sm text-muted">
+              Rows per page
+            </label>
+            <div className="relative">
+              <select
+                id={sizeId}
+                value={limit}
+                disabled={disabled}
+                onChange={(e) => onPageSizeChange(Number(e.target.value))}
+                className="focus-ring h-8 appearance-none rounded-md border border-field bg-surface pr-7 pl-2.5 text-sm font-semibold text-ink tabular-nums disabled:opacity-60"
+              >
+                {PAGE_SIZE_OPTIONS.map((size) => (
+                  <option key={size} value={size}>
+                    {size}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown
+                className="pointer-events-none absolute top-1/2 right-2 size-3.5 -translate-y-1/2 text-muted"
+                aria-hidden
+              />
+            </div>
+          </div>
+        )}
+        <p className="text-sm text-muted tabular-nums" aria-live="polite">
+          {total === 0
+            ? "0 results"
+            : `Showing ${formatNumber(from)}–${formatNumber(to)} of ${formatNumber(total)}`}
+        </p>
+      </div>
       {pages > 1 && (
         <nav aria-label="Pagination" className="flex items-center gap-1">
           <button

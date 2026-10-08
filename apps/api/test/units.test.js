@@ -182,6 +182,19 @@ describe("helpers and payload mapping", () => {
       "CCBP_INTENSIVE", "INTENSIVE_COLLEGE_PLUS", "CCBP_INTENSIVE_NSDC_SKILL_INDIA", "NIAT",
     ]);
     assert.deepEqual(enrollPlansFor({ product: "Something else" }), []);
+    assert.deepEqual(enrollPlansFor({ product: "Academy" }), [
+      "CCBP_ACADEMY_SMART",
+      "CCBP_ACADEMY_GENIUS",
+      "CCBP_ACADEMY_EDGE",
+      "CCBP_ACADEMY_SMART_PLUS",
+      "CCBP_ACADEMY_GENIUS_PLUS",
+      "CCBP_ACADEMY_EDGE_PLUS",
+      "CCBP_ACADEMY_SMART_CAREER_PLUS",
+      "CCBP_ACADEMY_GENIUS_CAREER_PLUS",
+      "CCBP_ACADEMY_COLLEGE_PLUS",
+      "NIAT",
+    ]);
+    assert.deepEqual(enrollPlansFor({ product: "NIAT;Academy" }).filter((plan) => plan === "NIAT"), ["NIAT"]);
     const beta = { testUsers: { INTENSIVE: ["a", "b"], ACADEMY: ["c"], EXTERNAL: [], NIAT: ["d"], OFFLINE: [] } };
     assert.deepEqual(testUsersFor(beta, ["CCBP_INTENSIVE", "NIAT"]), ["a", "b", "d"]);
     assert.deepEqual(testUsersFor(beta, ["CCBP_ACADEMY_SMART_PLUS"]), [], "only SMART/GENIUS/EDGE select academy test users");

@@ -24,28 +24,43 @@ notificationLogSchema.index({ jobId: 1, type: 1, status: 1 });
 
 export const NotificationLog = mongoose.model("NotificationLog", notificationLogSchema);
 
-const aiCallLogSchema = new mongoose.Schema(
+export const AI_CALL_STATUSES = ["QUEUED", "CALLING", "COMPLETED", "NO_ANSWER", "BUSY", "FAILED", "CANCELLED"];
+export const AI_CALL_FINAL = ["COMPLETED", "NO_ANSWER", "BUSY", "FAILED", "CANCELLED"];
+
+const aiCallSchema = new mongoose.Schema(
   {
     jobId: { type: ObjectId, ref: "Job", required: true },
+    batchId: { type: String, required: true },
     studentId: { type: String, required: true },
     name: { type: String, default: "" },
     phone: { type: String, required: true },
-    reminderType: { type: String, enum: ["REMINDER_10H", "REMINDER_20H"], required: true },
     nxtDialCallId: { type: String, default: null },
-    status: {
-      type: String,
-      enum: ["PENDING", "QUEUED", "RATE_LIMITED", "RETRYING", "FAILED", "SKIPPED"],
-      default: "PENDING",
-    },
+    status: { type: String, enum: AI_CALL_STATUSES, default: "QUEUED" },
+    providerStatus: { type: String, default: null },
+    durationSeconds: { type: Number, default: null },
+    startedAt: { type: Date, default: null },
+    endedAt: { type: Date, default: null },
+    recordingUrl: { type: String, default: null },
+    summary: { type: String, default: null },
+    ratingStatus: { type: String, default: null },
+    overallRating: { type: Number, default: null },
+    interested: { type: String, default: null },
+    willApply: { type: String, default: null },
+    reason: { type: String, default: null },
+    questions: { type: String, default: null },
+    callBack: { type: String, default: null },
+    remarks: { type: String, default: null },
+    cells: { type: Mixed, default: null },
     error: { type: String, default: null },
-    attemptCount: { type: Number, default: 0 },
+    requestedBy: { type: String, default: null },
   },
-  { timestamps: true, collection: "ai_call_logs" },
+  { timestamps: true, collection: "ai_calls" },
 );
-aiCallLogSchema.index({ jobId: 1, studentId: 1, reminderType: 1 }, { unique: true });
-aiCallLogSchema.index({ jobId: 1, status: 1 });
+aiCallSchema.index({ jobId: 1, batchId: 1, studentId: 1 }, { unique: true });
+aiCallSchema.index({ jobId: 1, createdAt: -1 });
+aiCallSchema.index({ jobId: 1, status: 1 });
 
-export const AiCallLog = mongoose.model("AiCallLog", aiCallLogSchema);
+export const AiCall = mongoose.model("AiCall", aiCallSchema);
 
 const publicLinkSchema = new mongoose.Schema(
   {

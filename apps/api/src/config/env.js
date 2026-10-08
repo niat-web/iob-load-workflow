@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
 import { z } from "zod";
+import { BIGQUERY_TABLES } from "./bigqueryTables.js";
 import { PORTAL_DEFAULTS, PORTAL_ENVIRONMENTS } from "./learningPortalDefaults.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -80,8 +81,7 @@ const schema = z.object({
   SESSION_SECRET: optionalString,
   SESSION_TTL_HOURS: number(12, { min: 1, max: 24 * 30 }),
   COOKIE_SAMESITE: z.enum(["lax", "strict", "none"]).default("lax"),
-  MICROSOFT_CLIENT_ID: optionalString,
-  MICROSOFT_TENANT_ID: optionalString,
+  GOOGLE_CLIENT_ID: optionalString,
   ALLOWED_EMAIL_DOMAINS: list(),
   ALLOW_DEV_LOGIN: bool(true),
   BOOTSTRAP_ADMIN_EMAILS: list(),
@@ -139,7 +139,7 @@ const schema = z.object({
   JOB_LOADING_TRACKER_WORKSHEET: z.string().default("Loaded Jobs Tracker"),
   GOOGLE_SHEETS_CREDENTIALS_JSON: optionalString,
 
-  ELIGIBILITY_SOURCE: z.enum(["learning_portal", "bigquery", "mock"]).optional(),
+  ELIGIBILITY_SOURCE: z.enum(["pool", "learning_portal", "mock"]).optional(),
   ELIGIBILITY_PLACEMENT_STATUSES: list(["To Be Placed", "Placed More Opps", "Placement Support Not Required 2"]),
   ELIGIBILITY_MAX_STUDENTS: number(20000, { min: 1 }),
 
@@ -148,6 +148,7 @@ const schema = z.object({
   BIGQUERY_LOCATION: optionalString,
   BIGQUERY_APPLICATIONS_TABLE: optionalString,
   BIGQUERY_STUDENTS_TABLE: optionalString,
+  BIGQUERY_POOL_TABLE: optionalString,
   BIGQUERY_GRIT_TABLE: optionalString,
   BIGQUERY_ASSESSMENTS_TABLE: optionalString,
   BIGQUERY_INTERVIEWS_TABLE: optionalString,
@@ -155,8 +156,8 @@ const schema = z.object({
   GOOGLE_APPLICATION_CREDENTIALS_JSON: optionalString,
 
   GEMINI_API_KEY: optionalString,
-  GEMINI_MODEL: z.string().default("gemini-2.5-flash-lite"),
-  GEMINI_CONTENT_MODEL: z.string().default("gemini-2.5-flash"),
+  GEMINI_MODEL: z.string().default("gemini-3.5-flash-lite"),
+  GEMINI_CONTENT_MODEL: z.string().default("gemini-3.5-flash-lite"),
   GEMINI_CONCURRENCY: number(4, { min: 1, max: 32 }),
   GEMINI_TIMEOUT_MS: number(60000, { min: 1000 }),
 
@@ -171,6 +172,13 @@ const schema = z.object({
   NXTDIAL_API_KEY: optionalString,
   NXTDIAL_AGENT_ID: optionalString,
   NXTDIAL_FROM_NUMBER: optionalString,
+  NXTDIAL_CALL_MAX_SECONDS: number(120, { min: 30, max: 600 }),
+  NXTDIAL_CALLER_NAME: z.string().default("Priya"),
+  NXTDIAL_CALLING_FROM: z.string().default("NxtWave Placements"),
+  NXTDIAL_LANGUAGE: z.string().default("English"),
+  NXTDIAL_RATING_TEMPLATE: z.string().default("job_application_reminder"),
+  NXTDIAL_RESULTS_SYNC_MINUTES: number(3, { min: 1, max: 60 }),
+  BOOST_EMAIL_COOLDOWN_MINUTES: number(60, { min: 0, max: 1440 }),
   NXTDIAL_CHUNK_SIZE: number(50, { min: 1, max: 1000 }),
   NXTDIAL_DAILY_REQUEST_LIMIT: number(5000, { min: 1 }),
   NXTDIAL_TIMEOUT_MS: number(30000, { min: 1000 }),
@@ -275,8 +283,7 @@ function buildConfig(env) {
       cookieName: "jf_session",
       cookieSameSite: env.COOKIE_SAMESITE,
       cookieSecure: isProduction || env.COOKIE_SAMESITE === "none",
-      microsoftClientId: env.MICROSOFT_CLIENT_ID,
-      microsoftTenantId: env.MICROSOFT_TENANT_ID?.toLowerCase(),
+      googleClientId: env.GOOGLE_CLIENT_ID,
       allowedEmailDomains: env.ALLOWED_EMAIL_DOMAINS.map((domain) => domain.toLowerCase()),
       devLoginEnabled: !isProduction && (env.ALLOW_DEV_LOGIN || isTest),
       bootstrapAdminEmails: env.BOOTSTRAP_ADMIN_EMAILS.map((email) => email.toLowerCase()),
@@ -344,23 +351,23 @@ function buildConfig(env) {
     },
 
     eligibility: {
-      source:
-        env.ELIGIBILITY_SOURCE ?? (modeFor(env.LEARNING_PORTAL_MODE) === "mock" ? "mock" : "learning_portal"),
+      source: env.ELIGIBILITY_SOURCE ?? "pool",
       placementStatuses: env.ELIGIBILITY_PLACEMENT_STATUSES,
       maxStudents: env.ELIGIBILITY_MAX_STUDENTS,
     },
 
     bigquery: {
-      projectId: env.BIGQUERY_PROJECT_ID,
+      projectId: env.BIGQUERY_PROJECT_ID ?? bigqueryCredentials?.project_id,
       dataset: env.BIGQUERY_DATASET,
       location: env.BIGQUERY_LOCATION,
       credentials: bigqueryCredentials,
       tables: {
-        applications: env.BIGQUERY_APPLICATIONS_TABLE,
-        students: env.BIGQUERY_STUDENTS_TABLE,
-        grit: env.BIGQUERY_GRIT_TABLE,
-        assessments: env.BIGQUERY_ASSESSMENTS_TABLE,
-        interviews: env.BIGQUERY_INTERVIEWS_TABLE,
+        applications: env.BIGQUERY_APPLICATIONS_TABLE ?? (BIGQUERY_TABLES.applications || undefined),
+        students: env.BIGQUERY_STUDENTS_TABLE ?? (BIGQUERY_TABLES.students || undefined),
+        grit: env.BIGQUERY_GRIT_TABLE ?? (BIGQUERY_TABLES.grit || undefined),
+        assessments: env.BIGQUERY_ASSESSMENTS_TABLE ?? (BIGQUERY_TABLES.assessments || undefined),
+        interviews: env.BIGQUERY_INTERVIEWS_TABLE ?? (BIGQUERY_TABLES.interviews || undefined),
+        pool: env.BIGQUERY_POOL_TABLE ?? (BIGQUERY_TABLES.pool || undefined),
       },
       columnsJson: env.BIGQUERY_COLUMNS_JSON,
     },
@@ -387,6 +394,13 @@ function buildConfig(env) {
       apiKey: env.NXTDIAL_API_KEY,
       agentId: env.NXTDIAL_AGENT_ID,
       fromNumber: env.NXTDIAL_FROM_NUMBER,
+      callMaxSeconds: env.NXTDIAL_CALL_MAX_SECONDS,
+      callerName: env.NXTDIAL_CALLER_NAME,
+      callingFrom: env.NXTDIAL_CALLING_FROM,
+      language: env.NXTDIAL_LANGUAGE,
+      ratingTemplate: env.NXTDIAL_RATING_TEMPLATE,
+      resultsSyncMinutes: env.NXTDIAL_RESULTS_SYNC_MINUTES,
+      boostEmailCooldownMinutes: env.BOOST_EMAIL_COOLDOWN_MINUTES,
       chunkSize: env.NXTDIAL_CHUNK_SIZE,
       dailyRequestLimit: env.NXTDIAL_DAILY_REQUEST_LIMIT,
       timeoutMs: env.NXTDIAL_TIMEOUT_MS,
@@ -455,15 +469,18 @@ export function missingIntegrationSettings(cfg = config) {
     add("learningPortal", `LEARNING_PORTAL_${name.toUpperCase()}_BASE_URL`, environment.baseUrl);
     add("learningPortal", `${name.toUpperCase()}_API_KEY`, environment.apiKey);
   }
-  add("bigquery", "BIGQUERY_PROJECT_ID", cfg.bigquery.projectId);
-  add("bigquery", "BIGQUERY_DATASET", cfg.bigquery.dataset);
-  add("bigquery", "BIGQUERY_APPLICATIONS_TABLE", cfg.bigquery.tables.applications);
+  const tableParts = String(cfg.bigquery.tables.applications ?? "").split(".").length;
+  add("bigquery", "GOOGLE_APPLICATION_CREDENTIALS_JSON", cfg.bigquery.credentials);
+  add("bigquery", "the applications table name in apps/api/src/config/bigqueryTables.js", cfg.bigquery.tables.applications);
+  if (cfg.bigquery.tables.applications) {
+    add("bigquery", "BIGQUERY_PROJECT_ID", cfg.bigquery.projectId || tableParts === 3);
+    add("bigquery", "BIGQUERY_DATASET", cfg.bigquery.dataset || tableParts > 1);
+  }
   add("gemini", "GEMINI_API_KEY", cfg.gemini.apiKey);
   add("ses", "SES_FROM_EMAIL", cfg.ses.fromEmail);
   add("ses", "AWS_REGION", cfg.ses.region);
   add("nxtdial", "NXTDIAL_BASE_URL", cfg.nxtdial.baseUrl);
   add("nxtdial", "NXTDIAL_API_KEY", cfg.nxtdial.apiKey);
-  add("nxtdial", "NXTDIAL_AGENT_ID", cfg.nxtdial.agentId);
   add("nxtdial", "NXTDIAL_FROM_NUMBER", cfg.nxtdial.fromNumber);
   return missing;
 }
@@ -479,8 +496,7 @@ export function collectConfigProblems(cfg) {
     need(cfg.auth.jwtSecret && cfg.auth.jwtSecret.length >= 32, "JWT_SECRET must be at least 32 characters");
     need(cfg.encryptionSecret && cfg.encryptionSecret.length >= 32, "SESSION_SECRET must be at least 32 characters");
     need(!cfg.frontendUrl.startsWith("http://localhost"), "FRONTEND_URL must be the deployed frontend origin");
-    need(cfg.auth.microsoftClientId, "MICROSOFT_CLIENT_ID is required in production");
-    need(cfg.auth.microsoftTenantId, "MICROSOFT_TENANT_ID is required in production");
+    need(cfg.auth.googleClientId, "GOOGLE_CLIENT_ID is required in production");
     for (const [name, value] of Object.entries(cfg.modes)) {
       need(value === "live", `${name} integration cannot run in mock mode in production (set INTEGRATION_MODE=live)`);
     }
@@ -490,13 +506,12 @@ export function collectConfigProblems(cfg) {
   for (const [name, keys] of Object.entries(missingIntegrationSettings(cfg))) {
     problems.push(`${INTEGRATION_LABELS[name]} is not set up: add ${keys.join(", ")}`);
   }
-  const guid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (cfg.auth.microsoftClientId) need(guid.test(cfg.auth.microsoftClientId), "MICROSOFT_CLIENT_ID must be the Application (client) ID, e.g. 1a2b3c4d-…");
-  if (cfg.auth.microsoftTenantId) need(guid.test(cfg.auth.microsoftTenantId), "MICROSOFT_TENANT_ID must be the Directory (tenant) ID, e.g. 5e6f7a8b-…");
-  need(
-    Boolean(cfg.auth.microsoftClientId) === Boolean(cfg.auth.microsoftTenantId),
-    "Set both MICROSOFT_CLIENT_ID and MICROSOFT_TENANT_ID for Microsoft sign-in",
-  );
+  if (cfg.auth.googleClientId) {
+    need(
+      /^[0-9]+-[a-z0-9]+\.apps\.googleusercontent\.com$/i.test(cfg.auth.googleClientId),
+      "GOOGLE_CLIENT_ID must be the OAuth Client ID, e.g. 1234567890-abc123.apps.googleusercontent.com",
+    );
+  }
 
   const portal = cfg.learningPortal;
   const unknownTargets = portal.targets.filter((target) => !PORTAL_ENVIRONMENTS.includes(target));
@@ -511,10 +526,6 @@ export function collectConfigProblems(cfg) {
       cfg.jobLoadingSheet.credentials,
       "JOB_LOADING_SHEET_ID needs GOOGLE_SHEETS_CREDENTIALS_JSON (or GOOGLE_APPLICATION_CREDENTIALS_JSON) with access to the sheet",
     );
-  }
-  if (cfg.eligibility.source === "bigquery") {
-    need(modes.bigquery === "live", "ELIGIBILITY_SOURCE=bigquery requires BigQuery to be live");
-    need(cfg.bigquery.tables.students, "BIGQUERY_STUDENTS_TABLE is required when ELIGIBILITY_SOURCE=bigquery");
   }
   if (cfg.eligibility.source === "learning_portal") {
     need(modes.learningPortal === "live", "ELIGIBILITY_SOURCE=learning_portal requires the Learning Portal to be live");

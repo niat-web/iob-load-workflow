@@ -1,7 +1,14 @@
 import { config } from "../config/env.js";
 import { NOTIFICATION_TYPE, TASK_TYPE } from "../config/statuses.js";
 import { NotificationLog } from "../models/index.js";
-import { crmPoolReadyEmail, initialJobEmail, jobUpdatedEmail, poolTargetReachedEmail, reminderEmail } from "../templates/email/index.js";
+import {
+  applicationsBelowTargetEmail,
+  crmPoolReadyEmail,
+  initialJobEmail,
+  jobUpdatedEmail,
+  poolTargetReachedEmail,
+  reminderEmail,
+} from "../templates/email/index.js";
 import { now } from "../utils/clock.js";
 import { isDuplicateKeyError, isRetryable } from "../utils/errors.js";
 import { backoffDelayMs, mapLimit } from "../utils/helpers.js";
@@ -24,6 +31,10 @@ function render(type, job, recipient, payload) {
       return crmPoolReadyEmail(job, payload);
     case T.POOL_TARGET_REACHED:
       return poolTargetReachedEmail(job, recipient);
+    case T.APPLICATIONS_BELOW_TARGET:
+      return applicationsBelowTargetEmail(job, recipient, payload);
+    case T.BOOST_REMINDER:
+      return reminderEmail(job, recipient, type);
     default:
       throw new Error(`Unknown notification type ${type}`);
   }

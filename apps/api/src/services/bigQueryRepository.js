@@ -49,12 +49,37 @@ class LiveBigQueryRepository {
   requireTable(name) {
     const ref = tableRef(name);
     if (!ref) {
-      throw new IntegrationError(`BIGQUERY_${name.toUpperCase()}_TABLE is not configured`, {
+      throw new IntegrationError(`The BigQuery "${name}" table name is not set in apps/api/src/config/bigqueryTables.js`, {
         integration: "bigquery",
         retryable: false,
       });
     }
     return ref;
+  }
+
+  async readPool(onRows, pageSize = 5000) {
+    const columns = Object.entries(C.pool)
+      .map(([field, column]) => `${column} AS ${field}`)
+      .join(", ");
+    const sql = `SELECT ${columns} FROM ${this.requireTable("pool")}`;
+    let job;
+    try {
+      [job] = await this.client.createQueryJob({ query: sql, location: config.bigquery.location });
+    } catch (error) {
+      throw wrapError(error, "eligible pool read");
+    }
+    let pageToken;
+    do {
+      let rows;
+      let next;
+      try {
+        [rows, next] = await job.getQueryResults({ maxResults: pageSize, pageToken, autoPaginate: false });
+      } catch (error) {
+        throw wrapError(error, "eligible pool read");
+      }
+      await onRows(rows);
+      pageToken = next?.pageToken;
+    } while (pageToken);
   }
 
   applicantSelect() {
@@ -170,34 +195,6 @@ class LiveBigQueryRepository {
     }
     return students;
   }
-
-  async findEligibleStudents({ batches = [], programs = [], campuses = [] }) {
-    const s = C.students;
-    const where = [];
-    const params = { limit: config.eligibility.maxStudents };
-    if (batches.length) {
-      where.push(`CAST(${s.batch} AS STRING) IN UNNEST(@batches)`);
-      params.batches = batches.map(String);
-    }
-    if (programs.length) {
-      where.push(`UPPER(CAST(${s.program} AS STRING)) IN UNNEST(@programs)`);
-      params.programs = programs.map((program) => program.toUpperCase());
-    }
-    if (campuses.length) {
-      where.push(`LOWER(CAST(${s.campus} AS STRING)) IN UNNEST(@campuses)`);
-      params.campuses = campuses.map((campus) => campus.toLowerCase());
-    }
-    if (config.eligibility.placementStatuses.length) {
-      where.push(`CAST(${s.placementStatus} AS STRING) IN UNNEST(@placement)`);
-      params.placement = config.eligibility.placementStatuses;
-    }
-    return this.query(
-      `SELECT ${this.studentSelect()} FROM ${this.requireTable("students")}
-       ${where.length ? `WHERE ${where.join(" AND ")}` : ""} LIMIT @limit`,
-      params,
-      "eligible students",
-    );
-  }
 }
 
 const MOCK_SKILLS = [
@@ -273,8 +270,13 @@ class MockBigQueryRepository {
     return [];
   }
 
-  async findEligibleStudents() {
-    return [];
+  async readPool(onRows) {
+    const plans = ["NIAT", "CCBP_ACADEMY_SMART", "CCBP_ACADEMY_GENIUS", "CCBP_INTENSIVE", "CCBP_TECH_INTENSIVE_OFFLINE"];
+    const rows = mockStudents("eligible-pool", 120).map((student, index) => ({
+      ...student,
+      product: plans[index % plans.length],
+    }));
+    await onRows(rows);
   }
 
   async mockEligibleForJob(job) {

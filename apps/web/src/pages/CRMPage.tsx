@@ -13,7 +13,7 @@ export function CRMPage() {
           if (hasFilters || page !== 1) clearFilters();
         }}
       />
-      <DealsSection emptyDescription="Enter a HubSpot Deal ID above to get started." />
+      <DealsSection emptyDescription="Enter a HubSpot Deal ID above to get started." fixedPageSize={15} />
     </div>
   );
 }

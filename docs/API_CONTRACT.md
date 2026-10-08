@@ -18,10 +18,10 @@ The contract between `apps/web` and `apps/api`. Both sides must match this docum
   ```
 
   Codes used: `VALIDATION_ERROR` (400), `INVALID_DEAL_ID` (400), `UNAUTHENTICATED` (401),
-  `INVALID_MICROSOFT_TOKEN` (401), `ACCESS_DENIED` (403), `FORBIDDEN` (403), `CSRF_REJECTED` (403),
+  `INVALID_GOOGLE_TOKEN` (401), `ACCESS_DENIED` (403), `FORBIDDEN` (403), `CSRF_REJECTED` (403),
   `NOT_FOUND` (404), `CONFLICT` (409), `REVIEW_FROZEN` (409), `NOT_RETRYABLE` (409),
   `LINK_EXPIRED` (410), `RATE_LIMITED` (429), `INTERNAL_ERROR` (500),
-  `MICROSOFT_NOT_CONFIGURED` (503), `MICROSOFT_UNAVAILABLE` (503).
+  `GOOGLE_NOT_CONFIGURED` (503), `GOOGLE_UNAVAILABLE` (503).
 
 - Paginated list response:
 
@@ -50,31 +50,30 @@ The UI only maps `tone` to colours; it never derives labels from raw statuses.
 
 ```json
 {
-  "microsoftClientId": "11111111-2222-4333-8444-555555555555",
-  "microsoftTenantId": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+  "googleClientId": "1234567890-abc123.apps.googleusercontent.com",
   "devLoginEnabled": false
 }
 ```
 
-`microsoftClientId` and `microsoftTenantId` are `null` when Microsoft sign-in is not configured.
-`devLoginEnabled` is only ever `true` outside production, for local testing without Microsoft.
+`googleClientId` is `null` when Google sign-in is not configured.
+`devLoginEnabled` is only ever `true` outside production, for local testing without Google.
 
-### `POST /api/auth/microsoft`
+### `POST /api/auth/google`
 
-Body `{ "idToken": "<ID token from the Microsoft sign-in popup (MSAL)>" }`
+Body `{ "credential": "<ID token from the Sign in with Google button>" }`
 
-The API checks the token's signature against Microsoft's published keys, that it was issued for
-this app (`aud` = client ID) by the company tenant (`iss` and `tid`), and that it is at most 10
-minutes old. The email is the `email` claim, or `preferred_username` when there is none.
+The API checks the token's signature against Google's published keys, that it was issued for this
+app (`aud` = client ID) by Google (`iss` = `https://accounts.google.com`), that the email is
+verified, and that it is at most 10 minutes old.
 
 - `200` → `{ "user": User, "redirectTo": "/crm" }` and sets the HttpOnly session cookie.
-- `401 INVALID_MICROSOFT_TOKEN`, `403 ACCESS_DENIED` (email unknown or inactive).
-- `503 MICROSOFT_UNAVAILABLE` (Microsoft's keys could not be fetched; try again) or
-  `503 MICROSOFT_NOT_CONFIGURED`.
+- `401 INVALID_GOOGLE_TOKEN`, `403 ACCESS_DENIED` (email unknown or inactive, or domain not allowed).
+- `503 GOOGLE_UNAVAILABLE` (Google's keys could not be fetched; try again) or
+  `503 GOOGLE_NOT_CONFIGURED`.
 
 ### `POST /api/auth/dev-login`
 
-Body `{ "email": "crm@example.com" }`. Same responses as `/microsoft`. `404` when dev login is disabled.
+Body `{ "email": "crm@example.com" }`. Same responses as `/google`. `404` when dev login is disabled.
 
 ### `GET /api/auth/me`
 
@@ -103,13 +102,13 @@ always returned in `redirectTo`). ADMIN may open both `/crm` and `/psm`.
 Body:
 
 ```json
-{ "dealId": "1234567890", "flowMode": "AUTOMATIC", "expectedPoolCount": 70,
+{ "dealId": "1234567890", "flowMode": "AUTOMATIC", "expectedPoolCount": 70, "jdCount": 1,
   "crmOwnerId": "1000001", "profilingPocId": "1000002", "iseId": "1000003" }
 ```
 
 `flowMode` is `AUTOMATIC` (default) or `STEP_BY_STEP`. The API also accepts a pasted HubSpot deal URL
 and extracts the ID. `expectedPoolCount` (whole number ≥ 1) is stored only in the app (HubSpot never
-sets or changes it); `crmOwnerId` overrides the HubSpot deal owner; `profilingPocId` and `iseId` are optional. Owner IDs must come from
+sets or changes it); `crmOwnerId` overrides the HubSpot deal owner; `profilingPocId` and `iseId` are optional. `jdCount` (whole number ≥ 1) is stored in the app and written to the HubSpot deal's `jd_count` property with the job ID; without it, the deal's own `jd_count` is used. Owner IDs must come from
 `GET /api/crm/hubspot-owners`. The CRM owner, Profiling POC and ISE go into the portal job
 (`job_extra_details.crm / profiling_poc / ise`, "NA" when empty), the tracker sheet, and the HubSpot deal's `crm`, `profiling_poc` and `ise` properties (written
 through the deal webhook).

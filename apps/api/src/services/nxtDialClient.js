@@ -4,84 +4,161 @@ import { IntegrationError } from "../utils/errors.js";
 import { parseRetryAfter } from "../utils/helpers.js";
 import { logger } from "../utils/logger.js";
 
-function collectCallIds(body, phones) {
-  const map = new Map();
-  const calls = body?.calls ?? body?.data?.calls ?? body?.results ?? [];
-  if (Array.isArray(calls)) {
-    for (const call of calls) {
-      const phone = call?.phone ?? call?.to ?? call?.number;
-      const id = call?.id ?? call?.callId ?? call?.call_id;
-      if (phone && id) map.set(String(phone), String(id));
-    }
+function failure(status, detail, retryAfter) {
+  if (status === 429) {
+    return new IntegrationError(`NxtDial rate limited: ${detail}`, {
+      integration: "nxtdial",
+      status,
+      retryable: true,
+      retryAfterMs: parseRetryAfter(retryAfter) ?? 60_000,
+    });
   }
-  const requestId = body?.id ?? body?.alertId ?? body?.requestId ?? body?.data?.id ?? null;
-  if (!map.size && requestId) for (const { phone } of phones) map.set(phone, String(requestId));
-  return { requestId: requestId ? String(requestId) : null, callIds: map };
+  return new IntegrationError(`NxtDial HTTP ${status}: ${detail}`, {
+    integration: "nxtdial",
+    status,
+    retryable: status >= 500,
+  });
 }
 
 export class LiveNxtDialClient {
-  async alert({ phones, variables }) {
+  async request(method, path, body) {
     let response;
     try {
-      response = await fetch(`${config.nxtdial.baseUrl}/api/alert`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${config.nxtdial.apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          agentId: config.nxtdial.agentId,
-          fromNumber: config.nxtdial.fromNumber,
-          phones,
-          variables,
-        }),
+      const init = {
+        method,
+        headers: { Authorization: `Bearer ${config.nxtdial.apiKey}`, Accept: "application/json" },
         signal: AbortSignal.timeout(config.nxtdial.timeoutMs),
-      });
+      };
+      if (body) {
+        init.headers["Content-Type"] = "application/json";
+        init.body = JSON.stringify(body);
+      }
+      response = await fetch(`${config.nxtdial.baseUrl}${path}`, init);
     } catch (error) {
       throw new IntegrationError(`NxtDial request failed: ${error.message}`, { integration: "nxtdial", retryable: true, cause: error });
     }
-
     const text = await response.text();
-    let body = {};
+    let parsed = {};
     try {
-      body = text ? JSON.parse(text) : {};
+      parsed = text ? JSON.parse(text) : {};
     } catch {
-      body = { raw: text };
+      parsed = { raw: text };
     }
-
-    if (response.ok) return collectCallIds(body, phones);
-
-    const status = response.status;
-    const detail = (body?.error?.message ?? body?.message ?? text).toString().slice(0, 300);
-    if (status === 429) {
-      throw new IntegrationError(`NxtDial rate limited: ${detail}`, {
-        integration: "nxtdial",
-        status,
-        retryable: true,
-        retryAfterMs: parseRetryAfter(response.headers.get("retry-after")) ?? 60_000,
-      });
+    if (!response.ok) {
+      const detail = (parsed?.message ?? parsed?.error?.message ?? text).toString().slice(0, 300);
+      throw failure(response.status, detail, response.headers.get("retry-after"));
     }
-    throw new IntegrationError(`NxtDial HTTP ${status}: ${detail}`, {
-      integration: "nxtdial",
-      status,
-      retryable: status >= 500,
-    });
+    return parsed;
+  }
+
+  async listRatingTemplates() {
+    const rows = await this.request("GET", "/api/rating-templates");
+    return Array.isArray(rows) ? rows : [];
+  }
+
+  async createRatingTemplate(template) {
+    return this.request("POST", "/api/rating-templates", template);
+  }
+
+  async createAgent(agent) {
+    const created = await this.request("POST", "/api/agents", agent);
+    if (!created?.id) throw new IntegrationError("NxtDial did not return an agent id", { integration: "nxtdial", retryable: false });
+    return { id: String(created.id), name: created.name ?? agent.name };
+  }
+
+  async createBatch({ name, agentId, fromNumber }) {
+    const created = await this.request("POST", "/api/batches", { name, agentId, telephonyProvider: "plivo", fromNumber });
+    if (!created?.id) throw new IntegrationError("NxtDial did not return a batch id", { integration: "nxtdial", retryable: false });
+    return { id: String(created.id) };
+  }
+
+  async startBatch(batchId, items) {
+    return this.request("POST", `/api/batches/${encodeURIComponent(batchId)}/start`, { items });
+  }
+
+  async getBatchResults(batchId) {
+    const body = await this.request("GET", `/api/batches/${encodeURIComponent(batchId)}/results`);
+    return { batch: body?.batch ?? null, calls: Array.isArray(body?.calls) ? body.calls : [] };
   }
 }
 
-class MockNxtDialClient {
+const MOCK_OUTCOMES = ["completed", "completed", "no-answer", "completed", "busy"];
+
+export class MockNxtDialClient {
   constructor() {
-    this.requests = [];
+    this.templates = [];
+    this.agents = [];
+    this.batches = new Map();
   }
 
-  async alert({ phones, variables }) {
-    const requestId = `mock-alert-${crypto.randomUUID()}`;
-    this.requests.push({ phones, variables, requestId });
-    logger.debug({ count: phones.length, variables }, "[mock] NxtDial reminder calls queued");
-    return {
-      requestId,
-      callIds: new Map(phones.map(({ phone }, index) => [phone, `${requestId}-${index}`])),
-    };
+  async listRatingTemplates() {
+    return this.templates;
+  }
+
+  async createRatingTemplate(template) {
+    const created = { id: crypto.randomUUID(), ...template };
+    this.templates.push(created);
+    return created;
+  }
+
+  async createAgent(agent) {
+    const created = { id: `mock-agent-${crypto.randomUUID()}`, ...agent };
+    this.agents.push(created);
+    logger.debug({ name: agent.name }, "[mock] NxtDial agent created");
+    return { id: created.id, name: created.name };
+  }
+
+  async createBatch({ name, agentId, fromNumber }) {
+    const id = `mock-batch-${crypto.randomUUID()}`;
+    this.batches.set(id, { id, name, agentId, fromNumber, items: [], status: "draft" });
+    return { id };
+  }
+
+  async startBatch(batchId, items) {
+    const batch = this.batches.get(batchId);
+    batch.items = items.map((item) => ({ ...item, callId: `mock-call-${crypto.randomUUID()}` }));
+    batch.status = "completed";
+    return { message: "started", queued: items.length };
+  }
+
+  async getBatchResults(batchId) {
+    const batch = this.batches.get(batchId);
+    if (!batch) return { batch: null, calls: [] };
+    const calls = batch.items.map((item, index) => {
+      const status = MOCK_OUTCOMES[index % MOCK_OUTCOMES.length];
+      const answered = status === "completed";
+      const interested = index % 2 === 0 ? "Yes" : "No";
+      return {
+        callId: item.callId,
+        name: item.name,
+        phone: item.phone,
+        status,
+        durationSeconds: answered ? 75 + index : 0,
+        startedAt: new Date().toISOString(),
+        endedAt: new Date().toISOString(),
+        recordingUrl: answered ? `https://recordings.example.com/${item.callId}.mp3` : null,
+        summary: answered ? `${item.name} discussed the role.` : null,
+        metadata: item.metadata ?? null,
+        ratingStatus: answered ? "rated" : "skipped",
+        rating: answered
+          ? {
+              overallRating: interested === "Yes" ? 4 : 2,
+              remarks: interested === "Yes" ? "Keen to apply today." : "Not interested in this location.",
+              followUpStatus: "",
+              callBack: "",
+              columnHeaders: ["Interested", "Will Apply", "Reason Not Applied", "Questions Asked", "Call Back Requested"],
+              cells: {
+                Interested: { value: interested, reason: "", kind: "boolean" },
+                "Will Apply": { value: interested === "Yes" ? "Yes" : "No", reason: "", kind: "label" },
+                "Reason Not Applied": { value: interested === "Yes" ? "Missed the email" : "Location", reason: "", kind: "text" },
+                "Questions Asked": { value: "Stipend", reason: "", kind: "text" },
+                "Call Back Requested": { value: "No", reason: "", kind: "boolean" },
+              },
+            }
+          : null,
+      };
+    });
+    return { batch: { id: batch.id, status: batch.status, agentId: batch.agentId, totalItems: calls.length }, calls };
   }
 }
 

@@ -2,6 +2,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import type {
   ApprovalGate,
   ApprovalResponse,
+  BoostOverview,
   CompanySummary,
   CrmDealDetail,
   DealActionResponse,
@@ -15,7 +16,7 @@ import type {
   ProcessDealResponse,
   RetryDealResponse,
 } from "../types/api";
-import { api, seg } from "./client";
+import { api, isApiError, seg } from "./client";
 
 const POLL_INTERVAL_MS = 12_000;
 
@@ -26,6 +27,7 @@ export const crmKeys = {
   deal: (jobId: string) => [...crmKeys.deals(), "detail", jobId] as const,
   logs: (jobId: string) => [...crmKeys.deals(), "logs", jobId] as const,
   approval: (jobId: string) => [...crmKeys.deals(), "approval", jobId] as const,
+  boost: (jobId: string) => [...crmKeys.deals(), "boost", jobId] as const,
   companies: () => [...crmKeys.deals(), "companies"] as const,
   owners: () => [...crmKeys.all, "hubspot-owners"] as const,
   filters: () => [...crmKeys.all, "filters"] as const,
@@ -74,6 +76,7 @@ export interface ProcessDealInput {
   dealId: string;
   flowMode: FlowMode;
   expectedPoolCount?: number;
+  jdCount?: number;
   crmOwnerId?: string;
   profilingPocId?: string;
   iseId?: string;
@@ -141,10 +144,25 @@ export function useCrmDealLogs(jobId: string | null) {
   });
 }
 
+const SUBMIT_RETRY_MS = 1500;
+
+const isTransient = (error: unknown) => isApiError(error) && (error.status === 0 || error.status >= 500);
+
+async function submitDeal(input: ProcessDealInput): Promise<ProcessDealResponse> {
+  try {
+    return await processDeal(input);
+  } catch (error) {
+    if (!isTransient(error)) throw error;
+    await new Promise((resolve) => setTimeout(resolve, SUBMIT_RETRY_MS));
+    const retried = await processDeal(input);
+    return { ...retried, duplicate: false };
+  }
+}
+
 export function useProcessDeal() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: processDeal,
+    mutationFn: submitDeal,
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: crmKeys.deals() });
       void queryClient.invalidateQueries({ queryKey: crmKeys.filters() });
@@ -216,3 +234,28 @@ export function useDeleteDeal() {
     },
   });
 }
+
+const BOOST_POLL_MS = 15_000;
+
+export function useBoost(jobId: string) {
+  return useQuery({
+    queryKey: crmKeys.boost(jobId),
+    queryFn: ({ signal }) => api.get<BoostOverview>(`/crm/deals/${seg(jobId)}/boost`, undefined, signal),
+    refetchInterval: (q) => (q.state.data?.calls.active ? BOOST_POLL_MS : false),
+  });
+}
+
+function useBoostAction(jobId: string, path: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post<{ boost: BoostOverview }>(`/crm/deals/${seg(jobId)}/boost/${path}`),
+    onSuccess: ({ boost }) => {
+      queryClient.setQueryData(crmKeys.boost(jobId), boost);
+      void queryClient.invalidateQueries({ queryKey: crmKeys.deal(jobId) });
+    },
+  });
+}
+
+export const useBoostEmails = (jobId: string) => useBoostAction(jobId, "emails");
+export const useBoostCalls = (jobId: string) => useBoostAction(jobId, "calls");
+export const useBoostSync = (jobId: string) => useBoostAction(jobId, "calls/sync");

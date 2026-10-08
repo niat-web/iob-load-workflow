@@ -1,9 +1,11 @@
-import { BriefcaseBusiness, Building2, House, Settings, UsersRound, type LucideIcon } from "lucide-react";
-import type { ReactNode } from "react";
+import { BriefcaseBusiness, Building2, GraduationCap, House, Settings, UsersRound, type LucideIcon } from "lucide-react";
+import { useEffect, type ReactNode } from "react";
 import { NavLink } from "react-router";
+import { preloadPage, preloadPagesWhenIdle } from "../pages/pageLoaders";
 import type { Role, User } from "../types/api";
 import { cn } from "../utils/cn";
-import { AppHeader } from "./AppHeader";
+import { AppHeader, Brand } from "./AppHeader";
+import { UserEmailMenu } from "./UserEmailMenu";
 
 interface NavItem {
   to: string;
@@ -18,6 +20,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/crm/deals", label: "Deals", icon: BriefcaseBusiness, roles: ["CRM", "ADMIN"] },
   { to: "/crm/companies", label: "Companies", icon: Building2, roles: ["CRM", "ADMIN"] },
   { to: "/psm", label: "Candidate Pools", icon: UsersRound, roles: ["PSM", "ADMIN"] },
+  { to: "/admin/eligible-pool", label: "Eligible Pool", icon: GraduationCap, roles: ["ADMIN"] },
   { to: "/settings", label: "Settings", icon: Settings, roles: ["CRM", "PSM", "ADMIN"] },
 ];
 
@@ -27,13 +30,18 @@ export function navItemsFor(role: Role) {
 
 function SideNav({ user }: { user: User }) {
   return (
-    <aside className="hidden w-60 shrink-0 flex-col overflow-y-auto border-r border-line bg-surface px-3 pt-5 pb-5 lg:flex">
-      <nav aria-label="Main" className="flex flex-col gap-1">
+    <aside className="hidden w-60 shrink-0 flex-col border-r border-line bg-surface lg:flex">
+      <div className="flex h-16 shrink-0 items-center px-4">
+        <Brand user={user} />
+      </div>
+      <nav aria-label="Main" className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-3 pt-3 pb-4">
         {navItemsFor(user.role).map(({ to, label, icon: Icon, end }) => (
           <NavLink
             key={to}
             to={to}
             end={end}
+            onMouseEnter={() => preloadPage(to)}
+            onFocus={() => preloadPage(to)}
             className={({ isActive }) =>
               cn(
                 "focus-ring flex h-11 items-center gap-3 rounded-lg px-3.5 text-[15px] font-medium transition-colors",
@@ -46,7 +54,9 @@ function SideNav({ user }: { user: User }) {
           </NavLink>
         ))}
       </nav>
-      <div className="mt-auto border-t border-line" />
+      <div className="shrink-0 border-t border-line p-3">
+        <UserEmailMenu user={user} variant="sidebar" />
+      </div>
     </aside>
   );
 }
@@ -59,6 +69,8 @@ function TopNav({ user }: { user: User }) {
           key={to}
           to={to}
           end={end}
+          onTouchStart={() => preloadPage(to)}
+          onFocus={() => preloadPage(to)}
           className={({ isActive }) =>
             cn(
               "focus-ring flex h-10 shrink-0 items-center gap-2 rounded-lg px-3 text-sm font-medium transition-colors",
@@ -75,12 +87,14 @@ function TopNav({ user }: { user: User }) {
 }
 
 export function AppShell({ user, children }: { user: User; children: ReactNode }) {
+  useEffect(() => preloadPagesWhenIdle(navItemsFor(user.role).map((item) => item.to)), [user.role]);
+
   return (
-    <div className="flex h-dvh flex-col overflow-hidden bg-canvas">
-      <AppHeader user={user} />
-      <TopNav user={user} />
-      <div className="flex min-h-0 flex-1">
-        <SideNav user={user} />
+    <div className="flex h-dvh overflow-hidden bg-canvas">
+      <SideNav user={user} />
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <AppHeader user={user} />
+        <TopNav user={user} />
         <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto p-4 sm:p-6">{children}</main>
       </div>
     </div>

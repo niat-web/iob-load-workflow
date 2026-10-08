@@ -20,9 +20,12 @@ const factories = {
 
 export function notSetUp(name, missing) {
   const label = INTEGRATION_LABELS[name] ?? name;
+  const envKeys = missing.filter((item) => /^[A-Z0-9_]+$/.test(item));
+  const others = missing.filter((item) => !envKeys.includes(item));
+  const what = [envKeys.length ? `${envKeys.join(", ")} to apps/api/.env` : null, ...others].filter(Boolean).join(" and ");
   const fail = () => {
     throw new IntegrationError(
-      `${label} is not set up yet: add ${missing.join(", ")} to apps/api/.env, restart the API, then press Retry Failed Step`,
+      `${label} is not set up yet: add ${what}, restart the API, then press Retry Failed Step`,
       { integration: name, retryable: false },
     );
   };

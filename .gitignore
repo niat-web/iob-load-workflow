@@ -16,3 +16,4 @@ Thumbs.db
 .idea/
 
 apps/api/src/data/hubspotOwnerMap.json
+*.tsbuildinfo

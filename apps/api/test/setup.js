@@ -14,6 +14,7 @@ Object.assign(process.env, {
   HUBSPOT_CLIENT_SECRET: "test-hubspot-client-secret",
   HUBSPOT_WEBHOOK_URL: "https://jobflow.test/api/webhooks/hubspot",
   HUBSPOT_UPDATE_DEBOUNCE_SECONDS: "0",
+  ELIGIBILITY_SOURCE: "mock",
   APPLICATION_WINDOW_HOURS: "21",
   REMINDER_ONE_HOURS: "10",
   REMINDER_TWO_HOURS: "20",
@@ -31,6 +32,5 @@ Object.assign(process.env, {
   MOCK_CRM_OWNER_EMAIL: "owner.crm@example.com",
   TASK_MAX_ATTEMPTS: "3",
   HUBSPOT_OWNER_MAP_JSON: fs.readFileSync(new URL("../src/data/hubspotOwnerMap.example.json", import.meta.url), "utf8"),
-  MICROSOFT_CLIENT_ID: "11111111-2222-4333-8444-555555555555",
-  MICROSOFT_TENANT_ID: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+  GOOGLE_CLIENT_ID: "1234567890-testclient.apps.googleusercontent.com",
 });

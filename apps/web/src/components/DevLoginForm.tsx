@@ -28,11 +28,11 @@ export function DevLoginForm({ onSubmit, pending }: DevLoginFormProps) {
   };
 
   return (
-    <form onSubmit={handleSubmit} noValidate className="space-y-2">
-      <label htmlFor={id} className="block text-xs font-bold tracking-wider text-muted uppercase">
-        Development login
+    <form onSubmit={handleSubmit} noValidate className="space-y-3">
+      <label htmlFor={id} className="block text-sm font-semibold text-ink">
+        Email address
       </label>
-      <div className="flex gap-2">
+      <div className="space-y-3">
         <input
           id={id}
           type="email"
@@ -44,8 +44,8 @@ export function DevLoginForm({ onSubmit, pending }: DevLoginFormProps) {
           aria-describedby={error ? errorId : undefined}
           className={fieldClass}
         />
-        <Button type="submit" variant="secondary" loading={pending}>
-          Sign in
+        <Button type="submit" className="h-11 w-full" loading={pending}>
+          Sign in with email
         </Button>
       </div>
       {error && (

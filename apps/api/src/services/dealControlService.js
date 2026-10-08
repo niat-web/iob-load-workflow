@@ -1,7 +1,7 @@
 import { config } from "../config/env.js";
 import { APPROVAL_GATE_LABELS, JOB_STATUS as S, SUBMITTED_STATUSES, effectiveStatus, stepLabel } from "../config/statuses.js";
 import {
-  AiCallLog,
+  AiCall,
   ApplicationSnapshot,
   CandidateAnalysis,
   CandidatePriorityHistory,
@@ -30,7 +30,7 @@ const JOB_RECORDS = [
   CandidateAnalysis,
   CandidatePriorityHistory,
   NotificationLog,
-  AiCallLog,
+  AiCall,
   PublicLink,
 ];
 
