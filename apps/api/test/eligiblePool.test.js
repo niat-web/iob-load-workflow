@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { config } from "../src/config/env.js";
 import { EligiblePoolStudent, Job, JobEligibleStudent } from "../src/models/index.js";
 import { findEligibleStudents, passOutYears } from "../src/services/eligibilityService.js";
+import { MockDealOverride } from "../src/services/hubspotClient.js";
 import { productGroupFor, productGroupsForPlans } from "../src/services/eligiblePoolService.js";
 import { XHR, loginAs, openApplicationWindow, resetDb, startTestDb, stopTestDb } from "./helpers.js";
 
@@ -52,11 +53,11 @@ describe("eligible pool (admin only)", () => {
   test("enroll plan tags are grouped by product", () => {
     assert.equal(productGroupFor("NIAT"), "NIAT");
     assert.equal(productGroupFor("ccbp_academy_genius_plus"), "Academy");
-    assert.equal(productGroupFor("CCBP_TECH_INTENSIVE_OFFLINE"), "Intensive");
-    assert.equal(productGroupFor("NXTWAVE_EXTERNAL_JOB_PORTAL"), "External");
     assert.equal(productGroupFor("ACADEMY "), "Academy");
     assert.equal(productGroupFor("niat"), "NIAT");
-    assert.equal(productGroupFor(""), "Unknown");
+    for (const other of ["CCBP_TECH_INTENSIVE_OFFLINE", "NXTWAVE_EXTERNAL_JOB_PORTAL", ""]) {
+      assert.equal(productGroupFor(other), null, `${other} is not a pool product`);
+    }
   });
 
   test("an admin syncs the pool into the database and filters it by product and search", async () => {
@@ -65,8 +66,9 @@ describe("eligible pool (admin only)", () => {
     const summary = await waitForSync(adminAgent);
     assert.equal(summary.sync.status, "DONE");
     assert.equal(summary.syncConfigured, true);
-    assert.equal(summary.total, 120);
-    assert.deepEqual(summary.statuses, [{ status: "Eligible", count: 120 }], "new students from BigQuery start as Eligible");
+    assert.equal(summary.total, 72, "only NIAT and Academy students are kept");
+    assert.deepEqual(summary.statuses, [{ status: "Eligible", count: 72 }], "new students from BigQuery start as Eligible");
+    assert.deepEqual(summary.products.map((row) => row.product), ["NIAT", "Academy"]);
     assert.equal(summary.products.find((row) => row.product === "Academy").count, 48);
 
     const niat = await adminAgent.get("/api/admin/eligible-pool").query({ product: "NIAT", limit: 10 });
@@ -92,6 +94,9 @@ describe("eligible pool (admin only)", () => {
 
     const academy = await adminAgent.get("/api/admin/eligible-pool").query({ product: "Academy" });
     assert.equal(academy.body.pagination.total, 48);
+    const both = await adminAgent.get("/api/admin/eligible-pool").query({ product: "NIAT|Academy" });
+    assert.equal(both.body.pagination.total, 72, "several products can be picked at once");
+    assert.equal((await adminAgent.get("/api/admin/eligible-pool").query({ product: "NIAT|Nope" })).status, 400);
 
     const one = academy.body.items[0];
     const found = await adminAgent.get("/api/admin/eligible-pool").query({ search: one.studentId });
@@ -120,7 +125,7 @@ describe("eligible pool (admin only)", () => {
     assert.equal(duplicate.status, 409);
     const invalid = await adminAgent.post("/api/admin/eligible-pool").set(XHR).send({ studentId: "X", studentName: "", email: "not-an-email" });
     assert.equal(invalid.status, 400);
-    const wrongProduct = await adminAgent.post("/api/admin/eligible-pool").set(XHR).send({ studentId: "Y", studentName: "Y", productGroup: "Unknown" });
+    const wrongProduct = await adminAgent.post("/api/admin/eligible-pool").set(XHR).send({ studentId: "Y", studentName: "Y", productGroup: "Intensive" });
     assert.equal(wrongProduct.status, 400);
 
     const updated = await adminAgent
@@ -238,23 +243,26 @@ describe("eligible students for a deal come from the Eligible Pool table", () =>
       assert.deepEqual(await ids({ enrollPlans: ["CCBP_ACADEMY_SMART", "NIAT"], batch: "2025, 2026" }), ["ACAD-1", "NIAT-25", "NIAT-NOYEAR"]);
       assert.deepEqual(await ids({ enrollPlans: ["NIAT"], batch: null }), ["NIAT-24", "NIAT-25", "NIAT-NOYEAR"]);
       assert.deepEqual(
-        await ids({ enrollPlans: ["CCBP_INTENSIVE"], learningPortalPayload: { job_details: { enroll_plans: ["CCBP_INTENSIVE"] } } }),
-        ["INT-1"],
+        await ids({ enrollPlans: ["CCBP_ACADEMY_SMART"], learningPortalPayload: { job_details: { enroll_plans: ["CCBP_ACADEMY_SMART"] } } }),
+        ["ACAD-1"],
       );
-      const [student] = await findEligibleStudents({ enrollPlans: ["CCBP_INTENSIVE"] }, {});
-      assert.equal(student.email, "int-1@students.example.com");
+      const [student] = await findEligibleStudents({ enrollPlans: ["CCBP_ACADEMY_GENIUS"] }, {});
+      assert.equal(student.email, "acad-1@students.example.com");
       assert.equal(student.mobile, "9876543210");
 
       await assert.rejects(findEligibleStudents({ enrollPlans: [] }, {}), /no course plans/);
+      await assert.rejects(findEligibleStudents({ enrollPlans: ["CCBP_INTENSIVE"] }, {}), /are not NIAT or Academy/);
+      await EligiblePoolStudent.deleteMany({ productGroup: "Academy" });
       await assert.rejects(
-        findEligibleStudents({ enrollPlans: ["NXTWAVE_EXTERNAL_JOB_PORTAL"] }, {}),
-        /No student in the Eligible Pool is "Eligible" for External\. Add them on the Eligible Pool page/,
+        findEligibleStudents({ enrollPlans: ["CCBP_ACADEMY_SMART"] }, {}),
+        /No student in the Eligible Pool is "Eligible" for Academy\. Add them on the Eligible Pool page/,
       );
     });
   });
 
   test("a submitted deal saves the matching pool students as its eligible list and gives them access", async () => {
-    const products = ["NIAT", "Academy", "Intensive", "External"];
+    const products = ["NIAT", "Academy"];
+    await MockDealOverride.updateOne({ dealId: "12345" }, { $set: { properties: { product: "Academy" } } }, { upsert: true });
     await EligiblePoolStudent.insertMany(
       products.flatMap((product) => [1, 2, 3].map((n) => poolRow(`${product.toUpperCase()}-${n}`, product))),
     );

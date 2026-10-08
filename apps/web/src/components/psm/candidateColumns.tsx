@@ -1,7 +1,7 @@
 import type { ColumnDef } from "@tanstack/react-table";
 import { candidateResumeUrl } from "../../api/psm";
 import type { Candidate, CandidatePatch } from "../../types/api";
-import { candidateStatusLabel, candidateStatusTone } from "../../utils/candidate";
+import { INTEREST_REASON_LABELS, candidateStatusLabel, candidateStatusTone } from "../../utils/candidate";
 import { cn } from "../../utils/cn";
 import { DASH, orDash } from "../../utils/format";
 import { CandidatePrioritySelect } from "../CandidatePrioritySelect";
@@ -146,6 +146,22 @@ export function buildCandidateColumns(o: CandidateColumnOptions): ColumnDef<Cand
             label={`PSM remarks for ${c.studentName}`}
             onSave={(psmRemarks) => o.save(c.studentId, { psmRemarks })}
           />
+        );
+      },
+    },
+    {
+      id: "interest",
+      header: "Interested",
+      cell: ({ row }) => {
+        const interest = row.original.interest;
+        if (!interest) return <span className="text-muted">{DASH}</span>;
+        const details = [interest.reason ? INTEREST_REASON_LABELS[interest.reason] : null, interest.comments || null]
+          .filter(Boolean)
+          .join(" · ");
+        return (
+          <span title={details || undefined}>
+            <StatusBadge label={interest.interested ? "Yes" : "No"} tone={interest.interested ? "green" : "red"} />
+          </span>
         );
       },
     },

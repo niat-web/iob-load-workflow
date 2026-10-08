@@ -6,6 +6,7 @@ import { Skeleton } from "../LoadingSkeleton";
 import { useToast } from "../toast-context";
 import { Button } from "../ui/Button";
 import { cardClass } from "../ui/styles";
+import { AdminControls } from "./AdminControls";
 
 function EligiblePoolSyncCard() {
   const summary = useEligiblePoolSummary();
@@ -69,8 +70,13 @@ export function ConfigSection() {
         <h2 id="config-title" className="text-lg font-bold text-ink">
           Config
         </h2>
-        <p className="mt-1 text-sm text-muted">Data syncs and other application settings.</p>
+        <p className="mt-1 text-sm text-muted">
+          Control the deal flow, every email and AI call, the automatic steps and the timing. Changes apply as soon as you
+          save.
+        </p>
       </div>
+      <AdminControls />
+      <h3 className="mt-2 text-base font-bold text-ink">Data syncs</h3>
       <EligiblePoolSyncCard />
     </section>
   );

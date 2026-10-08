@@ -5,9 +5,11 @@ import { waitForApproval } from "../../services/approvalService.js";
 import { AUDIT, audit } from "../../services/auditService.js";
 import { applySubmittedInputs, mapDeal, missingRequiredFields } from "../../services/dealMapper.js";
 import { latestSnapshot, saveSnapshot } from "../../services/dealSnapshotService.js";
+import { companyLogoFor, usableLogo } from "../../services/companyLogoService.js";
 import { findEligibleStudents } from "../../services/eligibilityService.js";
+import { getSettings } from "../../services/settingsService.js";
 import { integrations } from "../../services/integrations.js";
-import { transitionJob } from "../../services/jobService.js";
+import { companyJdCount, transitionJob } from "../../services/jobService.js";
 import {
   buildPortalPayload,
   isLoadedInto,
@@ -52,8 +54,15 @@ async function fetchDeal({ job }) {
     throw new PermanentError(`HubSpot deal ${job.hubspotDealId} is missing required fields: ${missing.join(", ")}`);
   }
 
-  await saveSnapshot(job, mapped, bundle.deal.properties, "INITIAL");
-  await Job.updateOne({ _id: job._id }, { $set: pick(mapped) });
+  const [{ companyKey, jdCount }, companyLogoUrl] = await Promise.all([
+    companyJdCount(job, mapped.companyName),
+    companyLogoFor(job, mapped),
+  ]);
+  mapped.jdCount = jdCount;
+  mapped.companyLogoUrl = companyLogoUrl;
+
+  await saveSnapshot(job, mapped, bundle.deal.properties, "INITIAL", { company: bundle.company, owner: bundle.owner });
+  await Job.updateOne({ _id: job._id }, { $set: { ...pick(mapped), companyKey } });
   await transitionJob(job._id, S.DEAL_FETCHED, { from: S.FETCHING_DEAL });
   await proceed(job, GATE.DEAL_DETAILS, TASK_TYPE.CREATE_JOB);
 }
@@ -72,7 +81,7 @@ async function createJob({ job }) {
     const organisation = await prepareOrganisation(current);
     current = await save({
       learningPortalOrgId: organisation.organisationId,
-      companyLogoUrl: current.companyLogoUrl ?? organisation.logoUrl ?? null,
+      companyLogoUrl: current.companyLogoUrl ?? (usableLogo(organisation.logoUrl) ? organisation.logoUrl : null),
     });
   }
   if (!current.learningPortalJobId) {
@@ -80,7 +89,8 @@ async function createJob({ job }) {
   }
 
   if (!current.learningPortalPayload) {
-    const deadline = hoursFromNow(config.workflow.applicationWindowHours, now());
+    const { timing } = await getSettings();
+    const deadline = hoursFromNow(timing.applicationWindowHours, now());
     const payload = await buildPortalPayload(current, snapshot.rawProperties, { deadline, order: await nextOrderNumber() });
     current = await save({
       learningPortalPayload: payload,
@@ -110,7 +120,6 @@ async function createJob({ job }) {
   });
   await Promise.all([
     enqueueNext(job, TASK_TYPE.HUBSPOT_WRITE_BACK),
-    enqueueNext(job, TASK_TYPE.TRACK_LOADED_JOB),
     enqueueNext(job, TASK_TYPE.IDENTIFY_ELIGIBLE),
   ]);
 }
@@ -138,6 +147,7 @@ async function identifyEligible({ job, heartbeat }) {
               mobile: student.mobile ?? null,
               campus: student.campus ?? null,
               batch: student.batch ?? null,
+              learningPortalJobId: current.learningPortalJobId ?? null,
             },
             $setOnInsert: { eligibleAt: now() },
           },
@@ -198,7 +208,8 @@ async function grantAccess({ job, heartbeat }) {
 
 export async function scheduleWindowTasks(job) {
   const start = job.applicationStartAt;
-  const { reminderOneHours, reminderTwoHours, countSyncMinutes } = config.workflow;
+  const { countSyncMinutes } = config.workflow;
+  const { reminderOneHours, reminderTwoHours } = (await getSettings()).timing;
   await Promise.all([
     enqueueNext(job, TASK_TYPE.REMINDER_10H, { scheduledFor: hoursFromNow(reminderOneHours, start) }),
     enqueueNext(job, TASK_TYPE.REMINDER_20H, { scheduledFor: hoursFromNow(reminderTwoHours, start) }),
@@ -226,7 +237,7 @@ async function sendInitialNotifications({ job, heartbeat }) {
     {
       $set: {
         applicationStartAt: start,
-        applicationEndAt: hoursFromNow(config.workflow.applicationWindowHours, start),
+        applicationEndAt: hoursFromNow((await getSettings()).timing.applicationWindowHours, start),
       },
     },
   );
@@ -250,7 +261,7 @@ async function sendInitialNotifications({ job, heartbeat }) {
   await scheduleWindowTasks(current);
 
   const type = NOTIFICATION_TYPE.INITIAL_JOB_EMAIL;
-  const totals = { SENT: 0, SKIPPED: 0, FAILED: 0, RETRYING: 0, DUPLICATE: 0 };
+  const totals = { SENT: 0, SKIPPED: 0, FAILED: 0, RETRYING: 0, DUPLICATE: 0, OFF: 0 };
   const cursor = JobEligibleStudent.find({ jobId: job._id, accessGrantedAt: { $ne: null } }).lean().cursor();
   let batch = [];
   const flush = async () => {

@@ -159,6 +159,14 @@ function ActionCard({
   );
 }
 
+function TurnedOff({ what }: { what: string }) {
+  return (
+    <p role="status" className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
+      {what} are turned off by the admin in Settings.
+    </p>
+  );
+}
+
 function BoostContent({ data, jobId }: { data: BoostOverview; jobId: string }) {
   const toast = useToast();
   const emails = useBoostEmails(jobId);
@@ -169,10 +177,15 @@ function BoostContent({ data, jobId }: { data: BoostOverview; jobId: string }) {
   const counts = data.calls.counts;
   const finished = counts.COMPLETED + counts.NO_ANSWER + counts.BUSY + counts.FAILED + counts.CANCELLED;
   const total = finished + counts.QUEUED + counts.CALLING;
-  const emailBlocked = !deal.windowOpen || notApplied.withEmail === 0 || Boolean(data.emails.availableAt);
+  const { controls } = data;
+  const emailBlocked =
+    !controls.reminderEmails || !deal.windowOpen || notApplied.withEmail === 0 || Boolean(data.emails.availableAt);
   const callBlocked =
-    !deal.windowOpen || notApplied.withPhone === 0 || data.calls.active || Boolean(data.calls.setupProblem);
-  const minutes = Math.round(data.calls.maxSeconds / 60);
+    !controls.aiCalls ||
+    !deal.windowOpen ||
+    notApplied.withPhone === 0 ||
+    data.calls.active ||
+    Boolean(data.calls.setupProblem);
   const items = useMemo(() => data.calls.items, [data.calls.items]);
 
   const run = (kind: "emails" | "calls") => {
@@ -239,6 +252,7 @@ function BoostContent({ data, jobId }: { data: BoostOverview; jobId: string }) {
           title="Send reminder email"
           description={`Email the ${notApplied.withEmail} students who have not applied, with the job details and apply link.`}
         >
+          {!controls.reminderEmails && <TurnedOff what="Reminder emails to students" />}
           <div className="flex flex-wrap items-center gap-3">
             <Button
               onClick={() => setConfirm("emails")}
@@ -268,9 +282,10 @@ function BoostContent({ data, jobId }: { data: BoostOverview; jobId: string }) {
         <ActionCard
           icon={<PhoneCall className="size-5" aria-hidden />}
           title="AI calls"
-          description={`Call the ${notApplied.withPhone} students with a mobile number who have not applied. A voice agent built from this job's description talks with each student for up to ${minutes} minute${minutes === 1 ? "" : "s"}, encourages them to apply and records their answers.`}
+          description={`Call the ${notApplied.withPhone} students with a mobile number who have not applied. A voice agent talks with each student about this job, encourages them to apply and records their answers.`}
         >
-          {data.calls.setupProblem && (
+          {!controls.aiCalls && <TurnedOff what="AI calls" />}
+          {controls.aiCalls && data.calls.setupProblem && (
             <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
               {data.calls.setupProblem}
             </p>
@@ -350,20 +365,6 @@ function BoostContent({ data, jobId }: { data: BoostOverview; jobId: string }) {
         </div>
       </section>
 
-      {data.crmAlerts.length > 0 && (
-        <section className={cn(cardClass, "p-5")}>
-          <h2 className="text-sm font-bold tracking-wider text-muted uppercase">Alerts sent to the CRM</h2>
-          <ul className="mt-2 space-y-1 text-sm text-ink">
-            {data.crmAlerts.map((alert) => (
-              <li key={`${alert.reminder}-${alert.at}`}>
-                {formatDateTime(alert.at)} · {alert.appliedCount} of {alert.expectedPoolCount ?? "?"} applied ·{" "}
-                {alert.notApplied} not applied
-                {alert.to ? ` · emailed ${alert.to}` : ""}
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
 
       <ConfirmDialog
         open={confirm !== null}
@@ -371,7 +372,7 @@ function BoostContent({ data, jobId }: { data: BoostOverview; jobId: string }) {
         message={
           confirm === "emails"
             ? `${notApplied.withEmail} students who have not applied will get a reminder email.`
-            : `Up to ${notApplied.withPhone} students who have not applied will be called one by one. Each call lasts at most ${minutes} minute${minutes === 1 ? "" : "s"}. Students already reached are not called again.`
+            : `Up to ${notApplied.withPhone} students who have not applied will be called one by one. Students already reached are not called again.`
         }
         confirmLabel={confirm === "emails" ? "Send emails" : "Start calls"}
         pending={pendingAction.isPending}

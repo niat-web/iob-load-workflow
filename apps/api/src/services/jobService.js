@@ -16,7 +16,8 @@ import {
 import { config } from "../config/env.js";
 import { Job } from "../models/index.js";
 import { now } from "../utils/clock.js";
-import { escapeRegex } from "../utils/helpers.js";
+import { escapeRegex, normalizeCompanyName } from "../utils/helpers.js";
+import { companyCheckpointsFor } from "./companySettingsService.js";
 import { canDelete, canStop } from "./dealControlService.js";
 import { hubspotRecordUrl } from "./dealMapper.js";
 import { publicLinkUrlsForJobs } from "./publicLinkService.js";
@@ -266,13 +267,16 @@ export async function listCrmJobs({ search, status, company, page, limit, sort }
   const and = [];
   const text = searchFilter(search);
   if (text) and.push(text);
-  if (status === "WAITING") {
-    and.push({ "awaitingApproval.gate": { $exists: true }, status: { $nin: [S.FAILED, S.CANCELLED] } });
-  } else if (status) {
-    and.push({ status: { $in: statusesForDisplayKey(status) } });
-    if (!["FAILED", "CANCELLED"].includes(status)) and.push({ "awaitingApproval.gate": { $exists: false } });
-  }
-  if (company) and.push({ companyName: company });
+  const statusConditions = [].concat(status ?? []).filter(Boolean).map((key) => {
+    if (key === "WAITING") return { "awaitingApproval.gate": { $exists: true }, status: { $nin: [S.FAILED, S.CANCELLED] } };
+    const condition = { status: { $in: statusesForDisplayKey(key) } };
+    if (!["FAILED", "CANCELLED"].includes(key)) condition["awaitingApproval.gate"] = { $exists: false };
+    return condition;
+  });
+  if (statusConditions.length === 1) and.push(statusConditions[0]);
+  else if (statusConditions.length > 1) and.push({ $or: statusConditions });
+  const companies = [].concat(company ?? []).filter(Boolean);
+  if (companies.length) and.push({ companyName: { $in: companies } });
   const result = await paginate(and.length ? { $and: and } : {}, { page, limit, sort });
   const links = await publicLinkUrlsForJobs(result.items);
   return { ...result, items: result.items.map((job) => toCrmRow(job, links.get(String(job._id)) ?? null)) };
@@ -284,6 +288,17 @@ export async function crmFilterOptions() {
 }
 
 const FINISHED_STATUSES = [S.CRM_NOTIFICATION_SENT, S.COMPLETED];
+
+export async function companyJdCount(job, companyName) {
+  const companyKey = normalizeCompanyName(companyName) || null;
+  if (!companyKey) return { companyKey, jdCount: 1, earlierDeals: 0 };
+  const earlierDeals = await Job.countDocuments({
+    companyKey,
+    _id: { $lt: job._id },
+    hubspotDealId: { $ne: job.hubspotDealId },
+  });
+  return { companyKey, jdCount: earlierDeals + 1, earlierDeals };
+}
 
 export async function crmCompanySummary() {
   const waiting = {
@@ -308,9 +323,12 @@ export async function crmCompanySummary() {
     { $sort: { _id: 1 } },
     { $limit: 2000 },
   ]);
+  const checkpointsOf = await companyCheckpointsFor(rows.map((row) => normalizeCompanyName(row._id)));
   return {
     items: rows.map((row) => ({
       name: row._id,
+      companyKey: normalizeCompanyName(row._id),
+      checkpoints: checkpointsOf(normalizeCompanyName(row._id)),
       deals: row.deals,
       inProgress: row.deals - row.waiting - row.completed - row.failed - row.stopped,
       waiting: row.waiting,

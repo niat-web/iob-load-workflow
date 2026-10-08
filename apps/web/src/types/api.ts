@@ -113,8 +113,16 @@ export interface AwaitingApproval {
   requestedAt: string | null;
 }
 
+export interface CheckpointSwitches {
+  firstEmails: boolean;
+  secondEmails: boolean;
+  secondCalls: boolean;
+}
+
 export interface CompanySummary {
   name: string;
+  companyKey: string;
+  checkpoints: CheckpointSwitches;
   deals: number;
   inProgress: number;
   waiting: number;
@@ -251,6 +259,7 @@ export interface PreviewItem {
   value: string | null;
   href?: string;
   wide?: boolean;
+  image?: boolean;
 }
 
 export interface LoadPreview {
@@ -284,6 +293,7 @@ export interface ApprovalPreview {
     windowHours: number;
     reminderHours: number[];
     closesAt: string | null;
+    studentEmailsOn: boolean;
   };
 }
 
@@ -372,7 +382,7 @@ export interface PsmJobResponse {
 }
 
 export type CandidateStatus = "RECOMMENDED" | "CONSIDER" | "NOT_RECOMMENDED";
-export type CandidateAnalysisStatus = "COMPLETED" | "FAILED" | "NO_RESUME" | "PENDING";
+export type CandidateAnalysisStatus = "COMPLETED" | "FAILED" | "NO_RESUME" | "PENDING" | "QUEUED" | "SKIPPED";
 
 export interface Candidate {
   studentId: string;
@@ -394,6 +404,7 @@ export interface Candidate {
   candidateStatus: CandidateStatus | null;
   psmRemarks: string;
   analysisStatus: CandidateAnalysisStatus;
+  interest?: CandidateInterest | null;
 }
 
 export type CandidateSort = "finalRank:asc" | "aiRank:asc" | "overallScore:desc";
@@ -424,34 +435,135 @@ export interface SubmitPoolResponse {
   publicLinkUrl: string;
 }
 
-export interface PublicCandidate {
-  ref: string;
-  finalPriority: string;
-  studentName: string;
-  hasResume: boolean;
-  relevantSkills: string[];
-  resumeScore: number | null;
-  gritScore: number | null;
-  assessmentScore: number | null;
-  interviewScore: number | null;
-  overallScore: number | null;
-  candidateStatus: CandidateStatus | null;
+export interface SharedColumn {
+  key: string;
+  label: string;
+  custom: boolean;
+  editable: boolean;
 }
 
-export interface PublicPool {
+export interface SharedRow {
+  id: string;
+  source: "PSM" | "ADDED";
+  resumeRef: string | null;
+  values: Record<string, string>;
+}
+
+export interface SharedProfiles {
   companyName: string;
   jobRole: string;
+  jobId: string | null;
   totalApplied: number;
-  submittedAt: string;
-  expiresAt: string;
-  candidates: PublicCandidate[];
+  columns: SharedColumn[];
+  rows: SharedRow[];
+  updatedAt: string | null;
+}
+
+export interface SharedColumnChoice {
+  columns: { key: string; label: string }[];
+  selected: string[];
+}
+
+export type SharedLinkStatus = "ACTIVE" | "EXPIRED" | "INACTIVE";
+
+export interface InterviewCompany {
+  jobId: string;
+  learningPortalJobId: string;
+  companyName: string;
+  jobRole: string;
+  companyLogoUrl: string | null;
+  crmEmail: string | null;
+  url: string;
+  linkStatus: SharedLinkStatus;
+  createdAt: string | null;
+  expiresAt: string | null;
+  profiles: number;
+  meets: number;
+  interviewers: number;
+}
+
+export interface InterviewColumn extends SharedColumn {
+  internal: boolean;
+}
+
+export type MeetRecordingStatus = "PENDING" | "ON" | "FAILED";
+
+export interface InterviewMeetInfo {
+  meetUrl: string;
+  eventLink: string | null;
+  eventName: string;
+  description: string;
+  startAt: string | null;
+  durationMinutes: number | null;
+  timeZone: string | null;
+  organizerEmail: string | null;
+  crmEmail: string | null;
+  studentEmail: string | null;
+  interviewerEmails: string[];
+  otherEmails: string[];
+  recording: { status: MeetRecordingStatus; transcript: boolean; error: string | null };
+  scheduledBy: string | null;
+  updatedAt: string | null;
+}
+
+export interface InterviewRow extends SharedRow {
+  studentName: string;
+  meet: InterviewMeetInfo | null;
+}
+
+export interface InterviewSheet {
+  jobId: string;
+  learningPortalJobId: string;
+  companyName: string;
+  jobRole: string;
+  companyLogoUrl: string | null;
+  url: string;
+  linkStatus: SharedLinkStatus;
+  totalApplied: number;
+  interviewerEmails: string[];
+  meetEnabled: boolean;
+  meetProblem: string | null;
+  organizerEmail: string | null;
+  columns: InterviewColumn[];
+  rows: InterviewRow[];
+  updatedAt: string | null;
+}
+
+export interface GoogleConnectionStatus {
+  mode: "oauth" | "delegation" | "mock";
+  configured: boolean;
+  connected: boolean;
+  status: "ACTIVE" | "REVOKED" | null;
+  email: string | null;
+  expectedEmail: string | null;
+  connectedBy: string | null;
+  connectedAt: string | null;
+  lastError: string | null;
+  problem: string | null;
+}
+
+export interface MeetRequest {
+  eventName: string;
+  description: string;
+  startAt: string;
+  durationMinutes: number;
+  timeZone: string;
+  studentEmail: string;
+  interviewerEmails: string[];
+  otherEmails: string[];
+  saveInterviewers: boolean;
+}
+
+export interface MeetResponse {
+  meet: InterviewMeetInfo;
+  values: Record<string, string>;
 }
 
 export const ELIGIBILITY_STATUSES = ["Eligible", "Placed", "Mint", "Do not Provided", "Not Interested"] as const;
 
-export const EDITABLE_PRODUCTS = ["NIAT", "Academy", "Intensive", "External", "Other"] as const;
+export const EDITABLE_PRODUCTS = ["NIAT", "Academy"] as const;
 
-export type PoolProduct = "NIAT" | "Academy" | "Intensive" | "External" | "Other" | "Unknown";
+export type PoolProduct = "NIAT" | "Academy";
 
 export interface EligiblePoolStudent {
   studentId: string;
@@ -459,7 +571,7 @@ export interface EligiblePoolStudent {
   studentName: string;
   mobile: string | null;
   email: string | null;
-  productGroup: PoolProduct;
+  productGroup: PoolProduct | null;
   campus: string | null;
   batch: string | null;
   eligibilityStatus: string | null;
@@ -580,16 +692,6 @@ export interface BoostCallRun {
   skippedNoPhone: number;
 }
 
-export interface BoostCrmAlert {
-  reminder: string;
-  at: string;
-  to: string | null;
-  appliedCount: number;
-  expectedPoolCount: number | null;
-  notApplied: number;
-  outcome: string | null;
-}
-
 export interface BoostOverview {
   deal: {
     id: string;
@@ -610,7 +712,6 @@ export interface BoostOverview {
     agentId: string | null;
     agentCreatedAt: string | null;
     spokenJd: string | null;
-    maxSeconds: number;
     active: boolean;
     counts: Record<AiCallStatus, number>;
     interested: number;
@@ -619,5 +720,62 @@ export interface BoostOverview {
     lastSyncedAt: string | null;
     items: BoostCallRow[];
   };
-  crmAlerts: BoostCrmAlert[];
+  controls: { reminderEmails: boolean; aiCalls: boolean };
+}
+
+export interface AppSettings {
+  flow: { mode: FlowMode; crmOptions: Record<FlowMode, boolean>; approvals: Record<ApprovalGate, boolean> };
+  studentEmails: { jobEmail: boolean; jobUpdates: boolean; boostReminder: boolean };
+  checkpoints: CheckpointSwitches;
+  crmEmails: { poolReached: boolean; candidatePool: boolean };
+  aiCalls: { enabled: boolean };
+  interviews: { googleMeet: boolean };
+  automation: { aiJobContent: boolean; aiResumeAnalysis: boolean; hubspotWriteBack: boolean };
+  timing: {
+    applicationWindowHours: number;
+    reminderOneHours: number;
+    reminderTwoHours: number;
+    boostEmailCooldownMinutes: number;
+  };
+}
+
+export interface AppSettingsRecord {
+  settings: AppSettings;
+  updatedBy: string | null;
+  updatedAt: string | null;
+  released?: number;
+}
+
+export interface CrmControls {
+  flow: { options: FlowMode[]; defaultMode: FlowMode; approvalSteps: { gate: ApprovalGate; label: string }[] };
+  reminderEmails: boolean;
+  aiCalls: boolean;
+  checkpoints: CheckpointSwitches;
+}
+
+export type InterestReason = "LOCATION" | "PAY" | "ROLE" | "TIMING" | "OTHER";
+
+export interface CandidateInterest {
+  interested: boolean;
+  reason: InterestReason | null;
+  comments: string;
+  submittedAt: string | null;
+}
+
+export interface JobUpdateForm {
+  companyName: string;
+  jobRole: string;
+  jobId: string | null;
+  updatedAt: string;
+  studentName: string;
+  changes: { label: string; oldValue: string; newValue: string }[];
+  response: CandidateInterest | null;
+}
+
+export interface JobUpdateAnswer {
+  userId: string;
+  jobId?: string;
+  interested: boolean;
+  reason?: InterestReason | null;
+  comments?: string;
 }

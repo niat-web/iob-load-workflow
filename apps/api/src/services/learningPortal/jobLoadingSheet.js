@@ -66,29 +66,3 @@ export async function sheetEligibilityTemplates() {
     return {};
   }
 }
-
-export const TRACKER_HEADERS = [
-  "Date", "Job Deal ID", "HubSpot Link", "Job ID", "Experience", "Job Type", "Job Source",
-  "Organization ID", "Company Name", "Company Website URL", "Company Logo URL", "Company LinkedIn URL",
-  "Job Title", "Location", "Skills", "Number of Positions Available", "Order", "Mode of Applying",
-  "Max Internship Duration", "Compensation Description", "Deadline", "CRM", "Profiling Done By",
-  "Min CTC/Stipend", "Max CTC/Stipend", "Min Internship Duration", "Enroll Plans",
-  "Internal Student List Link", "Max Update datetime",
-];
-
-export async function appendTrackerRow(values) {
-  const { sheets } = integrations;
-  if (!sheets.enabled) return false;
-  const worksheet = config.jobLoadingSheet.trackerWorksheet;
-  let headers = ((await sheets.getRows(worksheet))[0] ?? []).map((header) => String(header ?? "").trim());
-  if (!headers.some(Boolean)) {
-    headers = TRACKER_HEADERS;
-    await sheets.appendRow(worksheet, headers);
-  }
-  const byLowerName = new Map(Object.entries(values).map(([key, value]) => [key.toLowerCase(), value]));
-  await sheets.appendRow(
-    worksheet,
-    headers.map((header) => (header ? String(byLowerName.get(header.toLowerCase()) ?? "") : "")),
-  );
-  return true;
-}

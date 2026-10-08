@@ -7,7 +7,7 @@ export async function latestSnapshot(jobId) {
   return JobDealSnapshot.findOne({ jobId }).sort({ version: -1 }).lean();
 }
 
-export async function saveSnapshot(job, mapped, rawProperties, source) {
+export async function saveSnapshot(job, mapped, rawProperties, source, { company = null, owner = null } = {}) {
   const payloadHash = fullHash(mapped);
   for (let attempt = 0; attempt < 3; attempt++) {
     const latest = await latestSnapshot(job._id);
@@ -19,6 +19,8 @@ export async function saveSnapshot(job, mapped, rawProperties, source) {
         source: latest && source === "INITIAL" ? "RETRY" : source,
         mappedFields: mapped,
         rawProperties,
+        rawCompany: company,
+        rawOwner: owner,
         payloadHash,
         fetchedAt: now(),
       });

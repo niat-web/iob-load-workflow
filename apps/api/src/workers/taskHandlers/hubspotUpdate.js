@@ -1,5 +1,6 @@
 import { JOB_STATUS as S, NOTIFICATION_TYPE, TASK_TYPE, statusRank } from "../../config/statuses.js";
-import { Job, JobChangeHistory, JobEligibleStudent } from "../../models/index.js";
+import { Job, JobApplication, JobChangeHistory } from "../../models/index.js";
+import { formLinkBase, noticeFor } from "../../services/jobUpdateService.js";
 import { AUDIT, audit } from "../../services/auditService.js";
 import { applySubmittedInputs, diffTrackedFields, fullHash, mapDeal } from "../../services/dealMapper.js";
 import { latestSnapshot, saveSnapshot } from "../../services/dealSnapshotService.js";
@@ -7,17 +8,19 @@ import { integrations } from "../../services/integrations.js";
 import { buildPortalPayload, resendToTargets } from "../../services/learningPortal/portalLoader.js";
 import { notificationKey, sendBulk } from "../../services/notificationService.js";
 import { now } from "../../utils/clock.js";
+import { normalizeCompanyName } from "../../utils/helpers.js";
 import { pick } from "./dealProcessing.js";
 
 async function sendPendingUpdate(job) {
   const { version, changes } = job.pendingUpdate;
   const type = NOTIFICATION_TYPE.JOB_UPDATED;
-  const recipients = await JobEligibleStudent.find({ jobId: job._id, accessGrantedAt: { $ne: null } }).lean();
+  const notice = await noticeFor(job, version, changes);
+  const recipients = await JobApplication.find({ jobId: job._id, email: { $nin: [null, ""] } }).lean();
   const counts = await sendBulk({
     job,
     type,
     recipients,
-    payload: { changes },
+    payload: { changes, formUrl: formLinkBase(notice) },
     keyFor: (student) => notificationKey(job._id, type, student.studentId, `v${version}`),
   });
   const notified = counts.SENT + counts.DUPLICATE;
@@ -47,6 +50,8 @@ async function hubspotDealUpdate({ job }) {
 
   const bundle = await integrations.hubspot.fetchDealBundle(job.hubspotDealId);
   const mapped = applySubmittedInputs(mapDeal(bundle), job);
+  if (job.jdCount > 0) mapped.jdCount = job.jdCount;
+  if (!mapped.companyLogoUrl && job.companyLogoUrl) mapped.companyLogoUrl = job.companyLogoUrl;
   const previous = await latestSnapshot(job._id);
   if (previous && previous.payloadHash === fullHash(mapped)) return;
 
@@ -58,9 +63,10 @@ async function hubspotDealUpdate({ job }) {
     delete fields.jobType;
   }
   if (!fields.crmOwnerEmail) delete fields.crmOwnerEmail;
+  if (fields.companyName) fields.companyKey = normalizeCompanyName(fields.companyName) || null;
 
   if (!changes.length) {
-    await saveSnapshot(job, mapped, bundle.deal.properties, "WEBHOOK");
+    await saveSnapshot(job, mapped, bundle.deal.properties, "WEBHOOK", { company: bundle.company, owner: bundle.owner });
     await Job.updateOne({ _id: job._id }, { $set: fields });
     await audit({ action: AUDIT.HUBSPOT_UPDATE_APPLIED, entityId: job._id, metadata: { studentFacing: false } });
     return;
@@ -74,7 +80,7 @@ async function hubspotDealUpdate({ job }) {
   });
   await resendToTargets(updatedJob, portalPayload);
 
-  await saveSnapshot(job, mapped, bundle.deal.properties, "WEBHOOK");
+  await saveSnapshot(job, mapped, bundle.deal.properties, "WEBHOOK", { company: bundle.company, owner: bundle.owner });
   const changedAt = now();
   await JobChangeHistory.insertMany(
     changes.map((change) => ({

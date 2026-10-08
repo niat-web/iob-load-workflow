@@ -20,6 +20,18 @@ function failure(status, detail, retryAfter) {
   });
 }
 
+const FINAL_ANSWERED = new Set(["completed", "timeout", "silence-timeout", "disconnected"]);
+
+function providerStatus(presented) {
+  const status = String(presented ?? "").trim().toLowerCase().replace(/\s+/g, "-");
+  return status === "running" ? "in-progress" : status;
+}
+
+function secondsFrom(duration) {
+  const match = /^(\d+)m (\d+)s$/.exec(String(duration ?? ""));
+  return match ? Number(match[1]) * 60 + Number(match[2]) : null;
+}
+
 export class LiveNxtDialClient {
   async request(method, path, body) {
     let response;
@@ -77,8 +89,58 @@ export class LiveNxtDialClient {
   }
 
   async getBatchResults(batchId) {
-    const body = await this.request("GET", `/api/batches/${encodeURIComponent(batchId)}/results`);
+    let body;
+    try {
+      body = await this.request("GET", `/api/batches/${encodeURIComponent(batchId)}/results`);
+    } catch (error) {
+      if (error.status !== 404 || !/^\s*</.test(String(error.message).split(": ").slice(1).join(": "))) throw error;
+      return this.batchResultsFromItems(batchId);
+    }
     return { batch: body?.batch ?? null, calls: Array.isArray(body?.calls) ? body.calls : [] };
+  }
+
+  async batchResultsFromItems(batchId) {
+    const items = await this.request("GET", `/api/batches/${encodeURIComponent(batchId)}/items`);
+    const calls = [];
+    for (const item of Array.isArray(items) ? items : []) {
+      const status = providerStatus(item.status);
+      let rated = null;
+      if (FINAL_ANSWERED.has(status)) {
+        rated = await this.request("GET", `/api/ratings/${encodeURIComponent(item.id)}`).catch((error) => {
+          logger.warn({ err: error, callId: item.id }, "NxtDial rating could not be read");
+          return null;
+        });
+      }
+      const ratingStatus = rated?.ratingStatus ?? null;
+      calls.push({
+        callId: String(item.id),
+        name: item.studentName ?? null,
+        phone: item.phone ?? null,
+        email: item.email ?? null,
+        status: rated?.callStatus ? providerStatus(rated.callStatus) : status,
+        subStatus: rated?.subStatus ?? null,
+        startedAt: rated?.startedAtIso ?? null,
+        endedAt: rated?.endedAtIso ?? null,
+        durationSeconds: rated?.durationSeconds ?? secondsFrom(item.duration),
+        recordingUrl: rated?.recordingUrl ?? null,
+        summary: rated?.summary || item.summary || null,
+        metadata: null,
+        errorMessage: null,
+        ratingStatus,
+        rating:
+          rated && ratingStatus === "rated"
+            ? {
+                overallRating: rated.overallRating ?? null,
+                remarks: rated.remarks || null,
+                followUpStatus: rated.followUpStatus || null,
+                callBack: rated.callBack || null,
+                columnHeaders: rated.columnHeaders ?? [],
+                cells: rated.cells ?? null,
+              }
+            : null,
+      });
+    }
+    return { batch: { id: String(batchId) }, calls };
   }
 }
 

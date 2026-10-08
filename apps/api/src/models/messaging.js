@@ -65,15 +65,14 @@ export const AiCall = mongoose.model("AiCall", aiCallSchema);
 const publicLinkSchema = new mongoose.Schema(
   {
     jobId: { type: ObjectId, ref: "Job", required: true, unique: true },
-    tokenHash: { type: String, required: true, unique: true },
-    tokenEncrypted: { type: String, required: true },
+    learningPortalJobId: { type: String, required: true, unique: true },
     createdBy: { type: String, required: true },
     expiresAt: { type: Date, required: true },
     isActive: { type: Boolean, default: true },
     lastAccessedAt: { type: Date, default: null },
     accessCount: { type: Number, default: 0 },
   },
-  { timestamps: true, collection: "public_links" },
+  { timestamps: true, collection: "shared_links" },
 );
 
 export const PublicLink = mongoose.model("PublicLink", publicLinkSchema);

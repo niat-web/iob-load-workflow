@@ -4,8 +4,9 @@ import assert from "node:assert/strict";
 import { config } from "../src/config/env.js";
 import { reportMissingSettings } from "../src/config/startupReport.js";
 import { JOB_STATUS, NOTIFICATION_TYPE, TASK_TYPE } from "../src/config/statuses.js";
+import { MockDealOverride } from "../src/services/hubspotClient.js";
 import { resetIntegrations } from "../src/services/integrations.js";
-import { Job, JobEligibleStudent, JobHubspotMapping, NotificationLog, WorkflowTask } from "../src/models/index.js";
+import { Job, JobDealSnapshot, JobEligibleStudent, JobHubspotMapping, NotificationLog, WorkflowTask } from "../src/models/index.js";
 import { runDueTasks, runTask } from "../src/workers/workflowWorker.js";
 import { claimNextTask } from "../src/services/taskQueue.js";
 import {
@@ -153,6 +154,58 @@ describe("CRM deal processing", () => {
 
     const psm = await loginAs("psm.user@example.com", "PSM");
     assert.equal((await psm.get("/api/crm/companies")).status, 403);
+  });
+
+  test("JD count is the number of earlier deals for the same company plus one", async () => {
+    const companies = { 12345: "Acme Pvt Ltd", 12346: "ACME", 12347: "Other Labs", 12348: "acme private limited" };
+    for (const [dealId, name] of Object.entries(companies)) {
+      await MockDealOverride.updateOne({ dealId }, { $set: { properties: { company_name_override: name } } }, { upsert: true });
+    }
+    const ids = {};
+    for (const dealId of Object.keys(companies)) {
+      ids[dealId] = (await submitDeal(crm, dealId)).body.job.id;
+      await runDueTasks();
+    }
+    const jdCount = async (dealId) => (await Job.findById(ids[dealId])).jdCount;
+    assert.equal(await jdCount("12345"), 1);
+    assert.equal(await jdCount("12346"), 2, "the same company with a different spelling counts");
+    assert.equal(await jdCount("12347"), 1, "another company starts at 1");
+    assert.equal(await jdCount("12348"), 3);
+    assert.equal((await Job.findById(ids["12348"])).companyKey, "acme");
+
+    const detail = (await crm.get(`/api/crm/deals/${ids["12348"]}`)).body;
+    assert.equal(detail.jdCount, 3);
+    const rejected = await crm.post("/api/crm/deals/process").set(XHR).send({ dealId: "12349", jdCount: 9 });
+    assert.equal(rejected.status, 202);
+    await runDueTasks();
+    assert.equal((await Job.findById(rejected.body.job.id)).jdCount, 1, "a JD count sent by the client is ignored");
+  });
+
+  test("the company logo is looked up when the deal is fetched, and the raw HubSpot data is stored", async () => {
+    await MockDealOverride.updateOne(
+      { dealId: "12347" },
+      { $set: { properties: { company_name_override: "Logo Labs", company_logo_link: "https://cdn.example.com/logo-labs.png" } } },
+      { upsert: true },
+    );
+    await MockDealOverride.updateOne(
+      { dealId: "12348" },
+      { $set: { properties: { company_logo_link: "https://f.hubspot-logos.com/placeholder.png" } } },
+      { upsert: true },
+    );
+    const plain = (await submitDeal(crm, "12346")).body.job.id;
+    const withLogo = (await submitDeal(crm, "12347")).body.job.id;
+    const placeholder = (await submitDeal(crm, "12348")).body.job.id;
+    await runDueTasks();
+
+    assert.equal((await Job.findById(plain)).companyLogoUrl, null, "nothing found means no logo");
+    assert.equal((await Job.findById(withLogo)).companyLogoUrl, "https://cdn.example.com/logo-labs.png", "the HubSpot logo is the fallback");
+    assert.equal((await Job.findById(placeholder)).companyLogoUrl, null, "HubSpot placeholder logos are ignored");
+
+    const snapshot = await JobDealSnapshot.findOne({ jobId: withLogo }).sort({ version: 1 }).lean();
+    assert.equal(snapshot.rawCompany.name, "Logo Labs");
+    assert.ok(snapshot.rawOwner.email);
+    assert.ok(Object.keys(snapshot.rawProperties).length > 5);
+    assert.equal(snapshot.mappedFields.companyLogoUrl, "https://cdn.example.com/logo-labs.png");
   });
 
   test("a missing key never stops the API; only the step that needs it fails, with what to add", async () => {

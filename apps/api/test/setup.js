@@ -33,4 +33,5 @@ Object.assign(process.env, {
   TASK_MAX_ATTEMPTS: "3",
   HUBSPOT_OWNER_MAP_JSON: fs.readFileSync(new URL("../src/data/hubspotOwnerMap.example.json", import.meta.url), "utf8"),
   GOOGLE_CLIENT_ID: "1234567890-testclient.apps.googleusercontent.com",
+  GOOGLE_CLIENT_SECRET: "test-google-client-secret",
 });

@@ -1,4 +1,4 @@
-import { BriefcaseBusiness, Building2, GraduationCap, House, Settings, UsersRound, type LucideIcon } from "lucide-react";
+import { BriefcaseBusiness, Building2, GraduationCap, House, Settings, UsersRound, Video, type LucideIcon } from "lucide-react";
 import { useEffect, type ReactNode } from "react";
 import { NavLink } from "react-router";
 import { preloadPage, preloadPagesWhenIdle } from "../pages/pageLoaders";
@@ -19,6 +19,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/crm", label: "Dashboard", icon: House, roles: ["CRM", "ADMIN"], end: true },
   { to: "/crm/deals", label: "Deals", icon: BriefcaseBusiness, roles: ["CRM", "ADMIN"] },
   { to: "/crm/companies", label: "Companies", icon: Building2, roles: ["CRM", "ADMIN"] },
+  { to: "/crm/interviews", label: "Interviews", icon: Video, roles: ["CRM", "ADMIN"] },
   { to: "/psm", label: "Candidate Pools", icon: UsersRound, roles: ["PSM", "ADMIN"] },
   { to: "/admin/eligible-pool", label: "Eligible Pool", icon: GraduationCap, roles: ["ADMIN"] },
   { to: "/settings", label: "Settings", icon: Settings, roles: ["CRM", "PSM", "ADMIN"] },

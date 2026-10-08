@@ -34,7 +34,7 @@ const environmentLabel = (name: string) => name.charAt(0).toUpperCase() + name.s
 function FlowSection({ deal }: { deal: CrmDealDetail }) {
   const stepByStep = deal.flowMode === "STEP_BY_STEP";
   const items = [
-    { label: "Mode", value: stepByStep ? "Step by step" : "Automatic" },
+    { label: "Flow when submitted", value: stepByStep ? "Step by step" : "Automatic" },
     { label: "Waiting for", value: deal.awaitingApproval ? deal.awaitingApproval.label : DASH },
   ];
   if (deal.cancelledBy) {

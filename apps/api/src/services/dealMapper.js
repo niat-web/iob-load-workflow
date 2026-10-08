@@ -110,7 +110,6 @@ export function mapDeal({ deal, company, owner }) {
 export function applySubmittedInputs(mapped, job) {
   const next = { ...mapped };
   if (job?.expectedPoolCount > 0) next.expectedPoolCount = job.expectedPoolCount;
-  if (job?.submittedInputs?.jdCount > 0) next.jdCount = job.submittedInputs.jdCount;
   const inputs = job?.submittedInputs;
   if (!inputs) return next;
   const crmOwner = findHubspotOwner(inputs.crmOwnerId);

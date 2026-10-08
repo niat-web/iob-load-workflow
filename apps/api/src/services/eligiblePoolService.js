@@ -9,8 +9,8 @@ import { createBigQueryRepository } from "./bigQueryRepository.js";
 
 const SYNC_ID = "eligible-pool";
 const STALE_SYNC_MS = 2 * 60 * 60 * 1000;
-export const PRODUCT_GROUPS = ["NIAT", "Academy", "Intensive", "External", "Other", "Unknown"];
-export const EDITABLE_PRODUCTS = PRODUCT_GROUPS.filter((name) => name !== "Unknown");
+export const PRODUCT_GROUPS = ["NIAT", "Academy"];
+export const EDITABLE_PRODUCTS = PRODUCT_GROUPS;
 export const POOL_SORT_FIELDS = [
   "studentId",
   "niatId",
@@ -28,16 +28,13 @@ export const ELIGIBLE = "Eligible";
 
 export function productGroupFor(tag) {
   const value = String(tag ?? "").trim().toUpperCase();
-  if (!value) return "Unknown";
   if (value === "NIAT" || value.startsWith("NIAT_")) return "NIAT";
   if (value === "ACADEMY" || value.startsWith("CCBP_ACADEMY")) return "Academy";
-  if (value.includes("INTENSIVE")) return "Intensive";
-  if (value.startsWith("NXTWAVE_EXTERNAL")) return "External";
-  return "Other";
+  return null;
 }
 
 export function productGroupsForPlans(enrollPlans) {
-  return [...new Set((enrollPlans ?? []).map(productGroupFor))].filter((group) => group !== "Unknown");
+  return [...new Set((enrollPlans ?? []).map(productGroupFor))].filter(Boolean);
 }
 
 export function poolSyncConfigured() {
@@ -87,7 +84,7 @@ function toSyncInfo(sync) {
 }
 
 async function savePage(rows, syncedAt) {
-  const docs = rows.map((row) => toPoolStudent(row, syncedAt)).filter((doc) => doc.studentId);
+  const docs = rows.map((row) => toPoolStudent(row, syncedAt)).filter((doc) => doc.studentId && doc.productGroup);
   if (!docs.length) return 0;
   try {
     await EligiblePoolStudent.bulkWrite(
@@ -175,9 +172,10 @@ function sortStage(sort) {
 
 export async function listPool({ search, product, status, campus, sort, page, limit }) {
   const filter = {};
-  if (product) filter.productGroup = product;
-  if (status) filter.eligibilityStatus = status;
-  if (campus) filter.campus = campus;
+  const many = (value) => [].concat(value ?? []).filter(Boolean);
+  if (many(product).length) filter.productGroup = { $in: many(product) };
+  if (many(status).length) filter.eligibilityStatus = { $in: many(status) };
+  if (many(campus).length) filter.campus = { $in: many(campus) };
   const term = search?.trim();
   if (term) {
     const pattern = new RegExp(escapeRegex(term), "i");
@@ -242,7 +240,7 @@ function editableFields(input) {
   const fields = { ...input };
   delete fields.studentId;
   if ("email" in fields) fields.email = fields.email ? fields.email.toLowerCase() : null;
-  if ("productGroup" in fields) fields.productGroup = fields.productGroup || "Unknown";
+  if ("productGroup" in fields) fields.productGroup = fields.productGroup || null;
   return fields;
 }
 

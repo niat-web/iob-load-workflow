@@ -102,15 +102,20 @@ always returned in `redirectTo`). ADMIN may open both `/crm` and `/psm`.
 Body:
 
 ```json
-{ "dealId": "1234567890", "flowMode": "AUTOMATIC", "expectedPoolCount": 70, "jdCount": 1,
+{ "dealId": "1234567890", "flowMode": "AUTOMATIC", "expectedPoolCount": 70,
   "crmOwnerId": "1000001", "profilingPocId": "1000002", "iseId": "1000003" }
 ```
 
-`flowMode` is `AUTOMATIC` (default) or `STEP_BY_STEP`. The API also accepts a pasted HubSpot deal URL
-and extracts the ID. `expectedPoolCount` (whole number ≥ 1) is stored only in the app (HubSpot never
-sets or changes it); `crmOwnerId` overrides the HubSpot deal owner; `profilingPocId` and `iseId` are optional. `jdCount` (whole number ≥ 1) is stored in the app and written to the HubSpot deal's `jd_count` property with the job ID; without it, the deal's own `jd_count` is used. Owner IDs must come from
+`flowMode` (`AUTOMATIC` or `STEP_BY_STEP`) must be one of the flows the admin lets CRMs choose
+(`GET /api/crm/controls` → `flow.options`), otherwise `400`. Without it, or when CRMs are shown no
+flow, the deal uses `flow.defaultMode`. The API also accepts a pasted HubSpot deal URL and extracts
+the ID. `expectedPoolCount` (whole number ≥ 1) is stored only in the app (HubSpot never
+sets or changes it); `crmOwnerId` overrides the HubSpot deal owner; `profilingPocId` and `iseId` are optional. The JD count is not sent: when the deal is fetched it is
+set to the number of earlier deals in the app for the same company (name compared without case,
+punctuation or suffixes such as "Pvt Ltd") plus one, and written to the HubSpot deal's `jd_count`
+property with the job ID. Owner IDs must come from
 `GET /api/crm/hubspot-owners`. The CRM owner, Profiling POC and ISE go into the portal job
-(`job_extra_details.crm / profiling_poc / ise`, "NA" when empty), the tracker sheet, and the HubSpot deal's `crm`, `profiling_poc` and `ise` properties (written
+(`job_extra_details.crm / profiling_poc / ise`, "NA" when empty) and the HubSpot deal's `crm`, `profiling_poc` and `ise` properties (written
 through the deal webhook).
 
 - `202` → `{ "job": CrmDealRow, "duplicate": false }` for a new deal.
@@ -125,6 +130,40 @@ map (`HUBSPOT_OWNER_MAP_JSON` or the git-ignored `apps/api/src/data/hubspotOwner
 `defaultOwnerId` is the signed-in user's HubSpot owner (linked on the account, or matched by email);
 the form preselects it for CRM owner, Profiling POC and ISE.
 
+### `GET /api/crm/controls`
+
+`{ flow: { options: FlowMode[], defaultMode, approvalSteps: [{ gate, label }] }, reminderEmails, aiCalls }`:
+the flows CRMs may pick (empty = no choice shown), the flow used when they do not pick, the steps a
+Step by step deal stops at, and whether the Boost page actions are on.
+
+### `PATCH /api/crm/companies/controls`
+
+Body `{ companyName, checkpoints: { firstEmails?, secondEmails?, secondCalls? } }` (CRM or ADMIN). Turns a
+checkpoint action on or off for one company (all on by default). `GET /api/crm/companies` returns each
+company's `companyKey` and `checkpoints`. An action runs only when both the admin setting and the
+company setting are on.
+
+### Job update interest form (public, no sign-in)
+
+- `GET /api/public/job-updates/:token?user_id=<student ID>&job_id=<portal job ID>` →
+  `{ companyName, jobRole, jobId, updatedAt, studentName, changes: [{ label, oldValue, newValue }], response }`.
+  `404` when the link or the student (not an applicant of that job) does not match.
+- `POST /api/public/job-updates/:token` with `{ userId, jobId?, interested, reason?, comments? }`
+  (`reason`: `LOCATION`, `PAY`, `ROLE`, `TIMING`, `OTHER`) → `{ response }`. One answer per student per
+  update; sending again replaces it. PSM candidate rows include the latest answer as `interest`.
+
+### Admin settings (`ADMIN` only)
+
+- `GET /api/admin/settings` → `{ settings, updatedBy, updatedAt }` where `settings` is
+  `{ flow: { mode, crmOptions: { AUTOMATIC, STEP_BY_STEP }, approvals: { DEAL_DETAILS, LOAD_BETA, LOAD_PROD, ELIGIBLE_STUDENTS, START_WINDOW } },
+  studentEmails: { jobEmail, jobUpdates, boostReminder }, checkpoints: { firstEmails, secondEmails, secondCalls },
+  crmEmails: { poolReached, candidatePool },
+  aiCalls: { enabled }, interviews: { googleMeet }, automation: { aiJobContent, aiResumeAnalysis, hubspotWriteBack },
+  timing: { applicationWindowHours, reminderOneHours, reminderTwoHours, boostEmailCooldownMinutes } }`.
+- `PATCH /api/admin/settings` with any part of `settings` → the same shape plus `released` (deals that
+  were waiting at a step that no longer needs approval and now continue). `400` when Step by step can be
+  used but no step is turned on, or the checkpoints are not before the window closes.
+
 ### Admin users (`ADMIN` only)
 
 - `GET /api/admin/users` → `{ users: AdminUser[] }` where
@@ -138,7 +177,8 @@ the form preselects it for CRM owner, Profiling POC and ISE.
 
 ### `GET /api/crm/deals`
 
-Query: `search` (company, deal ID or role), `status` (a `displayStatus.key`), `company`,
+Query: `search` (company, deal ID or role), `status` (one or more `displayStatus.key` values joined
+with `|`), `company` (one or more names joined with `|`),
 `page`, `limit`, `sort` (`updatedAt:desc` default; also `updatedAt:asc`, `companyName:asc`,
 `companyName:desc`, `progressPercent:desc`).
 
@@ -287,6 +327,37 @@ All three return `409 NOT_WAITING` when the deal is not waiting at that gate.
 
 ---
 
+## Interviews (roles: CRM, ADMIN)
+
+- `GET /api/interviews/companies` → `{ items: [{ jobId, learningPortalJobId, companyName, jobRole,
+  companyLogoUrl, crmEmail, url, linkStatus: "ACTIVE" | "EXPIRED" | "INACTIVE", createdAt, expiresAt,
+  profiles, meets, interviewers }] }`, one per shared profiles link, newest first.
+- `GET /api/interviews/jobs/:jobId` → the shared sheet plus `internal: true` columns (`studentEmail`,
+  `meetLink`, `meetTime`, `recording`, added `i_` columns), `interviewerEmails`, `meetEnabled`,
+  `meetProblem` and per row `studentName` and `meet` (event details, guests, recording state).
+- `PATCH /jobs/:jobId/interviewers` `{ emails }` saves the company's interviewer emails (max 20).
+- `POST /jobs/:jobId/rows`, `PATCH /jobs/:jobId/rows/:rowId` `{ key, value }`, `DELETE /jobs/:jobId/rows/:rowId`:
+  same rules as the shared sheet; internal keys are stored only for this page (`recording` is read only).
+- `POST /jobs/:jobId/columns` `{ label }` adds an internal column; `PATCH` / `DELETE /jobs/:jobId/columns/:key`
+  rename or delete internal (`i_`) or shared (`c_`) added columns.
+- `POST /jobs/:jobId/rows/:rowId/meet` `{ eventName, description, startAt (ISO), durationMinutes (15-480),
+  timeZone, studentEmail, interviewerEmails[], otherEmails[], saveInterviewers }` → `{ meet, values }`.
+  Creates the Calendar event with a Meet link and invites (or updates the row's existing event), then
+  turns on auto-recording. `409 MEET_OFF` when turned off in Settings, `409 MEET_BUSY` while the same
+  row is being set up, `503 MEET_NOT_SET_UP` without credentials, `502 MEET_FAILED` with Google's reason.
+
+- `GET /api/interviews/google` → `{ mode: "oauth" | "delegation" | "mock", configured, connected, status,
+  email, expectedEmail, connectedBy, connectedAt, lastError, problem }`. Never returns tokens.
+- `GET /api/interviews/google/connect?returnTo=/crm/interviews[/<jobId>]` redirects to Google sign-in
+  (offline access, Calendar + Meet scopes) and sets a short-lived state cookie.
+- `GET /api/interviews/google/callback` (Google redirects here) stores the encrypted permission and
+  redirects to `returnTo?google=connected`, or `?google=denied|state|scopes|account|norefresh|failed|setup`.
+- `DELETE /api/interviews/google` revokes the permission at Google and removes it (`204`).
+
+None of these fields are returned by `/api/shared/profiles/:jobId`.
+
+---
+
 ## PSM (roles: PSM, ADMIN)
 
 ### `GET /api/psm/jobs`
@@ -396,40 +467,34 @@ Body (any subset):
 ### `POST /api/psm/jobs/:jobId/submit`
 
 Freezes the review, generates the public link and triggers the CRM email.
-`200` → `{ "job": PsmJobDetail, "publicLinkUrl": "https://.../public/candidate-pool/<token>" }`.
+`200` → `{ "job": PsmJobDetail, "publicLinkUrl": "https://.../shared/profiles/<learningPortalJobId>" }`.
+
+### `GET` / `PATCH /api/psm/jobs/:jobId/shared-columns`
+
+`GET` → `{ columns: [{ key, label }], selected: string[] }`. `PATCH { columns: string[] }` saves the
+columns shown on the company page for this job and makes them the default for the next jobs.
 Submitting twice returns the same result (idempotent).
 
 ---
 
 ## Public (no auth)
 
-### `GET /api/public/candidate-pools/:token`
+### Shared profiles (`/api/shared/profiles/:jobId`, no sign-in)
 
-```ts
-type PublicPool = {
-  companyName: string;
-  jobRole: string;
-  totalApplied: number;
-  submittedAt: string;
-  expiresAt: string;
-  candidates: {
-    ref: string;                 // opaque per-candidate reference
-    finalPriority: string;
-    studentName: string;
-    hasResume: boolean;
-    relevantSkills: string[];
-    resumeScore: number | null;
-    gritScore: number | null;
-    assessmentScore: number | null;
-    interviewScore: number | null;
-    overallScore: number | null;
-    candidateStatus: CandidateStatus | null;
-  }[];                           // sorted by final priority
-};
-```
+`:jobId` is the Learning Portal job ID. Anyone with the link can read and edit.
 
-- `404 NOT_FOUND` for unknown or deactivated links, `410 LINK_EXPIRED` for expired links.
-- Resume: `GET /api/public/candidate-pools/:token/candidates/:ref/resume`.
+- `GET` → `{ companyName, jobRole, jobId, totalApplied, columns: [{ key, label, custom, editable }],
+  rows: [{ id, source: "PSM" | "ADDED", resumeRef, values: Record<key, string> }], updatedAt }`. Only
+  the columns the PSM picked (plus added columns) are sent; student IDs, emails, mobiles and resume
+  storage URLs never are.
+- `PATCH /rows/:rowId` `{ key, value }` edits a cell (`204`). The resume column and hidden columns
+  cannot be edited (`400`).
+- `POST /rows` `{ values? }` adds a row (`201 { row }`); `DELETE /rows/:rowId` deletes a row added on the
+  page (`409` for shortlisted rows).
+- `POST /columns` `{ label }` adds a column (`201 { column }`); `PATCH /columns/:key` `{ label }` renames
+  it; `DELETE /columns/:key` deletes it and its values. Only added columns can be renamed or deleted.
+- `GET /resumes/:ref` streams a shortlisted profile's resume.
+- `404 NOT_FOUND` for unknown or deactivated links, `410 LINK_EXPIRED` after 30 days.
 
 ---
 

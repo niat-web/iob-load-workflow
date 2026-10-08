@@ -15,6 +15,7 @@ import { SearchInput } from "../components/SearchInput";
 import { StatusBadge } from "../components/StatusBadge";
 import { SummaryStrip, SummaryStripSkeleton } from "../components/SummaryStrip";
 import { useToast } from "../components/toast-context";
+import { SharedColumnsMenu } from "../components/psm/SharedColumnsMenu";
 import { Button } from "../components/ui/Button";
 import { cardClass } from "../components/ui/styles";
 import { useClampPage, useUrlFilters } from "../hooks/useUrlFilters";
@@ -225,6 +226,9 @@ function PSMReview({ jobId }: { jobId: string }) {
             label="Filter by candidate status"
             className="w-[calc(50%-4px)] sm:w-48"
           />
+          <div className="sm:ml-auto">
+            <SharedColumnsMenu jobId={jobId} />
+          </div>
           {hasFilters && (
             <Button variant="ghost" onClick={clearFilters} icon={<FilterX className="size-4" aria-hidden />}>
               Clear Filters

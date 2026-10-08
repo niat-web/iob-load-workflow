@@ -1,4 +1,4 @@
-import { RefreshCw, SearchX } from "lucide-react";
+import { FilterX, RefreshCw, SearchX } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { errorMessage } from "../../api/client";
 import { useCrmDealFilters, useCrmDeals, useDeleteDeal, useRetryDeal, useStopDeal } from "../../api/crm";
@@ -9,7 +9,7 @@ import { DealDetailsDrawer } from "./DealDetailsDrawer";
 import { DealLogsDrawer } from "./DealLogsDrawer";
 import { DataTable } from "../DataTable";
 import { EmptyState } from "../EmptyState";
-import { FilterSelect } from "../FilterSelect";
+import { FilterMenu } from "../FilterMenu";
 import { Pagination } from "../Pagination";
 import { SearchInput } from "../SearchInput";
 import { useToast } from "../toast-context";
@@ -18,7 +18,7 @@ import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 import { useClampPage, useUrlFilters } from "../../hooks/useUrlFilters";
 import type { CrmDealRow, CrmDealsQuery } from "../../types/api";
 import { cn } from "../../utils/cn";
-import { DEFAULT_PAGE_SIZE } from "../../utils/pagination";
+import { DEFAULT_PAGE_SIZE, splitFilterValues } from "../../utils/pagination";
 
 export const CRM_FILTER_KEYS = ["q", "status", "company"] as const;
 
@@ -136,25 +136,26 @@ export function DealsSection({ emptyDescription, fixedPageSize }: DealsSectionPr
             onChange={(v) => setFilter("q", v)}
             placeholder="Search company, Deal ID or role..."
             label="Search deals"
-            className="w-full min-w-[260px] flex-1"
+            className="w-full sm:w-80"
           />
-          <FilterSelect
-            value={filters.status}
-            onChange={(v) => setFilter("status", v)}
-            options={filterOptions.data?.statuses ?? []}
-            placeholder="All Status"
-            label="Filter by status"
-            className="w-[calc(50%-5px)] sm:w-44"
+          <FilterMenu
+            categories={[
+              { key: "status", label: "Status", options: filterOptions.data?.statuses ?? [] },
+              { key: "company", label: "Company", options: filterOptions.data?.companies ?? [] },
+            ]}
+            values={{ status: splitFilterValues(filters.status), company: splitFilterValues(filters.company) }}
+            onChange={(key, values) => setFilter(key as (typeof CRM_FILTER_KEYS)[number], values.join("|"))}
+            onClear={clearFilters}
           />
-          <FilterSelect
-            value={filters.company}
-            onChange={(v) => setFilter("company", v)}
-            options={filterOptions.data?.companies ?? []}
-            placeholder="All Companies"
-            label="Filter by company"
-            className="w-[calc(50%-5px)] sm:w-44"
-          />
-          <IconButton label="Refresh" large onClick={refresh}>
+          <Button
+            variant="ghost"
+            onClick={clearFilters}
+            disabled={!hasFilters}
+            icon={<FilterX className="size-4" aria-hidden />}
+          >
+            Clear Filters
+          </Button>
+          <IconButton label="Refresh" large onClick={refresh} className="sm:ml-auto">
             <RefreshCw className={cn("size-4", deals.isFetching && "animate-spin")} aria-hidden />
           </IconButton>
         </div>

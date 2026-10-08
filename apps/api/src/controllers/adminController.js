@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { config } from "../config/env.js";
-import { ROLES } from "../config/statuses.js";
+import { FLOW_MODE, ROLES } from "../config/statuses.js";
 import { User } from "../models/index.js";
+import { releaseWaitingDeals } from "../services/approvalService.js";
 import { AUDIT, audit } from "../services/auditService.js";
 import { listDatasets, listTables, readTableRows } from "../services/bigQueryBrowser.js";
 import {
@@ -17,7 +18,9 @@ import {
   updatePoolStudent,
 } from "../services/eligiblePoolService.js";
 import { findHubspotOwner, hubspotOwnerForEmail, hubspotOwnerForUser, ownerFields } from "../services/hubspotOwners.js";
+import { APPROVAL_STEPS, settingsRecord, updateSettings } from "../services/settingsService.js";
 import { badRequest, conflict, notFound } from "../utils/errors.js";
+import { listOf } from "../utils/queryList.js";
 
 const hubspotOwnerId = z
   .string()
@@ -116,9 +119,9 @@ export async function updateUser(req, res) {
 
 export const poolQuerySchema = z.object({
   search: z.string().trim().max(200).optional(),
-  product: z.enum(PRODUCT_GROUPS).optional(),
-  status: z.enum(ELIGIBILITY_STATUSES).optional(),
-  campus: z.string().trim().max(200).optional(),
+  product: listOf(z.enum(PRODUCT_GROUPS)),
+  status: listOf(z.enum(ELIGIBILITY_STATUSES)),
+  campus: listOf(z.string().max(200)),
   sort: z
     .string()
     .regex(new RegExp(`^(?:(${POOL_SORT_FIELDS.join("|")}):(asc|desc))?$`), "Invalid sort")
@@ -228,4 +231,46 @@ export async function editPoolStudent(req, res) {
 export async function removePoolStudent(req, res) {
   await deletePoolStudent(req.valid.params.studentId, req.user);
   res.status(204).end();
+}
+
+const flag = z.boolean();
+const switches = (keys) => z.object(Object.fromEntries(keys.map((key) => [key, flag]))).partial().strict();
+
+export const settingsPatchSchema = z
+  .object({
+    flow: z
+      .object({
+        mode: z.enum(Object.values(FLOW_MODE)),
+        crmOptions: switches(Object.values(FLOW_MODE)),
+        approvals: switches(APPROVAL_STEPS),
+      })
+      .partial()
+      .strict(),
+    studentEmails: switches(["jobEmail", "jobUpdates", "boostReminder"]),
+    checkpoints: switches(["firstEmails", "secondEmails", "secondCalls"]),
+    crmEmails: switches(["poolReached", "candidatePool"]),
+    aiCalls: switches(["enabled"]),
+    interviews: switches(["googleMeet"]),
+    automation: switches(["aiJobContent", "aiResumeAnalysis", "hubspotWriteBack"]),
+    timing: z
+      .object({
+        applicationWindowHours: z.number().min(1, "The window must be at least 1 hour").max(240, "The window can be at most 240 hours"),
+        reminderOneHours: z.number().min(0.5, "A checkpoint must be at least 0.5 hours").max(240),
+        reminderTwoHours: z.number().min(0.5, "A checkpoint must be at least 0.5 hours").max(240),
+        boostEmailCooldownMinutes: z.number().int().min(0).max(1440, "The gap can be at most 1,440 minutes"),
+      })
+      .partial()
+      .strict(),
+  })
+  .partial()
+  .strict();
+
+export async function appSettings(req, res) {
+  res.json(await settingsRecord());
+}
+
+export async function saveAppSettings(req, res) {
+  const { settings } = await updateSettings(req.valid.body, req.user);
+  const released = await releaseWaitingDeals(settings, req.user);
+  res.json({ ...(await settingsRecord()), released });
 }

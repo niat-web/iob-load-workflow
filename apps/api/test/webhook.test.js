@@ -2,10 +2,10 @@ import "./setup.js";
 import { after, before, beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { NOTIFICATION_TYPE, TASK_TYPE } from "../src/config/statuses.js";
-import { Job, JobChangeHistory, JobEligibleStudent, NotificationLog, WorkflowTask } from "../src/models/index.js";
+import { Job, JobApplication, JobChangeHistory, NotificationLog, WorkflowTask } from "../src/models/index.js";
 import { integrations } from "../src/services/integrations.js";
 import { runDueTasks } from "../src/workers/workflowWorker.js";
-import { api, hubspotHeaders, loginAs, openApplicationWindow, resetDb, startTestDb, stopTestDb } from "./helpers.js";
+import { advanceAndRun, api, hubspotHeaders, loginAs, openApplicationWindow, resetDb, startTestDb, stopTestDb } from "./helpers.js";
 
 function sendWebhook(events, { timestamp = Date.now(), headers } = {}) {
   const raw = JSON.stringify(events);
@@ -50,8 +50,9 @@ describe("HubSpot webhook updates", () => {
     assert.equal(tampered.status, 401);
   });
 
-  test("a student-facing change updates the same portal job and emails every eligible student", async () => {
+  test("a student-facing change updates the same portal job and emails the students who applied", async () => {
     const job = await openApplicationWindow(crm, "12345");
+    await advanceAndRun({ hours: 3 });
     const callsBefore = integrations.learningPortal.calls.length;
     const oldLocation = job.location;
     await integrations.hubspot.setOverride("12345", { location: "Mumbai" });
@@ -80,10 +81,11 @@ describe("HubSpot webhook updates", () => {
     assert.equal(change.newValue, "Mumbai");
     assert.equal(change.studentsNotified, true);
 
-    const eligible = await JobEligibleStudent.countDocuments({ jobId: job._id, accessGrantedAt: { $ne: null } });
-    const updateEmails = await NotificationLog.countDocuments({ jobId: job._id, type: NOTIFICATION_TYPE.JOB_UPDATED, status: "SENT" });
-    assert.equal(updateEmails, eligible, "all eligible students, including those who applied");
-    assert.equal(change.notificationCount, eligible);
+    const applied = await JobApplication.find({ jobId: job._id, email: { $nin: [null, ""] } }).lean();
+    assert.ok(applied.length > 0);
+    const updateEmails = await NotificationLog.find({ jobId: job._id, type: NOTIFICATION_TYPE.JOB_UPDATED, status: "SENT" }).lean();
+    assert.deepEqual(updateEmails.map((log) => log.studentId).sort(), applied.map((row) => row.studentId).sort(), "only students who applied");
+    assert.equal(change.notificationCount, applied.length);
   });
 
   test("an irrelevant field change sends no student email", async () => {

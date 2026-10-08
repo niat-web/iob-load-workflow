@@ -60,3 +60,14 @@ export async function disconnectDb() {
 export function isDbReady() {
   return mongoose.connection.readyState === 1;
 }
+
+export async function waitForDb(timeoutMs = 10_000, stepMs = 200) {
+  if (isDbReady()) return true;
+  if (!config.mongodbUri) return false;
+  const deadline = Date.now() + timeoutMs;
+  while (!isDbReady()) {
+    if (Date.now() >= deadline) return false;
+    await new Promise((resolve) => setTimeout(resolve, stepMs));
+  }
+  return true;
+}

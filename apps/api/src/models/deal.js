@@ -23,6 +23,8 @@ const snapshotSchema = new mongoose.Schema(
     source: { type: String, enum: ["INITIAL", "WEBHOOK", "RETRY"], required: true },
     mappedFields: { type: Mixed, required: true },
     rawProperties: { type: Mixed, default: {} },
+    rawCompany: { type: Mixed, default: null },
+    rawOwner: { type: Mixed, default: null },
     payloadHash: { type: String, required: true },
     fetchedAt: { type: Date, required: true },
   },

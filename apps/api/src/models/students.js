@@ -16,6 +16,7 @@ const eligibleSchema = new mongoose.Schema(
     accessGrantedAt: { type: Date, default: null },
     accessRejectedReason: { type: String, default: null },
     initialEmailSentAt: { type: Date, default: null },
+    learningPortalJobId: { type: String, default: null },
     applied: { type: Boolean, default: false },
     appliedAt: { type: Date, default: null },
   },
@@ -38,6 +39,10 @@ const applicationSchema = new mongoose.Schema(
     program: { type: String, default: null },
     resumeUrl: { type: String, default: null },
     appliedAt: { type: Date, default: null },
+    learningPortalJobId: { type: String, default: null },
+    applicationStage: { type: String, default: null },
+    profile: { type: mongoose.Schema.Types.Mixed, default: {} },
+    lastSyncedAt: { type: Date, default: null },
     source: { type: String, default: "BIGQUERY" },
   },
   { timestamps: true, collection: "job_applications" },
@@ -93,10 +98,12 @@ const analysisSchema = new mongoose.Schema(
 
     analysisStatus: {
       type: String,
-      enum: ["PENDING", "COMPLETED", "FAILED", "NO_RESUME"],
+      enum: ["PENDING", "QUEUED", "COMPLETED", "FAILED", "NO_RESUME", "SKIPPED"],
       default: "PENDING",
     },
     analysisError: { type: String, default: null },
+    product: { type: String, default: null },
+    queuedAt: { type: Date, default: null },
     analysedAt: { type: Date, default: null },
 
     publicRef: { type: String, default: undefined },

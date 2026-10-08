@@ -1,4 +1,3 @@
-import { config } from "../../config/env.js";
 import { JOB_STATUS as S, TASK_TYPE } from "../../config/statuses.js";
 import { ApplicationSnapshot, CandidateAnalysis, Job, JobApplication } from "../../models/index.js";
 import { syncApplicants } from "../../services/applicationService.js";
@@ -7,12 +6,13 @@ import { getRelevantGritScores } from "../../services/gritRepository.js";
 import { integrations } from "../../services/integrations.js";
 import { transitionJob } from "../../services/jobService.js";
 import { normalizeWeights, rankCandidates } from "../../services/priorityEngine.js";
-import { getResumeText } from "../../services/resumeFetcher.js";
+import { NIAT, notAnalysed, productsFor } from "../../services/resumeAnalysisService.js";
+import { queueResumeAnalyses } from "../../services/resumeQueue.js";
+import { getSettings } from "../../services/settingsService.js";
+import { enqueueTask } from "../../services/taskQueue.js";
 import { now } from "../../utils/clock.js";
-import { sha256 } from "../../utils/crypto.js";
-import { IntegrationError, isRetryable } from "../../utils/errors.js";
-import { chunk, mapLimit, sleep } from "../../utils/helpers.js";
-import { logger } from "../../utils/logger.js";
+import { IntegrationError } from "../../utils/errors.js";
+import { chunk } from "../../utils/helpers.js";
 import { enqueueNext, isPast } from "./shared.js";
 
 async function fetchFinalPool({ job }) {
@@ -33,48 +33,52 @@ async function fetchFinalPool({ job }) {
   await enqueueNext(job, TASK_TYPE.AI_ANALYSIS);
 }
 
-async function analyseWithRetry(job, resumeText) {
-  let lastError;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      return await integrations.gemini.analyze({ job, resumeText });
-    } catch (error) {
-      lastError = error;
-      if (!isRetryable(error)) break;
-      await sleep((error.retryAfterMs ?? 2000 * 2 ** attempt) / (config.isTest ? 1000 : 1));
-    }
+const CHECK_SECONDS = 30;
+const QUEUE_TIMEOUT_ROUNDS = 240;
+
+async function queueCandidates(job, task, heartbeat) {
+  const applications = await JobApplication.find({ jobId: job._id }).lean();
+  const products = await productsFor(job._id, applications);
+  for (const batch of chunk(applications, 1000)) {
+    await CandidateAnalysis.bulkWrite(
+      batch.map((application) => ({
+        updateOne: {
+          filter: { jobId: job._id, studentId: application.studentId },
+          update: {
+            $set: {
+              studentName: application.studentName,
+              campus: application.campus,
+              resumeUrl: application.resumeUrl,
+              product: products.get(application.studentId) ?? null,
+            },
+            $setOnInsert: { analysisStatus: "PENDING" },
+          },
+          upsert: true,
+        },
+      })),
+      { ordered: false },
+    );
+    await heartbeat();
   }
-  throw lastError;
-}
 
-async function analyseCandidate(job, candidate) {
-  if (!candidate.resumeUrl) {
-    return { analysisStatus: "NO_RESUME", analysisError: "No resume on the application" };
+  const statuses = task.payload?.retryFailed ? ["PENDING", "FAILED", "SKIPPED"] : ["PENDING"];
+  const pending = await CandidateAnalysis.find({ jobId: job._id, analysisStatus: { $in: statuses } }).lean();
+  const aiOn = (await getSettings()).automation.aiResumeAnalysis;
+  const toQueue = [];
+  const decided = [];
+  for (const candidate of pending) {
+    const update = notAnalysed(candidate, { aiOn });
+    if (update) decided.push({ updateOne: { filter: { _id: candidate._id }, update: { $set: { ...update, analysedAt: now() } } } });
+    else toQueue.push(candidate.studentId);
   }
-  const application = await JobApplication.findOne({ jobId: job._id, studentId: candidate.studentId }).lean();
-  const resumeText = await getResumeText(candidate.resumeUrl, {
-    studentId: candidate.studentId,
-    studentName: candidate.studentName,
-    email: application?.email,
-    batch: application?.batch,
-    jobSkills: job.skills ?? [],
-  });
-  if (!resumeText) return { analysisStatus: "NO_RESUME", analysisError: "Resume has no extractable text" };
-
-  const resumeTextHash = sha256(resumeText);
-  if (candidate.analysisStatus === "COMPLETED" && candidate.resumeTextHash === resumeTextHash) return null;
-
-  const result = await analyseWithRetry(job, resumeText);
-  return {
-    analysisStatus: "COMPLETED",
-    analysisError: null,
-    resumeTextHash,
-    resumeScore: result.resumeScore,
-    resumeReason: result.reason,
-    matchedSkills: result.matchedSkills,
-    missingSkills: result.missingSkills,
-    relevantExperience: result.relevantExperience,
-  };
+  if (decided.length) await CandidateAnalysis.bulkWrite(decided, { ordered: false });
+  if (toQueue.length) {
+    await CandidateAnalysis.updateMany(
+      { jobId: job._id, studentId: { $in: toQueue } },
+      { $set: { analysisStatus: "QUEUED", analysisError: null, queuedAt: now() } },
+    );
+    await queueResumeAnalyses(job._id, toQueue);
+  }
 }
 
 async function aiAnalysis({ task, job, heartbeat }) {
@@ -85,40 +89,26 @@ async function aiAnalysis({ task, job, heartbeat }) {
     await audit({ action: AUDIT.AI_ANALYSIS_STARTED, entityId: job._id });
   }
 
-  const applications = await JobApplication.find({ jobId: job._id }).lean();
-  for (const batch of chunk(applications, 1000)) {
-    await CandidateAnalysis.bulkWrite(
-      batch.map((application) => ({
-        updateOne: {
-          filter: { jobId: job._id, studentId: application.studentId },
-          update: {
-            $set: { studentName: application.studentName, campus: application.campus, resumeUrl: application.resumeUrl },
-            $setOnInsert: { analysisStatus: "PENDING" },
-          },
-          upsert: true,
-        },
-      })),
-      { ordered: false },
+  if (!task.payload?.check) await queueCandidates(job, task, heartbeat);
+
+  const round = task.payload?.round ?? 0;
+  const waiting = await CandidateAnalysis.countDocuments({ jobId: job._id, analysisStatus: { $in: ["PENDING", "QUEUED"] } });
+  if (waiting > 0 && round < QUEUE_TIMEOUT_ROUNDS) {
+    await enqueueTask({
+      jobId: job._id,
+      type: TASK_TYPE.AI_ANALYSIS,
+      scheduledFor: new Date(now().getTime() + CHECK_SECONDS * 1000),
+      payload: { check: true, round: round + 1 },
+      dedupeKey: `${job._id}:AI_ANALYSIS:check:${round + 1}`,
+    });
+    return;
+  }
+  if (waiting > 0) {
+    await CandidateAnalysis.updateMany(
+      { jobId: job._id, analysisStatus: { $in: ["PENDING", "QUEUED"] } },
+      { $set: { analysisStatus: "FAILED", analysisError: "Timed out in the analysis queue" } },
     );
   }
-
-  const statuses = task.payload?.retryFailed ? ["PENDING", "FAILED"] : ["PENDING"];
-  const pending = await CandidateAnalysis.find({ jobId: job._id, analysisStatus: { $in: statuses } }).lean();
-  const current = await Job.findById(job._id).lean();
-
-  let processed = 0;
-  await mapLimit(pending, config.gemini.concurrency, async (candidate) => {
-    let update;
-    try {
-      update = await analyseCandidate(current, candidate);
-    } catch (error) {
-      logger.warn({ err: error, studentId: candidate.studentId }, "Candidate analysis failed");
-      update = { analysisStatus: "FAILED", analysisError: String(error.message ?? error).slice(0, 500) };
-    }
-    if (update) await CandidateAnalysis.updateOne({ _id: candidate._id }, { $set: { ...update, analysedAt: now() } });
-    processed += 1;
-    if (processed % 20 === 0) await heartbeat();
-  });
 
   const [total, failed, completed, analysed] = await Promise.all([
     CandidateAnalysis.countDocuments({ jobId: job._id }),
@@ -152,7 +142,10 @@ async function priorityGeneration({ job }) {
   const appliedAt = new Map(applications.map((application) => [application.studentId, application.appliedAt]));
 
   const [grit, assessments, interviews] = await Promise.all([
-    getRelevantGritScores(studentIds, current.skills ?? []),
+    getRelevantGritScores(
+      candidates.filter((candidate) => candidate.product === NIAT).map((candidate) => candidate.studentId),
+      current.skills ?? [],
+    ),
     integrations.bigquery.getAssessmentScores(studentIds),
     integrations.bigquery.getInterviewScores(studentIds),
   ]);

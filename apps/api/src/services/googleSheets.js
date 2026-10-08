@@ -8,7 +8,7 @@ const range = (worksheet) => encodeURIComponent(`'${worksheet.replaceAll("'", "'
 class LiveSheets {
   constructor({ sheetId, credentials }) {
     this.sheetId = sheetId;
-    this.auth = new GoogleAuth({ credentials, scopes: ["https://www.googleapis.com/auth/spreadsheets"] });
+    this.auth = new GoogleAuth({ credentials, scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"] });
   }
 
   get enabled() {
@@ -35,12 +35,6 @@ class LiveSheets {
     const data = await this.request("GET", `/values/${range(worksheet)}`);
     return data?.values ?? [];
   }
-
-  async appendRow(worksheet, values) {
-    await this.request("POST", `/values/${range(worksheet)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`, {
-      values: [values],
-    });
-  }
 }
 
 class DisabledSheets {
@@ -51,8 +45,6 @@ class DisabledSheets {
   async getRows() {
     return [];
   }
-
-  async appendRow() {}
 }
 
 export class InMemorySheets {
@@ -66,11 +58,6 @@ export class InMemorySheets {
 
   async getRows(worksheet) {
     return structuredClone(this.worksheets[worksheet] ?? []);
-  }
-
-  async appendRow(worksheet, values) {
-    this.worksheets[worksheet] ??= [];
-    this.worksheets[worksheet].push(values.map((value) => String(value ?? "")));
   }
 }
 

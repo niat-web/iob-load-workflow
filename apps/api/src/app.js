@@ -4,7 +4,7 @@ import cors from "cors";
 import express from "express";
 import helmet from "helmet";
 import { pinoHttp } from "pino-http";
-import { isDbReady } from "./config/db.js";
+import { isDbReady, waitForDb } from "./config/db.js";
 import { config } from "./config/env.js";
 import { apiLimiter, csrfGuard, errorHandler, notFoundHandler, webhookLimiter } from "./middleware/common.js";
 import {
@@ -13,8 +13,10 @@ import {
   crmRoutes,
   devRoutes,
   healthRoutes,
+  interviewRoutes,
   psmRoutes,
   publicRoutes,
+  sharedRoutes,
   webhookRoutes,
 } from "./routes/index.js";
 import { logger } from "./utils/logger.js";
@@ -77,8 +79,8 @@ export function createApp() {
   app.use(express.json({ limit: "200kb" }));
   app.use(cookieParser());
   app.use("/api", apiLimiter, csrfGuard);
-  app.use("/api", (req, res, next) => {
-    if (isDbReady()) return next();
+  app.use("/api", async (req, res, next) => {
+    if (isDbReady() || (await waitForDb())) return next();
     res.set("Retry-After", "5");
     return res.status(503).json({
       error: { code: "DATABASE_CONNECTING", message: "The server is still connecting to the database. Please try again in a moment." },
@@ -87,8 +89,10 @@ export function createApp() {
   app.use("/api/auth", authRoutes());
   app.use("/api/crm", crmRoutes());
   app.use("/api/psm", psmRoutes());
+  app.use("/api/interviews", interviewRoutes());
   app.use("/api/admin", adminRoutes());
   app.use("/api/public", publicRoutes());
+  app.use("/api/shared", sharedRoutes());
   if (!config.isProduction) app.use("/api/dev", devRoutes());
 
   app.use("/api", notFoundHandler);

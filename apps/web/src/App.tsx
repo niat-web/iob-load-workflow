@@ -17,14 +17,15 @@ const LoginPage = lazy(() => pageLoaders.login().then((m) => ({ default: m.Login
 const CRMPage = lazy(() => pageLoaders.crm().then((m) => ({ default: m.CRMPage })));
 const CRMDealsPage = lazy(() => pageLoaders.crmDeals().then((m) => ({ default: m.CRMDealsPage })));
 const CRMCompaniesPage = lazy(() => pageLoaders.crmCompanies().then((m) => ({ default: m.CRMCompaniesPage })));
+const InterviewsPage = lazy(() => pageLoaders.interviews().then((m) => ({ default: m.InterviewsPage })));
+const InterviewSheetPage = lazy(() => pageLoaders.interviewSheet().then((m) => ({ default: m.InterviewSheetPage })));
 const BoostPage = lazy(() => pageLoaders.boost().then((m) => ({ default: m.BoostPage })));
 const EligiblePoolPage = lazy(() => pageLoaders.eligiblePool().then((m) => ({ default: m.EligiblePoolPage })));
 const SettingsPage = lazy(() => pageLoaders.settings().then((m) => ({ default: m.SettingsPage })));
 const PSMJobsPage = lazy(() => pageLoaders.psmJobs().then((m) => ({ default: m.PSMJobsPage })));
 const PSMReviewPage = lazy(() => pageLoaders.psmReview().then((m) => ({ default: m.PSMReviewPage })));
-const PublicCandidatePoolPage = lazy(() =>
-  pageLoaders.publicPool().then((m) => ({ default: m.PublicCandidatePoolPage })),
-);
+const JobUpdateFormPage = lazy(() => pageLoaders.jobUpdate().then((m) => ({ default: m.JobUpdateFormPage })));
+const SharedProfilesPage = lazy(() => pageLoaders.sharedProfiles().then((m) => ({ default: m.SharedProfilesPage })));
 
 function ContentFallback() {
   return (
@@ -68,7 +69,8 @@ const router = createBrowserRouter([
     element: <RootLayout />,
     errorElement: <RouteErrorPage />,
     children: [
-      { path: "/public/candidate-pool/:token", element: standalone(<PublicCandidatePoolPage />) },
+      { path: "/shared/profiles/:jobId", element: standalone(<SharedProfilesPage />) },
+      { path: "/job-update/:jobId/:token", element: standalone(<JobUpdateFormPage />) },
       {
         element: <AuthLayout />,
         children: [
@@ -78,6 +80,8 @@ const router = createBrowserRouter([
           { path: "/crm/deals", element: internal(CRM_ROLES, <CRMDealsPage />) },
           { path: "/crm/companies", element: internal(CRM_ROLES, <CRMCompaniesPage />) },
           { path: "/crm/deals/:jobId/boost", element: internal(CRM_ROLES, <BoostPage />) },
+          { path: "/crm/interviews", element: internal(CRM_ROLES, <InterviewsPage />) },
+          { path: "/crm/interviews/:jobId", element: internal(CRM_ROLES, <InterviewSheetPage />) },
           { path: "/admin/eligible-pool", element: internal(ADMIN_ROLES, <EligiblePoolPage />) },
           { path: "/settings", element: internal(ALL_ROLES, <SettingsPage />) },
           { path: "/settings/:section", element: internal(ALL_ROLES, <SettingsPage />) },

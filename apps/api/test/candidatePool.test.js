@@ -50,7 +50,21 @@ describe("21h close, final pool and AI prioritisation", () => {
     assert.ok(candidates.every((candidate) => candidate.finalPriority === candidate.aiPriority));
     const noResume = candidates.filter((candidate) => candidate.analysisStatus === "NO_RESUME");
     assert.ok(noResume.every((candidate) => candidate.resumeScore === null));
-    assert.ok(candidates.every((candidate) => ["COMPLETED", "NO_RESUME"].includes(candidate.analysisStatus)));
+    const niat = candidates.filter((candidate) => candidate.product === "NIAT");
+    const others = candidates.filter((candidate) => candidate.product !== "NIAT");
+    assert.ok(niat.length > 0 && others.length > 0);
+    assert.ok(niat.every((candidate) => ["COMPLETED", "NO_RESUME"].includes(candidate.analysisStatus)));
+    assert.ok(niat.some((candidate) => candidate.gritScore !== null), "NIAT students get GRIT scores");
+    assert.ok(
+      others.every(
+        (candidate) =>
+          candidate.analysisStatus === "SKIPPED" &&
+          /only for NIAT students/.test(candidate.analysisError) &&
+          candidate.resumeScore === null &&
+          candidate.gritScore === null,
+      ),
+      "Academy students get no AI resume score and no GRIT score",
+    );
   });
 
   test("the window does not close before 21 hours even if the target is reached", async () => {

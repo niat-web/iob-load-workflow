@@ -33,10 +33,20 @@ const previewItems = (items: PreviewItem[]) =>
     label: item.label,
     wide: item.wide,
     value: item.href ? (
-      <a href={item.href} target="_blank" rel="noopener noreferrer" className={linkClass}>
-        {linkText(item)}
-        <span className="sr-only"> (opens in a new tab)</span>
-      </a>
+      <span className="inline-flex items-center gap-2.5">
+        {item.image && (
+          <img
+            src={item.href}
+            alt={item.label}
+            className="size-10 rounded-md border bg-surface object-contain p-1"
+            loading="lazy"
+          />
+        )}
+        <a href={item.href} target="_blank" rel="noopener noreferrer" className={linkClass}>
+          {item.image ? "View URL" : linkText(item)}
+          <span className="sr-only"> (opens in a new tab)</span>
+        </a>
+      </span>
     ) : (
       (item.value ?? DASH)
     ),
@@ -215,10 +225,15 @@ function StepPreview({ jobId, preview }: { jobId: string; preview: ApprovalPrevi
           <DetailList
             items={[
               { label: "Students with access", value: formatNumber(preview.window.granted) },
-              { label: "Emails to send", value: formatNumber(preview.window.emails) },
+              {
+                label: "Emails to send",
+                value: preview.window.studentEmailsOn
+                  ? formatNumber(preview.window.emails)
+                  : "None. Job emails to students are turned off in Settings",
+              },
               { label: "Refused by the portal", value: formatNumber(preview.window.rejected) },
               { label: "Window length", value: hoursLabel(preview.window.windowHours) },
-              { label: "Reminders after", value: preview.window.reminderHours.map(hoursLabel).join(" and ") },
+              { label: "CRM checkpoints after", value: preview.window.reminderHours.map(hoursLabel).join(" and ") },
               { label: "Closes about", value: formatDateTime(preview.window.closesAt) },
             ]}
           />

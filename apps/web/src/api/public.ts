@@ -1,25 +1,31 @@
-import { useQuery } from "@tanstack/react-query";
-import type { PublicPool } from "../types/api";
-import { api, apiUrl, seg } from "./client";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { JobUpdateAnswer, JobUpdateForm } from "../types/api";
+import { api, seg } from "./client";
 
 export const publicKeys = {
-  pool: (token: string) => ["public", "pool", token] as const,
+  jobUpdate: (token: string, userId: string) => ["public", "job-update", token, userId] as const,
 };
 
-export function fetchPublicPool(token: string, signal?: AbortSignal) {
-  return api.get<PublicPool>(`/public/candidate-pools/${seg(token)}`, undefined, signal);
-}
-
-export function publicResumeUrl(token: string, ref: string): string {
-  return apiUrl(`/public/candidate-pools/${seg(token)}/candidates/${seg(ref)}/resume`);
-}
-
-export function usePublicPool(token: string) {
+export function useJobUpdateForm(token: string, userId: string, jobId: string) {
   return useQuery({
-    queryKey: publicKeys.pool(token),
-    queryFn: ({ signal }) => fetchPublicPool(token, signal),
-    enabled: token.length > 0,
-    staleTime: 5 * 60_000,
+    queryKey: publicKeys.jobUpdate(token, userId),
+    queryFn: ({ signal }) =>
+      api.get<JobUpdateForm>(`/public/job-updates/${seg(token)}`, { user_id: userId, job_id: jobId || undefined }, signal),
+    enabled: token.length > 0 && userId.length > 0,
     refetchOnWindowFocus: false,
+    retry: false,
+  });
+}
+
+export function useSubmitJobUpdate(token: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (answer: JobUpdateAnswer) =>
+      api.post<{ response: JobUpdateForm["response"] }>(`/public/job-updates/${seg(token)}`, answer),
+    onSuccess: (result, answer) => {
+      queryClient.setQueryData<JobUpdateForm>(publicKeys.jobUpdate(token, answer.userId), (current) =>
+        current ? { ...current, response: result.response } : current,
+      );
+    },
   });
 }

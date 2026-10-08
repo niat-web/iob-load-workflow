@@ -3,7 +3,9 @@ import type {
   ApprovalGate,
   ApprovalResponse,
   BoostOverview,
+  CheckpointSwitches,
   CompanySummary,
+  CrmControls,
   CrmDealDetail,
   DealActionResponse,
   FlowMode,
@@ -30,6 +32,7 @@ export const crmKeys = {
   boost: (jobId: string) => [...crmKeys.deals(), "boost", jobId] as const,
   companies: () => [...crmKeys.deals(), "companies"] as const,
   owners: () => [...crmKeys.all, "hubspot-owners"] as const,
+  controls: () => [...crmKeys.all, "controls"] as const,
   filters: () => [...crmKeys.all, "filters"] as const,
 };
 
@@ -57,10 +60,28 @@ export function useHubspotOwners() {
   });
 }
 
+export function useCrmControls() {
+  return useQuery({
+    queryKey: crmKeys.controls(),
+    queryFn: ({ signal }) => api.get<CrmControls>("/crm/controls", undefined, signal),
+  });
+}
+
 export function useCrmCompanies() {
   return useQuery({
     queryKey: crmKeys.companies(),
     queryFn: ({ signal }) => fetchCrmCompanies(signal),
+  });
+}
+
+export function useUpdateCompanyControls() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { companyName: string; checkpoints: Partial<CheckpointSwitches> }) =>
+      api.patch<{ companyKey: string; checkpoints: CheckpointSwitches }>("/crm/companies/controls", input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: crmKeys.companies() });
+    },
   });
 }
 
@@ -74,9 +95,8 @@ export function fetchCrmDealLogs(jobId: string, signal?: AbortSignal) {
 
 export interface ProcessDealInput {
   dealId: string;
-  flowMode: FlowMode;
+  flowMode?: FlowMode;
   expectedPoolCount?: number;
-  jdCount?: number;
   crmOwnerId?: string;
   profilingPocId?: string;
   iseId?: string;
@@ -144,25 +164,26 @@ export function useCrmDealLogs(jobId: string | null) {
   });
 }
 
-const SUBMIT_RETRY_MS = 1500;
+const SUBMIT_RETRY_MS = 2000;
+const SUBMIT_ATTEMPTS = 5;
 
 const isTransient = (error: unknown) => isApiError(error) && (error.status === 0 || error.status >= 500);
 
-async function submitDeal(input: ProcessDealInput): Promise<ProcessDealResponse> {
+async function submitDeal(input: ProcessDealInput, attempt = 1): Promise<ProcessDealResponse> {
   try {
-    return await processDeal(input);
+    const result = await processDeal(input);
+    return attempt > 1 ? { ...result, duplicate: false } : result;
   } catch (error) {
-    if (!isTransient(error)) throw error;
+    if (!isTransient(error) || attempt >= SUBMIT_ATTEMPTS) throw error;
     await new Promise((resolve) => setTimeout(resolve, SUBMIT_RETRY_MS));
-    const retried = await processDeal(input);
-    return { ...retried, duplicate: false };
+    return submitDeal(input, attempt + 1);
   }
 }
 
 export function useProcessDeal() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: submitDeal,
+    mutationFn: (input: ProcessDealInput) => submitDeal(input),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: crmKeys.deals() });
       void queryClient.invalidateQueries({ queryKey: crmKeys.filters() });

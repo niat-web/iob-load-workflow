@@ -7,7 +7,7 @@ const poolStudentSchema = new mongoose.Schema(
     studentName: { type: String, default: "" },
     mobile: { type: String, default: null },
     email: { type: String, default: null, lowercase: true },
-    productGroup: { type: String, default: "Unknown" },
+    productGroup: { type: String, default: null },
     campus: { type: String, default: null },
     batch: { type: String, default: null },
     eligibilityStatus: { type: String, default: null },

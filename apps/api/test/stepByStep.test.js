@@ -11,15 +11,19 @@ const envsOf = (op) => callsOf(op).map((call) => call.env);
 
 describe("step-by-step flow", () => {
   let crm;
+  let admin;
   before(startTestDb);
   after(stopTestDb);
   beforeEach(async () => {
     await resetDb();
     crm = await loginAs("crm.user@example.com", "CRM");
+    admin = await loginAs("admin.user@example.com", "ADMIN");
+    await setFlow({ mode: "STEP_BY_STEP" });
   });
 
-  const submit = (dealId, flowMode = "STEP_BY_STEP") =>
-    crm.post("/api/crm/deals/process").set(XHR).send({ dealId, flowMode });
+  const setFlow = (flow) => admin.patch("/api/admin/settings").set(XHR).send({ flow });
+  const submit = (dealId, flowMode) =>
+    crm.post("/api/crm/deals/process").set(XHR).send(flowMode ? { dealId, flowMode } : { dealId });
   const preview = async (id) => (await crm.get(`/api/crm/deals/${id}/approval`)).body.approval;
   const approve = (id, gate) => crm.post(`/api/crm/deals/${id}/approve`).set(XHR).send({ gate });
   const waitingGate = async (id) => (await Job.findById(id)).awaitingApproval?.gate ?? null;
@@ -140,19 +144,69 @@ describe("step-by-step flow", () => {
     assert.equal((await crm.post(`/api/crm/deals/${id}/stop`).set(XHR)).status, 409);
   });
 
-  test("waiting deals can be filtered, and automatic deals never wait", async () => {
+  test("waiting deals can be filtered, and turning off a step's approval lets them continue", async () => {
     const manual = (await submit("12345")).body.job.id;
-    const automatic = (await submit("12346", "AUTOMATIC")).body.job.id;
     await runDueTasks();
 
     const waiting = await crm.get("/api/crm/deals?status=WAITING");
     assert.deepEqual(waiting.body.items.map((item) => item.id), [manual]);
     const processing = await crm.get("/api/crm/deals?status=PROCESSING");
     assert.ok(!processing.body.items.some((item) => item.id === manual));
+    const either = await crm.get("/api/crm/deals").query({ status: "PROCESSING|WAITING" });
+    assert.ok(either.body.items.some((item) => item.id === manual));
+    const company = (await Job.findById(manual)).companyName;
+    const byCompany = await crm.get("/api/crm/deals").query({ company: `${company}|Nobody Ltd` });
+    assert.deepEqual(byCompany.body.items.map((item) => item.id), [manual]);
 
+    const saved = await setFlow({ approvals: { DEAL_DETAILS: false } });
+    assert.equal(saved.status, 200);
+    assert.equal(saved.body.released, 1);
+    await runDueTasks();
+    assert.equal(await waitingGate(manual), "LOAD_BETA");
+    const released = await Job.findById(manual);
+    assert.equal(released.approvals.DEAL_DETAILS.by, "admin.user@example.com");
+
+    const automatic = (await submit("12346", "AUTOMATIC")).body.job.id;
+    await runDueTasks();
     const auto = await Job.findById(automatic);
     assert.equal(auto.status, JOB_STATUS.APPLICATIONS_OPEN);
-    assert.equal(auto.awaitingApproval, null);
     assert.equal(auto.flowMode, "AUTOMATIC");
+    assert.equal(auto.approvals?.DEAL_DETAILS, undefined);
+  });
+
+  test("the admin decides which flows CRMs can pick", async () => {
+    const both = (await crm.get("/api/crm/controls")).body.flow;
+    assert.deepEqual(both.options, ["AUTOMATIC", "STEP_BY_STEP"]);
+    assert.equal(both.defaultMode, "STEP_BY_STEP");
+
+    await setFlow({ crmOptions: { STEP_BY_STEP: false } });
+    const onlyAutomatic = (await crm.get("/api/crm/controls")).body.flow;
+    assert.deepEqual(onlyAutomatic.options, ["AUTOMATIC"]);
+    assert.equal(onlyAutomatic.defaultMode, "AUTOMATIC");
+    const refused = await submit("12345", "STEP_BY_STEP");
+    assert.equal(refused.status, 400);
+    assert.match(refused.body.error.message, /Step by step flow is turned off/);
+    assert.equal((await submit("12345")).body.job.flowMode, "AUTOMATIC");
+
+    await setFlow({ crmOptions: { AUTOMATIC: false, STEP_BY_STEP: false }, mode: "STEP_BY_STEP" });
+    assert.deepEqual((await crm.get("/api/crm/controls")).body.flow.options, []);
+    const hidden = await submit("12346", "AUTOMATIC");
+    assert.equal(hidden.body.job.flowMode, "STEP_BY_STEP", "with no choice shown, the admin's flow is used");
+  });
+
+  test("only the steps the admin picks wait for approval", async () => {
+    await setFlow({
+      mode: "STEP_BY_STEP",
+      approvals: { DEAL_DETAILS: false, LOAD_BETA: false, LOAD_PROD: false, ELIGIBLE_STUDENTS: false, START_WINDOW: true },
+    });
+    const id = (await submit("12345")).body.job.id;
+    await runDueTasks();
+    assert.equal(await waitingGate(id), "START_WINDOW");
+    assert.deepEqual(envsOf("upsertJob"), ["beta", "prod"]);
+    assert.equal(await NotificationLog.countDocuments({ jobId: id }), 0);
+
+    assert.equal((await approve(id, "START_WINDOW")).status, 200);
+    await runDueTasks();
+    assert.equal((await Job.findById(id)).status, JOB_STATUS.APPLICATIONS_OPEN);
   });
 });

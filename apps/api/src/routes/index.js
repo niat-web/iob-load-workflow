@@ -7,8 +7,10 @@ import { TASK_TYPE } from "../config/statuses.js";
 import * as admin from "../controllers/adminController.js";
 import * as auth from "../controllers/authController.js";
 import * as crm from "../controllers/crmController.js";
+import * as interviews from "../controllers/interviewController.js";
 import * as psm from "../controllers/psmController.js";
-import * as publicPool from "../controllers/publicController.js";
+import * as jobUpdates from "../controllers/jobUpdateController.js";
+import * as shared from "../controllers/sharedProfilesController.js";
 import { hubspotWebhook } from "../controllers/webhookController.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 import { asyncRoute as a, authLimiter, publicLimiter, validate } from "../middleware/common.js";
@@ -60,7 +62,9 @@ export function crmRoutes() {
   router.get("/deals", validate({ query: crm.listSchema }), a(crm.listDeals));
   router.get("/deals/filters", a(crm.dealFilters));
   router.get("/companies", a(crm.listCompanies));
+  router.patch("/companies/controls", validate({ body: crm.companyControlsSchema }), a(crm.updateCompanyControls));
   router.get("/hubspot-owners", crm.hubspotOwners);
+  router.get("/controls", a(crm.controls));
   router.get("/deals/:jobId", validate({ params: crm.jobIdParams }), a(crm.dealDetail));
   router.get("/deals/:jobId/logs", validate({ params: crm.jobIdParams }), a(crm.dealLogs));
   router.post("/deals/:jobId/retry", validate({ params: crm.jobIdParams }), a(crm.retryDeal));
@@ -80,6 +84,46 @@ export function crmRoutes() {
   return router;
 }
 
+export function interviewRoutes() {
+  const router = Router();
+  router.use(requireAuth, requireRole("CRM"));
+  router.get("/companies", a(interviews.listCompanies));
+  router.get("/google", a(interviews.googleStatus));
+  router.delete("/google", a(interviews.googleDisconnect));
+  router.get("/google/connect", validate({ query: interviews.connectQuery }), a(interviews.googleConnect));
+  router.get("/google/callback", a(interviews.googleCallback));
+  router.get("/jobs/:jobId", validate({ params: interviews.jobParams }), a(interviews.sheet));
+  router.patch(
+    "/jobs/:jobId/interviewers",
+    validate({ params: interviews.jobParams, body: interviews.interviewersSchema }),
+    a(interviews.updateInterviewers),
+  );
+  router.post("/jobs/:jobId/rows", validate({ params: interviews.jobParams, body: interviews.rowSchema }), a(interviews.addRow));
+  router.patch(
+    "/jobs/:jobId/rows/:rowId",
+    validate({ params: interviews.rowParams, body: interviews.cellSchema }),
+    a(interviews.updateCell),
+  );
+  router.delete("/jobs/:jobId/rows/:rowId", validate({ params: interviews.rowParams }), a(interviews.deleteRow));
+  router.post(
+    "/jobs/:jobId/rows/:rowId/meet",
+    validate({ params: interviews.rowParams, body: interviews.meetSchema }),
+    a(interviews.createMeet),
+  );
+  router.post(
+    "/jobs/:jobId/columns",
+    validate({ params: interviews.jobParams, body: interviews.columnSchema }),
+    a(interviews.addColumn),
+  );
+  router.patch(
+    "/jobs/:jobId/columns/:key",
+    validate({ params: interviews.columnParams, body: interviews.columnSchema }),
+    a(interviews.renameColumn),
+  );
+  router.delete("/jobs/:jobId/columns/:key", validate({ params: interviews.columnParams }), a(interviews.deleteColumn));
+  return router;
+}
+
 export function psmRoutes() {
   const router = Router();
   const jobParams = { params: crm.jobIdParams };
@@ -96,24 +140,54 @@ export function psmRoutes() {
   );
   router.get("/jobs/:jobId/candidates/:studentId/resume", validate({ params: psm.candidateParams }), a(psm.candidateResume));
   router.post("/jobs/:jobId/submit", validate(jobParams), a(psm.submitPool));
+  router.get("/jobs/:jobId/shared-columns", validate(jobParams), a(psm.sharedColumns));
+  router.patch("/jobs/:jobId/shared-columns", validate({ ...jobParams, body: psm.sharedColumnsSchema }), a(psm.updateSharedColumns));
   return router;
 }
 
 export function publicRoutes() {
   const router = Router();
   router.use(publicLimiter);
-  router.get("/candidate-pools/:token", validate({ params: publicPool.tokenParams }), a(publicPool.publicPool));
   router.get(
-    "/candidate-pools/:token/candidates/:ref/resume",
-    validate({ params: publicPool.publicResumeParams }),
-    a(publicPool.publicResume),
+    "/job-updates/:token",
+    validate({ params: jobUpdates.tokenParams, query: jobUpdates.formQuery }),
+    a(jobUpdates.getForm),
   );
+  router.post(
+    "/job-updates/:token",
+    validate({ params: jobUpdates.tokenParams, body: jobUpdates.submitSchema }),
+    a(jobUpdates.submitForm),
+  );
+  return router;
+}
+
+export function sharedRoutes() {
+  const router = Router();
+  router.use(publicLimiter);
+  router.get("/profiles/:jobId", validate({ params: shared.jobParams }), a(shared.sharedProfiles));
+  router.post("/profiles/:jobId/rows", validate({ params: shared.jobParams, body: shared.rowSchema }), a(shared.addRow));
+  router.patch(
+    "/profiles/:jobId/rows/:rowId",
+    validate({ params: shared.rowParams, body: shared.cellSchema }),
+    a(shared.updateCell),
+  );
+  router.delete("/profiles/:jobId/rows/:rowId", validate({ params: shared.rowParams }), a(shared.deleteRow));
+  router.post("/profiles/:jobId/columns", validate({ params: shared.jobParams, body: shared.columnSchema }), a(shared.addColumn));
+  router.patch(
+    "/profiles/:jobId/columns/:key",
+    validate({ params: shared.columnParams, body: shared.columnSchema }),
+    a(shared.renameColumn),
+  );
+  router.delete("/profiles/:jobId/columns/:key", validate({ params: shared.columnParams }), a(shared.deleteColumn));
+  router.get("/profiles/:jobId/resumes/:ref", validate({ params: shared.resumeParams }), a(shared.sharedResume));
   return router;
 }
 
 export function adminRoutes() {
   const router = Router();
   router.use(requireAuth, requireRole("ADMIN"));
+  router.get("/settings", a(admin.appSettings));
+  router.patch("/settings", validate({ body: admin.settingsPatchSchema }), a(admin.saveAppSettings));
   router.get("/users", a(admin.listUsers));
   router.post("/users", validate({ body: admin.createUserSchema }), a(admin.createUser));
   router.patch("/users/:email", validate({ params: admin.userParams, body: admin.updateUserSchema }), a(admin.updateUser));

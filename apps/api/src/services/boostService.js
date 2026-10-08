@@ -1,14 +1,14 @@
 import { config, missingIntegrationSettings } from "../config/env.js";
 import { NOTIFICATION_TYPE, TASK_TYPE, WINDOW_STATUSES } from "../config/statuses.js";
-import { AI_CALL_FINAL, AiCall, Job, JobEligibleStudent, User } from "../models/index.js";
+import { AI_CALL_FINAL, AiCall, Job, JobEligibleStudent } from "../models/index.js";
 import { now } from "../utils/clock.js";
 import { AppError, conflict } from "../utils/errors.js";
 import { formatDateTime, normalizePhone } from "../utils/helpers.js";
-import { logger } from "../utils/logger.js";
 import { AUDIT, audit } from "./auditService.js";
 import { ensureCallAgent } from "./callAgentService.js";
 import { integrations } from "./integrations.js";
-import { notificationKey, sendBulk, sendEmail } from "./notificationService.js";
+import { notificationKey, sendBulk } from "./notificationService.js";
+import { getSettings } from "./settingsService.js";
 import { enqueueTask } from "./taskQueue.js";
 
 const LOCK_MS = 2 * 60 * 1000;
@@ -16,24 +16,29 @@ const SYNC_HORIZON_MS = 12 * 60 * 60 * 1000;
 const RATING_WAIT_MS = 30 * 60 * 1000;
 const ACTIVE_STATUSES = ["QUEUED", "CALLING"];
 
-export const boostLink = (job) => `${config.frontendUrl}/crm/deals/${job._id}/boost`;
 
 const windowOpen = (job) => WINDOW_STATUSES.includes(job.status);
 const iso = (date) => (date ? new Date(date).toISOString() : null);
 
 const notAppliedFilter = (job) => ({ jobId: job._id, accessGrantedAt: { $ne: null }, applied: { $ne: true } });
 
+const headerKey = (text) => String(text ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+
 function cellValue(cells, header) {
-  const value = cells?.[header]?.value;
+  const name = Object.keys(cells ?? {}).find((key) => headerKey(key) === headerKey(header));
+  const value = name ? cells[name]?.value : undefined;
   const text = value === null || value === undefined ? "" : String(value).trim();
   return text || null;
 }
 
 const PROVIDER_STATUS = {
   completed: "COMPLETED",
+  timeout: "COMPLETED",
+  "silence-timeout": "COMPLETED",
+  disconnected: "COMPLETED",
   "no-answer": "NO_ANSWER",
   noanswer: "NO_ANSWER",
-  timeout: "NO_ANSWER",
+  voicemail: "NO_ANSWER",
   busy: "BUSY",
   failed: "FAILED",
   error: "FAILED",
@@ -98,8 +103,9 @@ export async function boostOverview(job) {
   ]);
   const counts = Object.fromEntries(["QUEUED", "CALLING", ...AI_CALL_FINAL].map((status) => [status, 0]));
   for (const call of calls) counts[call.status] = (counts[call.status] ?? 0) + 1;
+  const settings = await getSettings();
   const lastEmail = job.boost?.emailRuns?.at(-1)?.at;
-  const cooldownMs = config.nxtdial.boostEmailCooldownMinutes * 60 * 1000;
+  const cooldownMs = settings.timing.boostEmailCooldownMinutes * 60 * 1000;
   const emailAvailableAt = lastEmail ? new Date(new Date(lastEmail).getTime() + cooldownMs) : null;
 
   return {
@@ -129,7 +135,6 @@ export async function boostOverview(job) {
       agentId: config.nxtdial.agentId || job.boost?.callAgentId || null,
       agentCreatedAt: iso(job.boost?.callAgentCreatedAt),
       spokenJd: job.boost?.spokenJd ?? null,
-      maxSeconds: config.nxtdial.callMaxSeconds,
       active: counts.QUEUED + counts.CALLING > 0,
       counts,
       interested: calls.filter((call) => call.interested?.toLowerCase() === "yes").length,
@@ -138,17 +143,21 @@ export async function boostOverview(job) {
       lastSyncedAt: iso(job.boost?.lastCallSyncAt),
       items: calls.map(toCallRow),
     },
-    crmAlerts: (job.boost?.crmAlerts ?? []).map((alert) => ({ ...alert, at: iso(alert.at) })).reverse(),
+    controls: { reminderEmails: settings.studentEmails.boostReminder, aiCalls: settings.aiCalls.enabled },
   };
 }
 
 export async function sendBoostEmails(job, actor) {
+  const { studentEmails, timing } = await getSettings();
+  if (!studentEmails.boostReminder) {
+    throw conflict("Reminder emails to students are turned off by the admin in Settings.", "STUDENT_EMAILS_OFF");
+  }
   if (!windowOpen(job)) throw conflict("The application window is closed.", "WINDOW_CLOSED");
   const lastEmail = job.boost?.emailRuns?.at(-1)?.at;
-  const cooldownMs = config.nxtdial.boostEmailCooldownMinutes * 60 * 1000;
+  const cooldownMs = timing.boostEmailCooldownMinutes * 60 * 1000;
   if (lastEmail && now().getTime() - new Date(lastEmail).getTime() < cooldownMs) {
     throw conflict(
-      `Reminder emails were sent at ${formatDateTime(lastEmail)}. You can send again after ${config.nxtdial.boostEmailCooldownMinutes} minutes.`,
+      `Reminder emails were sent at ${formatDateTime(lastEmail)}. You can send again after ${timing.boostEmailCooldownMinutes} minutes.`,
       "EMAIL_COOLDOWN",
     );
   }
@@ -170,7 +179,7 @@ export async function sendBoostEmails(job, actor) {
       by: actor?.email ?? null,
       recipients: withEmail.length,
       sent: counts.SENT,
-      skipped: counts.SKIPPED + counts.DUPLICATE,
+      skipped: counts.SKIPPED + counts.DUPLICATE + counts.OFF,
       failed: counts.FAILED + counts.RETRYING,
     };
     await Job.updateOne({ _id: job._id }, { $push: { "boost.emailRuns": entry } });
@@ -182,6 +191,7 @@ export async function sendBoostEmails(job, actor) {
 }
 
 export async function startAiCalls(job, actor) {
+  if (!(await getSettings()).aiCalls.enabled) throw conflict("AI calls are turned off by the admin in Settings.", "AI_CALLS_OFF");
   if (!windowOpen(job)) throw conflict("The application window is closed.", "WINDOW_CLOSED");
   const problem = nxtDialProblem();
   if (problem) throw new AppError(503, "NXTDIAL_NOT_CONFIGURED", problem);
@@ -345,41 +355,4 @@ export async function runResultsSyncTask(job) {
   const { active } = await syncCallResults(job);
   const withinHorizon = lastRun && now().getTime() - new Date(lastRun).getTime() < SYNC_HORIZON_MS;
   if (active && withinHorizon) await scheduleResultsSync(job);
-}
-
-export async function alertCrmToBoost(job, reminder) {
-  const notApplied = await JobEligibleStudent.countDocuments(notAppliedFilter(job));
-  const to = job.submittedBy || job.crmOwnerEmail;
-  const entry = {
-    reminder,
-    at: now(),
-    to: to ?? null,
-    appliedCount: job.appliedCount ?? 0,
-    expectedPoolCount: job.expectedPoolCount ?? null,
-    notApplied,
-    outcome: "NO_RECIPIENT",
-  };
-  if (to) {
-    const creator = await User.findOne({ email: to }).lean();
-    const type = NOTIFICATION_TYPE.APPLICATIONS_BELOW_TARGET;
-    try {
-      entry.outcome = await sendEmail({
-        job,
-        type,
-        recipient: { email: to, studentName: creator?.name || to.split("@")[0] },
-        idempotencyKey: notificationKey(job._id, type, to, reminder),
-        payload: { appliedCount: entry.appliedCount, expectedPoolCount: entry.expectedPoolCount, notApplied, reminder, link: boostLink(job) },
-      });
-    } catch (error) {
-      entry.outcome = "FAILED";
-      logger.warn({ err: error, jobId: String(job._id) }, "Boost alert email to the CRM failed");
-    }
-  }
-  await Job.updateOne({ _id: job._id }, { $push: { "boost.crmAlerts": entry } });
-  await audit({
-    action: AUDIT.CRM_BOOST_ALERTED,
-    entityId: job._id,
-    metadata: { reminder, to: entry.to ?? "none", outcome: entry.outcome, appliedCount: entry.appliedCount, notApplied },
-  });
-  return entry;
 }

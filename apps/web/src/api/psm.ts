@@ -1,6 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 import type {
+  SharedColumnChoice,
   Candidate,
   CandidatePatch,
   CandidatePatchResponse,
@@ -23,7 +24,24 @@ export const psmKeys = {
   job: (jobId: string) => [...psmKeys.all, "job", jobId] as const,
   candidates: (jobId: string) => [...psmKeys.job(jobId), "candidates"] as const,
   candidateList: (jobId: string, query: CandidatesQuery) => [...psmKeys.candidates(jobId), query] as const,
+  sharedColumns: (jobId: string) => [...psmKeys.job(jobId), "shared-columns"] as const,
 };
+
+export function useSharedColumns(jobId: string) {
+  return useQuery({
+    queryKey: psmKeys.sharedColumns(jobId),
+    queryFn: ({ signal }) => api.get<SharedColumnChoice>(`/psm/jobs/${seg(jobId)}/shared-columns`, undefined, signal),
+  });
+}
+
+export function useSaveSharedColumns(jobId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (columns: string[]) =>
+      api.patch<SharedColumnChoice>(`/psm/jobs/${seg(jobId)}/shared-columns`, { columns }),
+    onSuccess: (result) => queryClient.setQueryData(psmKeys.sharedColumns(jobId), result),
+  });
+}
 
 export function fetchPsmJobs(query: PsmJobsQuery, signal?: AbortSignal) {
   return api.get<Paginated<PsmJobRow>>("/psm/jobs", { ...query }, signal);

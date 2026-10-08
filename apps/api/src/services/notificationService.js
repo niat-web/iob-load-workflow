@@ -2,7 +2,6 @@ import { config } from "../config/env.js";
 import { NOTIFICATION_TYPE, TASK_TYPE } from "../config/statuses.js";
 import { NotificationLog } from "../models/index.js";
 import {
-  applicationsBelowTargetEmail,
   crmPoolReadyEmail,
   initialJobEmail,
   jobUpdatedEmail,
@@ -14,6 +13,7 @@ import { isDuplicateKeyError, isRetryable } from "../utils/errors.js";
 import { backoffDelayMs, mapLimit } from "../utils/helpers.js";
 import { logger } from "../utils/logger.js";
 import { integrations } from "./integrations.js";
+import { emailAllowed } from "./settingsService.js";
 import { enqueueTask } from "./taskQueue.js";
 
 const T = NOTIFICATION_TYPE;
@@ -26,13 +26,11 @@ function render(type, job, recipient, payload) {
     case T.REMINDER_20H:
       return reminderEmail(job, recipient, type);
     case T.JOB_UPDATED:
-      return jobUpdatedEmail(job, recipient, payload.changes ?? []);
+      return jobUpdatedEmail(job, recipient, payload.changes ?? [], payload.formUrl);
     case T.CRM_POOL_READY:
-      return crmPoolReadyEmail(job, payload);
+      return crmPoolReadyEmail(job, payload, recipient);
     case T.POOL_TARGET_REACHED:
       return poolTargetReachedEmail(job, recipient);
-    case T.APPLICATIONS_BELOW_TARGET:
-      return applicationsBelowTargetEmail(job, recipient, payload);
     case T.BOOST_REMINDER:
       return reminderEmail(job, recipient, type);
     default:
@@ -49,6 +47,7 @@ export async function sendEmail({
   fromRetry = false,
   scheduleRetry = true,
 }) {
+  if (!(await emailAllowed(type, fromRetry ? idempotencyKey : null))) return "OFF";
   const email = recipient.email?.trim().toLowerCase();
   let log;
   try {
@@ -109,7 +108,11 @@ export async function sendEmail({
 }
 
 export async function sendBulk({ job, type, recipients, keyFor, payload = {}, onSent }) {
-  const counts = { SENT: 0, SKIPPED: 0, FAILED: 0, RETRYING: 0, DUPLICATE: 0 };
+  const counts = { SENT: 0, SKIPPED: 0, FAILED: 0, RETRYING: 0, DUPLICATE: 0, OFF: 0 };
+  if (!(await emailAllowed(type))) {
+    counts.OFF = recipients.length;
+    return counts;
+  }
   const results = await mapLimit(recipients, 10, async (recipient) => {
     const outcome = await sendEmail({ job, type, recipient, idempotencyKey: keyFor(recipient), payload });
     if (outcome === "SENT" && onSent) await onSent(recipient);

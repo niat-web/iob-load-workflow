@@ -62,8 +62,8 @@ ${facts}`;
   return fallbackSpokenJd(job);
 }
 
-export function buildAgentDefinition(job, ratingTemplate) {
-  const { callerName, callingFrom, language, callMaxSeconds } = config.nxtdial;
+export function buildAgentDefinition(job, ratingTemplate, callMaxSeconds = config.nxtdial.callMaxSeconds) {
+  const { callerName, callingFrom, language } = config.nxtdial;
   const minutes = Math.max(1, Math.round(callMaxSeconds / 60));
   const welcomeMessage = `Hi {name}, this is ${callerName} calling from ${callingFrom}, about a ${job.jobRole} opportunity at ${job.companyName}. Do you have a minute?`;
   const prompt = `You are ${callerName}, a friendly placement coordinator calling from ${callingFrom}. You are speaking with {name}, a student who is eligible for the job below but has NOT applied yet.
@@ -124,11 +124,20 @@ export async function ensureRatingTemplate() {
 }
 
 export async function ensureCallAgent(job, actor) {
-  if (config.nxtdial.agentId) return { agentId: config.nxtdial.agentId, spokenJd: job.boost?.spokenJd ?? (await spokenJobSummary(job)) };
+  if (config.nxtdial.agentId) {
+    if (job.boost?.spokenJd) return { agentId: config.nxtdial.agentId, spokenJd: job.boost.spokenJd };
+    const spokenJd = await spokenJobSummary(job);
+    await Job.updateOne({ _id: job._id }, { $set: { "boost.spokenJd": spokenJd } });
+    return { agentId: config.nxtdial.agentId, spokenJd };
+  }
   if (job.boost?.callAgentId) return { agentId: job.boost.callAgentId, spokenJd: job.boost.spokenJd ?? (await spokenJobSummary(job)) };
 
   const spokenJd = await spokenJobSummary(job);
-  const ratingTemplate = await ensureRatingTemplate();
+  const ratingTemplate = await ensureRatingTemplate().catch((error) => {
+    if (error.status !== 403) throw error;
+    logger.warn({ err: error }, "NxtDial refused the scoring sheet for API keys; the agent is created without it");
+    return null;
+  });
   const agent = await integrations.nxtdial.createAgent(buildAgentDefinition(job, ratingTemplate));
   await Job.updateOne(
     { _id: job._id },

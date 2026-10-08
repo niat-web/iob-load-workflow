@@ -1,5 +1,6 @@
 import { connectDb, disconnectDb } from "./config/db.js";
 import { reportMissingSettings } from "./config/startupReport.js";
+import { startResumeWorker } from "./services/resumeQueue.js";
 import { logger } from "./utils/logger.js";
 import { startWorker } from "./workers/workflowWorker.js";
 
@@ -7,6 +8,7 @@ async function main() {
   reportMissingSettings();
   await connectDb();
   const worker = startWorker();
+  const resumeWorker = startResumeWorker();
 
   let stopping = false;
   const shutdown = async (signal) => {
@@ -16,6 +18,7 @@ async function main() {
     const force = setTimeout(() => process.exit(1), 30_000);
     force.unref();
     await worker.stop();
+    if (resumeWorker) await resumeWorker.stop();
     await disconnectDb();
     process.exit(0);
   };

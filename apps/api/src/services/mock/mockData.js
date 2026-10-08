@@ -66,7 +66,7 @@ export function mockStudents(seed, count) {
       mobile: index % 15 === 14 ? null : `+9190000${String(10000 + index).slice(-5)}`,
       campus: pick(rand, CAMPUSES),
       batch: pick(rand, ["2025", "2026"]),
-      program: "CCBP_INTENSIVE",
+      program: index % 3 === 2 ? "CCBP_ACADEMY_SMART" : "NIAT",
     };
   });
 }

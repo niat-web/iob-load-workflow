@@ -26,38 +26,54 @@ export async function recordAppliedCount(job, appliedCount) {
   return updated;
 }
 
+const present = (value) => value !== null && value !== undefined && value !== "";
+
 export async function syncApplicants(job) {
   const applicants = await integrations.bigquery.getApplicants(job.learningPortalJobId);
+  const syncedAt = now();
 
   for (const batch of chunk(applicants, 1000)) {
+    const ids = batch.map((applicant) => String(applicant.studentId));
+    const known = new Map(
+      (await JobEligibleStudent.find({ jobId: job._id, studentId: { $in: ids } }).lean()).map((row) => [row.studentId, row]),
+    );
     await JobApplication.bulkWrite(
-      batch.map((applicant) => ({
-        updateOne: {
-          filter: { jobId: job._id, studentId: String(applicant.studentId) },
-          update: {
-            $set: {
-              studentName: applicant.studentName ?? "",
-              email: applicant.email ?? null,
-              mobile: applicant.mobile ?? null,
-              campus: applicant.campus ?? null,
-              batch: applicant.batch ?? null,
-              program: applicant.program ?? null,
-              resumeUrl: applicant.resumeUrl ?? null,
-              appliedAt: applicant.appliedAt ?? null,
+      batch.map((applicant) => {
+        const studentId = String(applicant.studentId);
+        const eligible = known.get(studentId);
+        const fields = {
+          studentName: applicant.studentName || eligible?.studentName,
+          email: applicant.email || eligible?.email,
+          mobile: applicant.mobile || eligible?.mobile,
+          campus: applicant.campus || eligible?.campus,
+          batch: applicant.batch || eligible?.batch,
+          program: applicant.program,
+          resumeUrl: applicant.resumeUrl,
+          appliedAt: applicant.appliedAt,
+          applicationStage: applicant.applicationStage,
+          profile: applicant.profile,
+        };
+        const set = Object.fromEntries(Object.entries(fields).filter(([, value]) => present(value)));
+        return {
+          updateOne: {
+            filter: { jobId: job._id, studentId },
+            update: {
+              $set: { ...set, learningPortalJobId: job.learningPortalJobId ?? null, lastSyncedAt: syncedAt },
+              $setOnInsert: { source: "BIGQUERY" },
             },
-            $setOnInsert: { source: "BIGQUERY" },
+            upsert: true,
           },
-          upsert: true,
-        },
-      })),
+        };
+      }),
       { ordered: false },
     );
     await JobEligibleStudent.updateMany(
-      { jobId: job._id, studentId: { $in: batch.map((applicant) => String(applicant.studentId)) }, applied: false },
+      { jobId: job._id, studentId: { $in: ids }, applied: { $ne: true } },
       { $set: { applied: true, appliedAt: now() } },
     );
   }
 
-  const updatedJob = await recordAppliedCount(job, applicants.length);
+  const appliedCount = await JobApplication.countDocuments({ jobId: job._id });
+  const updatedJob = await recordAppliedCount(job, appliedCount);
   return { applicants, job: updatedJob };
 }

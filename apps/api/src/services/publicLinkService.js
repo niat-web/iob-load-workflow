@@ -1,38 +1,26 @@
 import { config } from "../config/env.js";
-import { PublicLink } from "../models/index.js";
+import { Job, PublicLink } from "../models/index.js";
 import { now } from "../utils/clock.js";
-import { decrypt, encrypt, randomToken, sha256 } from "../utils/crypto.js";
 import { AppError, isDuplicateKeyError, notFound } from "../utils/errors.js";
-import { logger } from "../utils/logger.js";
 
-export function publicUrlForToken(token) {
-  return `${config.frontendUrl}/public/candidate-pool/${token}`;
+export const JOB_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function sharedProfilesUrl(learningPortalJobId) {
+  return `${config.frontendUrl}/shared/profiles/${learningPortalJobId}`;
 }
 
-function urlForLink(link) {
-  try {
-    return publicUrlForToken(decrypt(link.tokenEncrypted, config.encryptionSecret));
-  } catch (error) {
-    logger.error({ err: error, linkId: String(link._id) }, "Cannot decrypt public link token");
-    return null;
-  }
-}
+const urlForLink = (link) => (link?.learningPortalJobId ? sharedProfilesUrl(link.learningPortalJobId) : null);
 
 export async function createPublicLinkForJob(jobId, createdBy) {
   const existing = await PublicLink.findOne({ jobId, isActive: true });
   if (existing) return { link: existing, url: urlForLink(existing) };
 
-  const token = randomToken(32);
+  const job = await Job.findById(jobId, { learningPortalJobId: 1 }).lean();
+  if (!job?.learningPortalJobId) throw notFound("This job has no Learning Portal job ID");
   const expiresAt = new Date(now().getTime() + config.publicLinks.expiryDays * 24 * 60 * 60 * 1000);
   try {
-    const link = await PublicLink.create({
-      jobId,
-      tokenHash: sha256(token),
-      tokenEncrypted: encrypt(token, config.encryptionSecret),
-      createdBy,
-      expiresAt,
-    });
-    return { link, url: publicUrlForToken(token) };
+    const link = await PublicLink.create({ jobId, learningPortalJobId: job.learningPortalJobId, createdBy, expiresAt });
+    return { link, url: urlForLink(link) };
   } catch (error) {
     if (!isDuplicateKeyError(error)) throw error;
     const link = await PublicLink.findOne({ jobId });
@@ -40,15 +28,17 @@ export async function createPublicLinkForJob(jobId, createdBy) {
   }
 }
 
-export async function resolvePublicLink(token) {
-  if (!token || token.length < 20 || token.length > 100) throw notFound("This link is not valid");
-  const link = await PublicLink.findOne({ tokenHash: sha256(token) });
+export async function resolveSharedLink(learningPortalJobId) {
+  if (!JOB_ID_PATTERN.test(String(learningPortalJobId ?? ""))) throw notFound("This link is not valid");
+  const link = await PublicLink.findOne({ learningPortalJobId });
   if (!link || !link.isActive) throw notFound("This link is not valid");
   if (link.expiresAt.getTime() <= now().getTime()) {
     throw new AppError(410, "LINK_EXPIRED", "This link has expired");
   }
+  const job = await Job.findById(link.jobId).lean();
+  if (!job) throw notFound("This link is not valid");
   await PublicLink.updateOne({ _id: link._id }, { $set: { lastAccessedAt: now() }, $inc: { accessCount: 1 } });
-  return link;
+  return { link, job };
 }
 
 export async function publicLinkUrlsForJobs(jobs) {

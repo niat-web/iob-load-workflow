@@ -6,7 +6,6 @@ import { JOB_STATUS } from "../src/config/statuses.js";
 import { Job, LearningPortalOrganisation } from "../src/models/index.js";
 import { InMemorySheets } from "../src/services/googleSheets.js";
 import { integrations, overrideIntegration } from "../src/services/integrations.js";
-import { TRACKER_HEADERS } from "../src/services/learningPortal/jobLoadingSheet.js";
 import { ensureOrganisation } from "../src/services/learningPortal/portalLoader.js";
 import { MockLearningPortalClient } from "../src/services/learningPortalClient.js";
 import { IntegrationError } from "../src/utils/errors.js";
@@ -64,7 +63,7 @@ describe("Learning Portal loading (beta then prod, as CRM_Job_Loading)", () => {
     assert.ok(job.learningPortalLoads.beta.loadedAt && job.learningPortalLoads.prod.loadedAt);
     assert.equal(job.learningPortalJobUrl, prod.payload.job_details.link_to_apply, "students are emailed the prod apply link");
 
-    assert.deepEqual(integrations.hubspot.updates, [{ dealId: "12345", properties: { job_id: job.learningPortalJobId } }]);
+    assert.deepEqual(integrations.hubspot.updates, [{ dealId: "12345", properties: { job_id: job.learningPortalJobId, jd_count: 1 } }]);
     assert.equal(job.hubspotWriteBack.status, "DONE");
 
     const detail = await crm.get(`/api/crm/deals/${job._id}`);
@@ -136,9 +135,10 @@ describe("Learning Portal loading (beta then prod, as CRM_Job_Loading)", () => {
     }
   });
 
-  test("order numbers continue from the tracker sheet, and each loaded job adds a tracker row", async () => {
-    const lastRow = TRACKER_HEADERS.map((header) => (header === "Order" ? "41" : ""));
-    const sheets = new InMemorySheets({ "Loaded Jobs Tracker": [[...TRACKER_HEADERS, "Remarks"], lastRow] });
+  test("order numbers continue from the tracker sheet, and nothing is written to the sheet", async () => {
+    const headers = ["Date", "Job Deal ID", "Job ID", "Order", "Remarks"];
+    const lastRow = headers.map((header) => (header === "Order" ? "41" : ""));
+    const sheets = new InMemorySheets({ "Loaded Jobs Tracker": [headers, lastRow] });
     overrideIntegration("sheets", sheets);
 
     const first = await openApplicationWindow(crm, "12345");
@@ -146,16 +146,10 @@ describe("Learning Portal loading (beta then prod, as CRM_Job_Loading)", () => {
     assert.equal(first.learningPortalPayload.job_details.order, 42);
     assert.equal(second.learningPortalPayload.job_details.order, 43);
 
-    const rows = sheets.worksheets["Loaded Jobs Tracker"];
-    assert.equal(rows.length, 4);
-    const headers = rows[0];
-    const row = Object.fromEntries(headers.map((header, index) => [header, rows[2][index]]));
-    assert.equal(row["Job ID"], first.learningPortalJobId);
-    assert.equal(row["Job Deal ID"], "12345");
-    assert.equal(row.Order, "42");
-    assert.equal(row["Organization ID"], first.learningPortalOrgId);
-    assert.equal(row.Remarks, "Loaded in Beta and Prod successfully (Job Flow Automation)");
-    assert.ok((await Job.findById(first._id)).trackerRecordedAt);
+    assert.deepEqual(sheets.worksheets["Loaded Jobs Tracker"], [headers, lastRow], "the sheet is only read");
+    const saved = await Job.findById(first._id).lean();
+    assert.equal(saved.learningPortalJobId, first.learningPortalJobId, "loaded-job details live in the database");
+    assert.ok(saved.learningPortalLoads.prod.loadedAt);
   });
 });
 

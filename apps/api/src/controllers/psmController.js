@@ -16,16 +16,12 @@ import { now } from "../utils/clock.js";
 import { randomToken } from "../utils/crypto.js";
 import { AppError, conflict, notFound } from "../utils/errors.js";
 import { escapeRegex } from "../utils/helpers.js";
+import { listOf } from "../utils/queryList.js";
+import { latestInterestByStudent } from "../services/jobUpdateService.js";
+import { SHARED_COLUMNS, saveSharedColumns, sharedColumnsFor } from "../services/sharedSheetService.js";
 
 const priorityPattern = /^P([1-9]\d{0,4})$/;
 
-const listOf = (item) =>
-  z
-    .string()
-    .max(4000)
-    .optional()
-    .transform((value) => [...new Set((value ?? "").split("|").map((part) => part.trim()).filter(Boolean))])
-    .pipe(z.array(item).max(200));
 
 export const psmListSchema = z.object({
   search: z.string().trim().max(200).optional(),
@@ -99,6 +95,22 @@ export function serializeCandidate(candidate) {
   };
 }
 
+export const sharedColumnsSchema = z.object({ columns: z.array(z.string().max(40)).min(1).max(40) });
+
+export async function sharedColumns(req, res) {
+  const job = await loadPsmJob(req.valid.params.jobId);
+  res.json({
+    columns: SHARED_COLUMNS.map(({ key, label }) => ({ key, label })),
+    selected: await sharedColumnsFor(job),
+  });
+}
+
+export async function updateSharedColumns(req, res) {
+  const job = await loadPsmJob(req.valid.params.jobId);
+  const selected = await saveSharedColumns(job, req.valid.body.columns, req.user);
+  res.json({ columns: SHARED_COLUMNS.map(({ key, label }) => ({ key, label })), selected });
+}
+
 export async function listJobs(req, res) {
   res.json(await listPsmJobs(req.valid.query));
 }
@@ -147,8 +159,12 @@ export async function listCandidates(req, res) {
     CandidateAnalysis.find(filter).sort(CANDIDATE_SORTS[sort]).skip((page - 1) * limit).limit(limit).lean(),
     CandidateAnalysis.countDocuments(filter),
   ]);
+  const interest = await latestInterestByStudent(
+    job._id,
+    items.map((item) => item.studentId),
+  );
   res.json({
-    items: items.map(serializeCandidate),
+    items: items.map((item) => ({ ...serializeCandidate(item), interest: interest.get(item.studentId) ?? null })),
     pagination: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) },
   });
 }

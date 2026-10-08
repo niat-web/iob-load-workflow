@@ -1,24 +1,23 @@
 import type { ColumnDef } from "@tanstack/react-table";
-import { FilterX, SlidersHorizontal, GraduationCap, Pencil, SearchX, Trash2, UserPlus } from "lucide-react";
+import { FilterX, GraduationCap, Pencil, SearchX, Trash2, UserPlus } from "lucide-react";
 import { useMemo, useState } from "react";
 import { errorMessage } from "../api/client";
 import { useDeletePoolStudent, useEligiblePool, useEligiblePoolSummary } from "../api/admin";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { DataTable, type TableSort } from "../components/DataTable";
 import { EmptyState } from "../components/EmptyState";
-import { FilterSelect } from "../components/FilterSelect";
+import { FilterMenu } from "../components/FilterMenu";
 import { Pagination } from "../components/Pagination";
 import { PoolStudentDialog } from "../components/pool/PoolStudentDialog";
 import { SearchInput } from "../components/SearchInput";
 import { StatusBadge } from "../components/StatusBadge";
-import { Drawer } from "../components/Drawer";
 import { useToast } from "../components/toast-context";
 import { Button, IconButton } from "../components/ui/Button";
 import { useClampPage, useUrlFilters } from "../hooks/useUrlFilters";
 import { ELIGIBILITY_STATUSES, type EligiblePoolQuery, type EligiblePoolStudent } from "../types/api";
 import { formatNumber } from "../utils/format";
 import { productTone, statusTone } from "../utils/poolTones";
-import { DEFAULT_PAGE_SIZE } from "../utils/pagination";
+import { DEFAULT_PAGE_SIZE, splitFilterValues } from "../utils/pagination";
 
 const FILTER_KEYS = ["q", "product", "status", "campus"] as const;
 
@@ -75,7 +74,7 @@ function buildPoolColumns(offset: number, actions: PoolActions): ColumnDef<Eligi
       meta: { sortKey: "productGroup" },
       header: "Product",
       cell: ({ row }) =>
-        row.original.productGroup && row.original.productGroup !== "Unknown" ? (
+        row.original.productGroup ? (
           <StatusBadge label={row.original.productGroup} tone={productTone(row.original.productGroup)} />
         ) : null,
     },
@@ -132,10 +131,8 @@ export function EligiblePoolPage() {
   const { reset: resetRemove } = remove;
   const [editor, setEditor] = useState<{ student: EligiblePoolStudent | null } | null>(null);
   const [deleting, setDeleting] = useState<EligiblePoolStudent | null>(null);
-  const [filtersOpen, setFiltersOpen] = useState(false);
   const [sort, setSort] = useState<TableSort | null>(null);
 
-  const activeFilters = [filters.product, filters.status, filters.campus].filter(Boolean).length;
 
   const query = useMemo<EligiblePoolQuery>(
     () => ({
@@ -209,22 +206,22 @@ export function EligiblePoolPage() {
           onChange={(value) => setFilter("q", value)}
           placeholder="Search name, NIAT ID, mobile, email or user ID..."
           label="Search the eligible pool"
-          className="w-full sm:w-96"
+          className="w-full sm:w-80"
         />
-        <Button
-          variant="secondary"
-          className="sm:ml-auto"
-          onClick={() => setFiltersOpen(true)}
-          icon={<SlidersHorizontal className="size-4" aria-hidden />}
-          aria-label={activeFilters ? `Filters, ${activeFilters} active` : "Filters"}
-        >
-          Filters
-          {activeFilters > 0 && (
-            <span className="ml-1 inline-flex size-5 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-white">
-              {activeFilters}
-            </span>
-          )}
-        </Button>
+        <FilterMenu
+          categories={[
+            { key: "product", label: "Product", options: productOptions },
+            { key: "status", label: "Eligibility Status", options: statusOptions },
+            { key: "campus", label: "Campus", options: campusOptions },
+          ]}
+          values={{
+            product: splitFilterValues(filters.product),
+            status: splitFilterValues(filters.status),
+            campus: splitFilterValues(filters.campus),
+          }}
+          onChange={(key, values) => setFilter(key as (typeof FILTER_KEYS)[number], values.join("|"))}
+          onClear={clearFilters}
+        />
         <Button
           variant="ghost"
           onClick={clearFilters}
@@ -233,57 +230,14 @@ export function EligiblePoolPage() {
         >
           Clear Filters
         </Button>
-        <Button onClick={() => setEditor({ student: null })} icon={<UserPlus className="size-4" aria-hidden />}>
+        <Button
+          className="sm:ml-auto"
+          onClick={() => setEditor({ student: null })}
+          icon={<UserPlus className="size-4" aria-hidden />}
+        >
           Add student
         </Button>
       </div>
-
-      <Drawer open={filtersOpen} onClose={() => setFiltersOpen(false)} title="Filters">
-        <div className="space-y-5">
-          <div>
-            <p className="mb-1.5 text-[13px] font-semibold text-ink">Product</p>
-            <FilterSelect
-              value={filters.product}
-              onChange={(value) => setFilter("product", value)}
-              options={productOptions}
-              placeholder="All Products"
-              label="Filter by product"
-              className="w-full"
-            />
-          </div>
-          <div>
-            <p className="mb-1.5 text-[13px] font-semibold text-ink">Eligibility status</p>
-            <FilterSelect
-              value={filters.status}
-              onChange={(value) => setFilter("status", value)}
-              options={statusOptions}
-              placeholder="All Statuses"
-              label="Filter by eligibility status"
-              className="w-full"
-            />
-          </div>
-          <div>
-            <p className="mb-1.5 text-[13px] font-semibold text-ink">Campus</p>
-            <FilterSelect
-              value={filters.campus}
-              onChange={(value) => setFilter("campus", value)}
-              options={campusOptions}
-              placeholder="All Campuses"
-              label="Filter by campus"
-              className="w-full"
-            />
-          </div>
-          <p className="text-sm text-muted">
-            {pagination ? `${formatNumber(pagination.total)} students match` : "Loading…"}
-          </p>
-          <div className="flex justify-end gap-2 border-t pt-5">
-            <Button variant="secondary" onClick={clearFilters} disabled={activeFilters === 0}>
-              Clear
-            </Button>
-            <Button onClick={() => setFiltersOpen(false)}>Done</Button>
-          </div>
-        </div>
-      </Drawer>
 
       <DataTable
         caption="Eligible pool students"

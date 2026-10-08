@@ -36,7 +36,7 @@ function initialValues(student: EligiblePoolStudent | null): FormValues {
   const values = {} as FormValues;
   for (const field of FIELDS) {
     const value = student?.[field];
-    values[field] = value === null || value === undefined || value === "Unknown" ? "" : String(value);
+    values[field] = value === null || value === undefined ? "" : String(value);
   }
   return values;
 }

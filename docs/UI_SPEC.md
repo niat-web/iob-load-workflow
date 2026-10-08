@@ -71,7 +71,7 @@ page stays readable at 125% Windows display scaling.
 | `/settings` | CRM, PSM, ADMIN | Account (name, email, role, HubSpot owner, access) and **Sign out**. Admins pick their own HubSpot owner here and get a **Users** section: add user (email, name, role, HubSpot owner) and a table to change role, owner and access inline |
 | `/psm` | PSM, ADMIN | PSM company-wise dashboard |
 | `/psm/jobs/:jobId/review` | PSM, ADMIN | Candidate review |
-| `/public/candidate-pool/:token` | public | Read-only candidate pool (no header, no auth) |
+| `/shared/profiles/:jobId` | shared | Editable profiles sheet for the company (no header, no sign-in) |
 
 Unknown email after Google sign-in → show an **Access Denied** state. A signed-in user opening a
 page their role cannot access → Access Denied state (not a redirect loop).
@@ -172,15 +172,14 @@ page their role cannot access → Access Denied state (not a redirect loop).
 
    Buttons: **Cancel**, **Confirm & Submit**. On success show the public link.
 
-## Public candidate pool (`/public/candidate-pool/:token`)
+## Shared profiles (`/shared/profiles/:jobId`)
 
-No header, no auth. Shows Company Name, Job Role, Total Applied and the final candidate table:
-
-Final Priority · Student Name · Resume · Relevant Skills · AI Resume Score · GRIT Score ·
-Assessment Score · Interview Score · Overall Score · Candidate Status
-
-Sorted by final priority. Friendly states for `404` ("This link is not valid") and `410`
-("This link has expired").
+No header, no sign-in. Shows Company Name, Job Role, Total Applied and Profiles, then a sheet with the
+columns the PSM picked plus any added columns, sorted by final priority. Click a cell to edit (Enter
+saves, Shift+Enter adds a line, Esc cancels). **Add row** and **Add column** sit above the sheet; added
+columns can be renamed or deleted from their header, added rows from the row's bin icon. A status line
+shows "Saving…" / "All changes saved". The page refreshes every 30 seconds so edits by others appear.
+Friendly states for `404` ("This link is not valid") and `410` ("This link has expired").
 
 ## States every page handles
 

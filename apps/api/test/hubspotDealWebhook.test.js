@@ -156,7 +156,7 @@ describe("a deal processed with only the deal webhook", () => {
     assert.ok(job.learningPortalLoads.prod.loadedAt);
     assert.equal(job.hubspotWriteBack.status, "DONE", job.hubspotWriteBack.error);
     const update = requests.find((request) => request.body?.action === "update");
-    assert.deepEqual(update.body, { action: "update", dealId: "12345", properties: { job_id: job.learningPortalJobId } });
+    assert.deepEqual(update.body, { action: "update", dealId: "12345", properties: { job_id: job.learningPortalJobId, jd_count: 1 } });
     assert.equal(requests.filter((request) => request.body?.action === "update").length, 1, "no owner fields were chosen");
   });
 });

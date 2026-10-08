@@ -85,7 +85,7 @@ straight through.
 | 12 | AI analysis | Each resume scored against the job | Gemini |
 | 13 | Priority | Weighted ranking (resume 40, GRIT 25, assessment 20, interview 15) | App |
 | 14 | PSM review | PSM changes priorities, remarks and candidate status, then submits | App |
-| 15 | Share | Public candidate-pool link (expires in 30 days) emailed to the CRM owner | SES |
+| 15 | Share | Shared profiles link `/shared/profiles/<job ID>` (editable sheet, expires in 30 days) emailed to the CRM who loaded the deal | SES |
 
 ### Flow modes
 

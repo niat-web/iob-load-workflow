@@ -3,6 +3,7 @@ import { IntegrationError } from "../utils/errors.js";
 import { createBigQueryRepository } from "./bigQueryRepository.js";
 import { createSheetsClient } from "./googleSheets.js";
 import { createGeminiResumeAnalyzer } from "./geminiResumeAnalyzer.js";
+import { createGoogleMeetClient } from "./googleMeetClient.js";
 import { createHubspotClient } from "./hubspotClient.js";
 import { createLearningPortalClient } from "./learningPortalClient.js";
 import { createNxtDialClient } from "./nxtDialClient.js";
@@ -16,6 +17,7 @@ const factories = {
   ses: createSesService,
   nxtdial: createNxtDialClient,
   sheets: createSheetsClient,
+  meet: createGoogleMeetClient,
 };
 
 export function notSetUp(name, missing) {
@@ -75,6 +77,9 @@ export const integrations = {
   },
   get sheets() {
     return get("sheets");
+  },
+  get meet() {
+    return get("meet");
   },
 };
 

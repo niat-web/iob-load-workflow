@@ -14,7 +14,11 @@ async function fromEligiblePool(job) {
   const enrollPlans = job.learningPortalPayload?.job_details?.enroll_plans ?? job.enrollPlans ?? [];
   const products = productGroupsForPlans(enrollPlans);
   if (!products.length) {
-    throw new PermanentError("This job has no course plans, so the Eligible Pool products to use are unknown. Choose the course plans, then retry.");
+    throw new PermanentError(
+      enrollPlans.length
+        ? "This deal's course plans are not NIAT or Academy, so no student in the Eligible Pool matches. Check the course plans, then retry."
+        : "This job has no course plans, so the Eligible Pool products to use are unknown. Choose the course plans, then retry.",
+    );
   }
   const years = passOutYears(job.batch);
   const students = await eligibleFromPool({ products, years });

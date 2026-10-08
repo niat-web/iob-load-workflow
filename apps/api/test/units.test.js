@@ -1,4 +1,5 @@
 import "./setup.js";
+import { resolveLogo } from "../src/services/learningPortal/logoResolver.js";
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { requestFields } from "../src/app.js";
@@ -390,5 +391,53 @@ describe("HubSpot owner list", () => {
     assert.equal(byId.has("1000007"), false);
     assert.equal(owners.filter((owner) => owner.id === "1000001").length, 1);
     assert.equal(hubspotOwnerForEmail("Asha.Verma@example.com").id, "1000001");
+  });
+});
+
+describe("company logo lookup (same order as CRM_Job_Loading)", () => {
+  const live = async (run) => {
+    const mode = config.modes.learningPortal;
+    config.modes.learningPortal = "live";
+    try {
+      await run();
+    } finally {
+      config.modes.learningPortal = mode;
+    }
+  };
+  const site = (status, html = "") => new Response(html, { status, headers: { "Content-Type": "text/html" } });
+  const fetchFor = (ok, pages = {}) => {
+    const calls = [];
+    const fetchImpl = async (target) => {
+      const url = String(target);
+      calls.push(url);
+      if (pages[url]) return site(200, pages[url]);
+      return site(ok.some((part) => url.includes(part)) ? 200 : 404);
+    };
+    return { calls, fetchImpl };
+  };
+  const input = { website: "https://www.acme.com", linkedin: "https://www.linkedin.com/company/acme-labs/", hubspotLogo: "https://cdn.example.com/hubspot.png" };
+
+  test("website logo services come first, before the HubSpot logo", async () => {
+    await live(async () => {
+      const { calls, fetchImpl } = fetchFor(["google.com/s2/favicons"]);
+      assert.equal(await resolveLogo(input, { fetchImpl }), "https://www.google.com/s2/favicons?sz=128&domain=acme.com");
+      assert.ok(calls[0].startsWith("https://logo.clearbit.com/acme.com"));
+    });
+  });
+
+  test("then the website itself, then the LinkedIn guess, then HubSpot, then NA", async () => {
+    await live(async () => {
+      const scraped = fetchFor(["acme.com/img/brand-logo.png"], {
+        "https://www.acme.com/": '<html><img src="/img/brand-logo.png"></html>',
+      });
+      assert.equal(await resolveLogo(input, scraped), "https://www.acme.com/img/brand-logo.png");
+
+      const linkedin = fetchFor(["logo.clearbit.com/acme-labs.com"]);
+      assert.equal(await resolveLogo(input, linkedin), "https://logo.clearbit.com/acme-labs.com");
+
+      const hubspot = fetchFor([]);
+      assert.equal(await resolveLogo(input, hubspot), "https://cdn.example.com/hubspot.png");
+      assert.equal(await resolveLogo({ ...input, hubspotLogo: "https://f.hubspot-logos.com/x.png" }, hubspot), "NA");
+    });
   });
 });

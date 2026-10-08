@@ -3,10 +3,6 @@ import type { PoolProduct, Tone } from "../types/api";
 const PRODUCT_TONES: Record<PoolProduct, Tone> = {
   NIAT: "purple",
   Academy: "blue",
-  Intensive: "green",
-  External: "orange",
-  Other: "gray",
-  Unknown: "gray",
 };
 
 export function productTone(product: string): Tone {

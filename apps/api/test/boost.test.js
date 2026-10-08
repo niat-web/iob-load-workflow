@@ -1,6 +1,7 @@
 import "./setup.js";
 import { after, before, beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
+import { config } from "../src/config/env.js";
 import { JOB_STATUS, NOTIFICATION_TYPE } from "../src/config/statuses.js";
 import { AiCall, Job, JobEligibleStudent, NotificationLog } from "../src/models/index.js";
 import { integrations } from "../src/services/integrations.js";
@@ -31,7 +32,6 @@ describe("boost applications (CRM page)", () => {
     assert.equal(response.body.notApplied.withPhone, students.filter((s) => normalizePhone(s.mobile)).length);
     assert.equal(response.body.deal.windowOpen, true);
     assert.equal(response.body.calls.setupProblem, null);
-    assert.equal(response.body.calls.maxSeconds, 120);
   });
 
   test("reminder emails go only to students who have not applied, with a cooldown before the next send", async () => {
@@ -86,6 +86,26 @@ describe("boost applications (CRM page)", () => {
     assert.equal(second.status, 202);
     assert.equal(second.body.run.queued, callable.length - completed.length, "students already reached are not called again");
     assert.equal(nxtdial.agents.length, 1, "the same agent is reused");
+  });
+
+  test("with one shared agent, no agent is created and the job summary is kept for the page", async () => {
+    const shared = config.nxtdial.agentId;
+    config.nxtdial.agentId = "shared-agent-1";
+    try {
+      assert.equal((await crm.post(`/api/crm/deals/${job._id}/boost/calls`).set(XHR)).status, 202);
+      const nxtdial = integrations.nxtdial;
+      assert.equal(nxtdial.agents.length, 0);
+      assert.equal(nxtdial.templates.length, 0);
+      const [batch] = [...nxtdial.batches.values()];
+      assert.equal(batch.agentId, "shared-agent-1");
+      const item = batch.items[0];
+      assert.ok(item.metadata.company && item.metadata.role && item.metadata.jd && item.metadata.deadline);
+      const page = (await crm.get(`/api/crm/deals/${job._id}/boost`)).body;
+      assert.equal(page.calls.agentId, "shared-agent-1");
+      assert.equal(page.calls.spokenJd, item.metadata.jd);
+    } finally {
+      config.nxtdial.agentId = shared;
+    }
   });
 
   test("nothing can be sent after the application window closes", async () => {

@@ -1,6 +1,8 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   AdminUser,
+  AppSettings,
+  AppSettingsRecord,
   BigQueryDatasets,
   BigQueryRows,
   BigQueryTables,
@@ -20,6 +22,7 @@ export const adminKeys = {
   pool: () => ["admin", "eligible-pool"] as const,
   poolList: (query: EligiblePoolQuery) => [...adminKeys.pool(), "list", query] as const,
   poolSummary: () => [...adminKeys.pool(), "summary"] as const,
+  settings: () => ["admin", "settings"] as const,
   bigquery: () => ["admin", "bigquery"] as const,
   bigqueryTables: (dataset: string) => [...adminKeys.bigquery(), "tables", dataset] as const,
   bigqueryRows: (dataset: string, table: string, page: number, limit: number) =>
@@ -93,6 +96,26 @@ export function useSyncEligiblePool() {
     mutationFn: () => api.post<{ sync: EligiblePoolSync }>("/admin/eligible-pool/sync", {}),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: adminKeys.pool() });
+    },
+  });
+}
+
+export type AppSettingsPatch = { [K in keyof AppSettings]?: Partial<AppSettings[K]> };
+
+export function useAppSettings() {
+  return useQuery({
+    queryKey: adminKeys.settings(),
+    queryFn: ({ signal }) => api.get<AppSettingsRecord>("/admin/settings", undefined, signal),
+  });
+}
+
+export function useSaveAppSettings() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (patch: AppSettingsPatch) => api.patch<AppSettingsRecord>("/admin/settings", patch),
+    onSuccess: (record) => {
+      queryClient.setQueryData(adminKeys.settings(), record);
+      void queryClient.invalidateQueries({ queryKey: crmKeys.all });
     },
   });
 }

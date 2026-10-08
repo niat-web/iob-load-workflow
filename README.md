@@ -5,7 +5,7 @@ Learning Portal (beta, then prod, exactly as the CRM_Job_Loading tool does), eli
 20h reminders (email + NxtDial AI call), HubSpot changes are pushed to students, and at 21h the
 applied pool is analysed (Gemini resume scoring + GRIT + assessment + interview scores) and ranked
 P1…Pn. A PSM reviews and submits the pool, and the deal's CRM owner is emailed a secure,
-read-only candidate-pool link to share with the company.
+shared profiles link (an editable sheet) to share with the company.
 
 ```
 CRM  ──Deal ID──▶  API ──▶ workflow_tasks (MongoDB) ◀── Worker
@@ -16,7 +16,7 @@ CRM  ──Deal ID──▶  API ──▶ workflow_tasks (MongoDB) ◀── Wo
                                                          ├─▶ BigQuery (applications, GRIT, assessments, interviews)
                                                          ├─▶ Gemini (resume analysis, portal job text)
                                                          └─▶ Google Sheet (org IDs, Order, tracker; optional)
-PSM  ──review / submit──▶ API ──▶ public link ──▶ CRM email ──▶ company (read-only page)
+PSM  ──review / submit──▶ API ──▶ shared link ──▶ CRM email ──▶ company (editable sheet)
 ```
 
 ## Contents
@@ -69,28 +69,34 @@ tasks are scheduled the moment the window opens.
 | CRM submits Deal ID | — | `SUBMITTED` |
 | Fetch deal, map fields, validate required fields | `FETCH_DEAL` | `DEAL_FETCHED` |
 | Load the job into beta, then prod (same org and job IDs; test accounts get access) | `CREATE_JOB` | `JOB_CREATED` |
-| Write the job ID to the HubSpot deal(s); add a tracker-sheet row | `HUBSPOT_WRITE_BACK`, `TRACK_LOADED_JOB` | — |
+| Write the job ID to the HubSpot deal(s) | `HUBSPOT_WRITE_BACK` | — |
 | Find eligible students (Eligible Pool page) | `IDENTIFY_ELIGIBLE` | `ELIGIBLE_STUDENTS_IDENTIFIED` |
 | Grant eligible students apply access (prod) | `GRANT_ACCESS` | `GRANTING_ACCESS` |
 | Open the 21h window, schedule 10h/20h/21h, send initial emails | `SEND_INITIAL_NOTIFICATIONS` | `APPLICATIONS_OPEN` |
-| Refresh the applied count every `APPLICATION_COUNT_SYNC_MINUTES` | `APPLICATION_COUNT_SYNC` | — |
-| 10h / 20h: if the target is not reached, email + call non-applicants | `REMINDER_10H` / `REMINDER_20H` | `REMINDER_xxH_SENT` |
+| Refresh the applied pool (all applicants, PII and non-PII, by job ID) every `APPLICATION_COUNT_SYNC_MINUTES`, active jobs only | `APPLICATION_COUNT_SYNC` | — |
+| 10h: remind students who have not applied. 20h: final reminder and automatic AI calls. No CRM email | `REMINDER_10H` / `REMINDER_20H` | `REMINDER_xxH_SENT` |
+| Every 30 min: re-read the HubSpot deal; on a student-facing change update the job and email applied students an interest-form link | `HUBSPOT_DEAL_UPDATE` | — |
 | HubSpot change: update the same job in beta and prod, email changes | `HUBSPOT_DEAL_UPDATE` | — |
 | 21h: close (never earlier, even if the target is reached) | `APPLICATION_CLOSE_21H` | `APPLICATIONS_CLOSED` |
 | Final applicant list from BigQuery (snapshot) | `FETCH_FINAL_POOL` | `APPLIED_POOL_READY` |
 | Resume download + Gemini analysis, one candidate at a time | `AI_ANALYSIS` | `AI_ANALYSIS` |
 | GRIT/assessment/interview scores, ranking P1…Pn | `PRIORITY_GENERATION` | `READY_FOR_PSM` |
 | PSM opens review | — | `PSM_REVIEW_IN_PROGRESS` |
-| PSM submits: freeze, public link | — | `PUBLIC_LINK_GENERATED` |
+| PSM submits: freeze, shared profiles link `/shared/profiles/<job ID>` | — | `PUBLIC_LINK_GENERATED` |
 | Email the deal's CRM owner | `CRM_NOTIFICATION` | `COMPLETED` |
+
+A plain-language walk-through of every step, for both flows, is in
+[docs/DEAL_FLOW.md](docs/DEAL_FLOW.md).
 
 ### Flow modes: Automatic and Step by step
 
-The CRM picks a mode next to Submit; each deal keeps its own mode.
+Each deal keeps the flow it was submitted with. In **Settings → Config** the admin chooses which
+flows CRMs see next to Submit: both (the CRM picks per deal), only one (every deal uses it), or none
+(every deal uses the admin's default flow).
 
 - **Automatic**: every step above runs by itself.
-- **Step by step**: the deal stops before five steps and shows **Waiting for Approval** in the CRM
-  table. **Review** opens a panel showing what the step will do; **Approve and continue** runs it,
+- **Step by step**: the deal stops before each step the admin turned on (any of the five below) and
+  shows **Waiting for Approval** in the CRM table. **Review** opens a panel showing what the step will do; **Approve and continue** runs it,
   **Stop deal** ends the deal.
 
 | Stop | Shown to the reviewer | Runs after approval |
@@ -103,7 +109,34 @@ The CRM picks a mode next to Submit; each deal keeps its own mode.
 
 Any CRM user or Admin can approve; every approval is recorded (who, when) in the deal details and
 logs. Course plans can only be changed before the first portal load, so beta and prod stay identical.
-Nothing times out: a deal can wait at a stop as long as needed.
+Nothing times out: a deal can wait at a stop as long as needed. When the admin turns off a step,
+deals waiting at that step continue on their own, recorded as approved by that admin.
+
+### Admin controls (Settings → Config)
+
+Admins control what the app does on its own. Settings are stored in MongoDB (`app_settings`), apply
+as soon as they are saved, and every change is in the audit log (`SETTINGS_UPDATED`).
+
+| Group | Control | When off |
+|---|---|---|
+| Deal flow | Flows CRMs can choose (Automatic, Step by step, both or none), the flow used when the CRM does not choose, and which of the five steps need approval | — |
+| Emails to students | Job email when applications open | The window still opens; no email |
+| | Job update emails (deal changed in HubSpot) | The portal job is still updated; no email |
+| | Reminder emails from the Boost page | The Boost page button is disabled |
+| Checkpoints | 1st checkpoint reminder emails · 2nd checkpoint reminder emails · 2nd checkpoint AI calls (also per company on the Companies page) | That action is skipped and the reason recorded |
+| Emails to CRMs | Expected pool reached | No email |
+| | Candidate pool ready (public link) | The deal completes; the PSM can share the link |
+| AI calls | AI calls from the Boost page (call length and voice are set on the agent in NxtDial) | The Boost page button is disabled |
+| Automation | AI-written job text | Rule-based job text |
+| | AI resume analysis | Candidates are marked skipped and ranked without a resume score |
+| | Write the job ID to HubSpot | Write-back is recorded as skipped |
+| Timing | Application window, first and second CRM checkpoint (hours), gap between reminder emails (minutes) | — |
+
+Until an admin changes them, everything is on, CRMs see both flows and Automatic is selected first.
+`APPLICATION_WINDOW_HOURS`, `REMINDER_ONE_HOURS`, `REMINDER_TWO_HOURS`,
+`BOOST_EMAIL_COOLDOWN_MINUTES` and `HUBSPOT_WRITE_JOB_ID` in `.env` are only the starting values;
+once an admin saves the settings, the saved values are used. Timing changes apply to deals whose
+window starts after the save.
 
 ### Idempotency
 
@@ -123,9 +156,9 @@ per job, and each HubSpot webhook event is stored once (`eventId` or a hash of t
   validated table/column identifiers, SSRF guards on resume downloads.
 - HubSpot webhooks: signature v3 (HMAC-SHA256 with the app client secret) and a 5-minute
   timestamp window.
-- Public links: 256-bit random token; lookups use its SHA-256 hash; the token is stored encrypted
-  (AES-256-GCM, `SESSION_SECRET`) so the CRM can reopen it. The public page shows no student IDs,
-  contact details, PSM remarks, audit data or internal IDs.
+- Shared profiles links use the Learning Portal job ID (`/shared/profiles/<job ID>`) and expire after
+  30 days. Anyone with the link can read and edit the sheet. The page only receives the columns the
+  PSM picked; it never receives student IDs, contact details, resume storage URLs or internal IDs.
 - Candidate data is visible only to PSM and ADMIN. All secrets stay in the backend.
 
 ---
@@ -356,9 +389,10 @@ Deals are loaded the way `CRM_Job_Loading/retool_phase1.py` loads them, using th
 - **Retries**: each environment is recorded when loaded; a retry after a prod failure re-sends only
   prod, with the same IDs. HubSpot edits during the window update the same job in both.
 - **After loading**: the job ID is written to the deal's `job_id` property and to its twin deal in
-  the other job pipeline (`HUBSPOT_WRITE_JOB_ID`, needs `crm.objects.deals.write`), and, when
-  `JOB_LOADING_SHEET_ID` is set, a row is added to the tool's "Loaded Jobs Tracker". The portal
-  "Order" continues from that tracker's last Order.
+  the other job pipeline (`HUBSPOT_WRITE_JOB_ID`, needs `crm.objects.deals.write`). Loaded-job details are kept
+  in MongoDB only; nothing is written to any Google Sheet. When `JOB_LOADING_SHEET_ID` is set, the
+  old tool's sheet is only read (read-only access): the company → Org ID list, and the last "Order"
+  in "Loaded Jobs Tracker" so the portal "Order" continues from it.
 - **Not ported** (manual steps of the tool's UI): the operator's enroll-plan confirmation before
   prod, NIAT batch selection, the Google-Sheet student lists (`USER_IDS` mode) and the CRM / ISE /
   profiling-agent pickers. Eligible students come from the Eligible Pool page (see Eligibility).
@@ -397,13 +431,31 @@ the tool's filters, contact details from the BigQuery `students` table); it is n
 2. `GOOGLE_APPLICATION_CREDENTIALS_JSON` in `apps/api/.env` = the key JSON on one line, in single
    quotes. This is the only BigQuery setting in `.env`; the project comes from the key's `project_id`.
 3. Table names live in the code, in [config/bigqueryTables.js](apps/api/src/config/bigqueryTables.js).
-   Use full names, `project.dataset.table`. Only `applications` is required; GRIT, assessment and
-   interview tables are optional. (`BIGQUERY_*` settings in `.env` still override them if ever needed.)
-4. Default column names are in [config/bigquery.js](apps/api/src/config/bigquery.js); override any
-   with `BIGQUERY_COLUMNS_JSON`, e.g. `{"applications":{"studentId":"uid","jobId":"job_id"}}`.
-   Applications are matched on the **Learning Portal job ID**.
+   Use full names, `project.dataset.table`. The applied pool uses two views, joined on `user_id` for
+   the job's **Learning Portal job ID**:
+   - `applications`: `crm_integration_live_xpm_ccbp_niat_and_academy_users_jobs_with_extra_details`
+     (non-PII: applied time, stage, product, education, location);
+   - `applicationsPii`: `y_jobs_platform_ccbp_user_job_pii_last_three_months` (name, email, mobile,
+     resume link).
+   Times in these views are IST. GRIT, assessment and interview tables are optional. (`BIGQUERY_*`
+   settings in `.env` still override the names if ever needed.)
+4. Default column names for the other tables are in [config/bigquery.js](apps/api/src/config/bigquery.js);
+   override any with `BIGQUERY_COLUMNS_JSON`.
 
 Missing GRIT/assessment/interview tables or rows show as N/A; they never fail the analysis.
+
+### Redis Cloud (resume analysis queue)
+
+Resumes are analysed one at a time through a BullMQ queue in Redis Cloud (https://cloud.redis.io/).
+Create a database there, copy its public endpoint and password, and set one line in `apps/api/.env`:
+
+```
+REDIS_URL=redis://default:<password>@<host>:<port>
+```
+
+Use `rediss://` if the database has TLS turned on. The worker process runs the queue with one resume
+at a time. Without `REDIS_URL` the API still starts; only the AI analysis step stops with a message
+asking for it. Only NIAT applicants are analysed; Academy applicants get no AI resume or GRIT score.
 
 ### Gemini
 
@@ -431,21 +483,32 @@ Required: `NXTDIAL_BASE_URL`, `NXTDIAL_API_KEY` (an `acai_…` key from NxtDial 
    the deal gets an email with a link to **Boost applications** (`/crm/deals/<id>/boost`).
 2. On that page the CRM either sends a reminder email to students who have not applied, or starts
    **AI calls**.
-3. AI calls: the first time, the app writes a ~70-word spoken summary of the job (Gemini, with a
-   rule-based fallback), creates a scoring sheet (`NXTDIAL_RATING_TEMPLATE`: Interested, Will Apply,
-   Reason Not Applied, Questions Asked, Call Back Requested) and a two-way agent for the job
-   (`POST /api/agents`, `callTimeoutSeconds = NXTDIAL_CALL_MAX_SECONDS`, default 120). The welcome
-   message and prompt use the per-call variables `{name}`, `{jd}` and `{deadline}`.
-   `NXTDIAL_AGENT_ID` is optional: set it to reuse one agent for every job instead.
-4. Non-applicants with a valid mobile, not already reached, are sent as one NxtDial **batch**
-   (`POST /api/batches`, then `/start` with `items[].metadata = { jd, deadline }`), so they are called
-   one by one.
-5. Every `NXTDIAL_RESULTS_SYNC_MINUTES` the app reads `GET /api/batches/<id>/results` and stores status,
-   duration, recording, summary, rating and the scoring-sheet answers; the page refreshes itself.
+3. AI calls use one of two agent setups:
+   - **One shared agent (recommended)**: create it once in NxtDial and put its ID in
+     `NXTDIAL_AGENT_ID`. Every job reuses it; the job details reach each call as variables.
+   - **One agent per job** (`NXTDIAL_AGENT_ID` empty): the first time, the app creates a scoring sheet
+     (`NXTDIAL_RATING_TEMPLATE`) and a two-way agent for the job (`POST /api/agents`,
+     `callTimeoutSeconds` = `NXTDIAL_CALL_MAX_SECONDS`). Agents with calls cannot be deleted,
+     so they add up over time.
 
-The NxtDial server needs three additions (in the `screeningtool` repo): API keys may use
-`/api/rating-templates`, the batch `/results` endpoint, and a spoken goodbye when the time limit ends a
-call.
+   Either way, the app writes a ~70-word spoken summary of the job (Gemini, with a rule-based
+   fallback). Each call carries the variables `{name}`, `{company}`, `{role}`, `{jd}` (the spoken
+   summary) and `{deadline}` for the welcome message and prompt. The scoring sheet must have the
+   columns **Interested**, **Will Apply**, **Reason Not Applied**, **Questions Asked** and
+   **Call Back Requested**; the app reads the answers by these names.
+4. Non-applicants with a valid mobile, not already reached, are sent as one NxtDial **batch**
+   (`POST /api/batches` from `NXTDIAL_FROM_NUMBER`, then `/start` with
+   `items[].metadata = { jd, deadline, company, role }`), so they are called one by one.
+5. Every `NXTDIAL_RESULTS_SYNC_MINUTES` the app reads the results and stores status, duration,
+   recording, summary, rating and the scoring-sheet answers; the page refreshes itself. It uses
+   `GET /api/batches/<id>/results`; until that endpoint is deployed it reads
+   `GET /api/batches/<id>/items` and `GET /api/ratings/<callId>` instead. A call that ends at the time
+   limit (`timeout`), on silence or by hanging up counts as reached; `no-answer`, `busy` and
+   `voicemail` are called again on the next run.
+
+The NxtDial server has three additions in the `screeningtool` repo (deploy with `fly deploy`): the
+batch `/results` endpoint, API keys may use `/api/rating-templates` (needed only for one agent per
+job), and a spoken goodbye when the time limit ends a call.
 
 ### Priority
 
@@ -574,9 +637,9 @@ These could not be verified from the information available and are configurable:
    properties to the HubSpot deal (see HubSpot above).
 5. **BigQuery schemas**: table and column names for applications, students, GRIT, assessments and
    interviews.
-6. **NxtDial agent limit**: an organisation has 3 agents by default and an agent with calls cannot be
-   deleted. One agent is created per job, so ask the NxtDial super-admin to raise the limit, or set
-   `NXTDIAL_AGENT_ID` to reuse one agent.
+6. **NxtDial agents**: an agent with calls cannot be deleted. Use one shared agent
+   (`NXTDIAL_AGENT_ID`) so agents do not add up; with one agent per job, the organisation's agent
+   limit must allow it.
 7. **Application window**: 21 hours as specified (the handwritten note said 24); it is
    `APPLICATION_WINDOW_HOURS`.
 8. **Priority weights**: the defaults (40/25/20/15) are placeholders until the team agrees on them.

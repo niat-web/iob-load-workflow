@@ -20,19 +20,6 @@ const loadSchema = new mongoose.Schema(
   { _id: false },
 );
 
-const boostAlertSchema = new mongoose.Schema(
-  {
-    reminder: { type: String, required: true },
-    at: { type: Date, required: true },
-    to: { type: String, default: null },
-    appliedCount: { type: Number, default: 0 },
-    expectedPoolCount: { type: Number, default: null },
-    notApplied: { type: Number, default: 0 },
-    outcome: { type: String, default: null },
-  },
-  { _id: false },
-);
-
 const boostEmailRunSchema = new mongoose.Schema(
   {
     at: { type: Date, required: true },
@@ -92,9 +79,10 @@ const jobSchema = new mongoose.Schema(
       at: { type: Date, default: null },
       error: { type: String, default: null },
     },
-    trackerRecordedAt: { type: Date, default: null },
 
     companyName: { type: String, default: null },
+    companyKey: { type: String, default: null },
+    sharedColumns: { type: [String], default: undefined },
     companyWebsite: { type: String, default: null },
     companyLinkedin: { type: String, default: null },
     companyLogoUrl: { type: String, default: null },
@@ -135,7 +123,6 @@ const jobSchema = new mongoose.Schema(
       r20h: { type: reminderSchema, default: null },
     },
     boost: {
-      crmAlerts: { type: [boostAlertSchema], default: [] },
       emailRuns: { type: [boostEmailRunSchema], default: [] },
       callRuns: { type: [boostCallRunSchema], default: [] },
       callAgentId: { type: String, default: null },
@@ -192,6 +179,7 @@ const jobSchema = new mongoose.Schema(
 
 jobSchema.index({ updatedAt: -1 });
 jobSchema.index({ companyName: 1 });
+jobSchema.index({ companyKey: 1 });
 jobSchema.index({ status: 1, updatedAt: -1 });
 
 export const Job = mongoose.model("Job", jobSchema);

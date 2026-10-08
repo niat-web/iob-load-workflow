@@ -35,9 +35,12 @@ import {
   toCrmRow,
 } from "../services/jobService.js";
 import { publicLinkUrlForJob } from "../services/publicLinkService.js";
+import { CHECKPOINT_SWITCHES, updateCompanyCheckpoints } from "../services/companySettingsService.js";
+import { crmControls, getSettings, resolveFlowMode } from "../services/settingsService.js";
 import { enqueueTask } from "../services/taskQueue.js";
 import { now } from "../utils/clock.js";
 import { AppError, badRequest, conflict, isDuplicateKeyError, notFound } from "../utils/errors.js";
+import { listOf } from "../utils/queryList.js";
 
 const hubspotOwnerId = z
   .string()
@@ -46,18 +49,12 @@ const hubspotOwnerId = z
 
 export const processDealSchema = z.object({
   dealId: z.string().trim().min(1).max(500),
-  flowMode: z.enum(Object.values(FLOW_MODE)).default(FLOW_MODE.AUTOMATIC),
+  flowMode: z.enum(Object.values(FLOW_MODE)).optional(),
   expectedPoolCount: z.coerce
     .number()
     .int("Expected pool must be a whole number")
     .min(1, "Expected pool must be at least 1")
     .max(100000, "Expected pool is too large")
-    .optional(),
-  jdCount: z.coerce
-    .number()
-    .int("JD count must be a whole number")
-    .min(1, "JD count must be at least 1")
-    .max(1000, "JD count is too large")
     .optional(),
   crmOwnerId: hubspotOwnerId.optional(),
   profilingPocId: hubspotOwnerId.optional(),
@@ -78,8 +75,8 @@ export const plansSchema = z.object({
 
 export const listSchema = z.object({
   search: z.string().trim().max(200).optional(),
-  status: z.enum(Object.keys(DISPLAY_STATUS)).optional(),
-  company: z.string().trim().max(200).optional(),
+  status: listOf(z.enum(Object.keys(DISPLAY_STATUS))),
+  company: listOf(z.string().max(200)),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(500).default(50),
   sort: z.enum(["updatedAt:desc", "updatedAt:asc", "companyName:asc", "companyName:desc", "progressPercent:desc"]).default("updatedAt:desc"),
@@ -120,21 +117,22 @@ export async function processDeal(req, res) {
     return res.status(200).json({ job: toCrmRow(existing, await publicLinkUrlForJob(existing)), duplicate: true });
   }
 
-  const { expectedPoolCount, jdCount, crmOwnerId, profilingPocId, iseId } = req.valid.body;
+  const { expectedPoolCount, crmOwnerId, profilingPocId, iseId } = req.valid.body;
   const crmOwner = ownerRef(crmOwnerId);
   const crmOwnerEmail = crmOwner
     ? (hubspotOwnerForUser(req.user)?.id === crmOwner.id ? req.user.email : crmOwner.email)
     : null;
+
+  const flowMode = resolveFlowMode(await getSettings(), req.valid.body.flowMode);
 
   let job;
   try {
     job = await Job.create({
       hubspotDealId: dealId,
       hubspotDealUrl: dealUrlFrom(req.valid.body.dealId),
-      flowMode: req.valid.body.flowMode,
+      flowMode,
       submittedBy: req.user.email,
       expectedPoolCount: expectedPoolCount ?? null,
-      jdCount: jdCount ?? null,
       crmOwnerId: crmOwner?.id ?? null,
       crmOwnerName: crmOwner?.name ?? null,
       crmOwnerEmail,
@@ -142,7 +140,6 @@ export async function processDeal(req, res) {
       ise: ownerRef(iseId),
       submittedInputs: {
         expectedPoolCount: expectedPoolCount ?? null,
-        jdCount: jdCount ?? null,
         crmOwnerId: crmOwner?.id ?? null,
         crmOwnerEmail,
         profilingPocId: ownerRef(profilingPocId)?.id ?? null,
@@ -173,6 +170,19 @@ export async function listDeals(req, res) {
 
 export async function dealFilters(req, res) {
   res.json(await crmFilterOptions());
+}
+
+export const companyControlsSchema = z.object({
+  companyName: z.string().trim().min(1).max(200),
+  checkpoints: z
+    .object(Object.fromEntries(CHECKPOINT_SWITCHES.map((key) => [key, z.boolean()])))
+    .partial()
+    .strict(),
+});
+
+export async function updateCompanyControls(req, res) {
+  const { companyName, checkpoints } = req.valid.body;
+  res.json(await updateCompanyCheckpoints(companyName, checkpoints, req.user));
 }
 
 export async function listCompanies(req, res) {
@@ -398,4 +408,8 @@ export async function boostCalls(req, res) {
 export async function boostCallsSync(req, res) {
   await syncCallResults(await loadJob(req.valid.params.jobId));
   res.json({ boost: await boostOverview(await loadJob(req.valid.params.jobId)) });
+}
+
+export async function controls(req, res) {
+  res.json(crmControls(await getSettings()));
 }

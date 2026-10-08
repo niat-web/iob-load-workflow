@@ -82,6 +82,7 @@ const schema = z.object({
   SESSION_TTL_HOURS: number(12, { min: 1, max: 24 * 30 }),
   COOKIE_SAMESITE: z.enum(["lax", "strict", "none"]).default("lax"),
   GOOGLE_CLIENT_ID: optionalString,
+  GOOGLE_CLIENT_SECRET: optionalString,
   ALLOWED_EMAIL_DOMAINS: list(),
   ALLOW_DEV_LOGIN: bool(true),
   BOOTSTRAP_ADMIN_EMAILS: list(),
@@ -94,6 +95,8 @@ const schema = z.object({
   GEMINI_MODE: mode,
   SES_MODE: mode,
   NXTDIAL_MODE: mode,
+  REDIS_MODE: mode,
+  MEET_MODE: mode,
 
   HUBSPOT_DEAL_WEBHOOK_URL: optionalString,
   HUBSPOT_DEAL_WEBHOOK_METHOD: z.enum(["GET", "POST"]).default("POST"),
@@ -146,7 +149,9 @@ const schema = z.object({
   BIGQUERY_PROJECT_ID: optionalString,
   BIGQUERY_DATASET: optionalString,
   BIGQUERY_LOCATION: optionalString,
+  REDIS_URL: optionalString,
   BIGQUERY_APPLICATIONS_TABLE: optionalString,
+  BIGQUERY_APPLICATIONS_PII_TABLE: optionalString,
   BIGQUERY_STUDENTS_TABLE: optionalString,
   BIGQUERY_POOL_TABLE: optionalString,
   BIGQUERY_GRIT_TABLE: optionalString,
@@ -154,6 +159,11 @@ const schema = z.object({
   BIGQUERY_INTERVIEWS_TABLE: optionalString,
   BIGQUERY_COLUMNS_JSON: optionalString,
   GOOGLE_APPLICATION_CREDENTIALS_JSON: optionalString,
+
+  GOOGLE_MEET_CREDENTIALS_JSON: optionalString,
+  GOOGLE_MEET_ORGANIZER_EMAIL: optionalString,
+  GOOGLE_OAUTH_REDIRECT_URI: optionalString,
+  GOOGLE_MEET_TIMEOUT_MS: number(30000, { min: 1000, max: 120000 }),
 
   GEMINI_API_KEY: optionalString,
   GEMINI_MODEL: z.string().default("gemini-3.5-flash-lite"),
@@ -301,7 +311,11 @@ function buildConfig(env) {
       gemini: modeFor(env.GEMINI_MODE),
       ses: modeFor(env.SES_MODE),
       nxtdial: modeFor(env.NXTDIAL_MODE),
+      redis: modeFor(env.REDIS_MODE),
+      meet: modeFor(env.MEET_MODE),
     },
+
+    redis: { url: env.REDIS_URL },
 
     hubspot: {
       dealWebhook: {
@@ -363,6 +377,7 @@ function buildConfig(env) {
       credentials: bigqueryCredentials,
       tables: {
         applications: env.BIGQUERY_APPLICATIONS_TABLE ?? (BIGQUERY_TABLES.applications || undefined),
+        applicationsPii: env.BIGQUERY_APPLICATIONS_PII_TABLE ?? (BIGQUERY_TABLES.applicationsPii || undefined),
         students: env.BIGQUERY_STUDENTS_TABLE ?? (BIGQUERY_TABLES.students || undefined),
         grit: env.BIGQUERY_GRIT_TABLE ?? (BIGQUERY_TABLES.grit || undefined),
         assessments: env.BIGQUERY_ASSESSMENTS_TABLE ?? (BIGQUERY_TABLES.assessments || undefined),
@@ -370,6 +385,16 @@ function buildConfig(env) {
         pool: env.BIGQUERY_POOL_TABLE ?? (BIGQUERY_TABLES.pool || undefined),
       },
       columnsJson: env.BIGQUERY_COLUMNS_JSON,
+    },
+
+    meet: {
+      credentials: parseCredentials(env.GOOGLE_MEET_CREDENTIALS_JSON, "GOOGLE_MEET_CREDENTIALS_JSON"),
+      organizerEmail: env.GOOGLE_MEET_ORGANIZER_EMAIL?.toLowerCase(),
+      timeoutMs: env.GOOGLE_MEET_TIMEOUT_MS,
+      oauth: {
+        clientSecret: env.GOOGLE_CLIENT_SECRET,
+        redirectUri: env.GOOGLE_OAUTH_REDIRECT_URI ?? `${frontendUrl}/api/interviews/google/callback`,
+      },
     },
 
     gemini: {
@@ -454,6 +479,7 @@ export const INTEGRATION_LABELS = {
   gemini: "Gemini",
   ses: "AWS SES",
   nxtdial: "NxtDial",
+  meet: "Google Meet",
 };
 
 export function missingIntegrationSettings(cfg = config) {
@@ -462,6 +488,7 @@ export function missingIntegrationSettings(cfg = config) {
     if (cfg.modes[name] === "live" && !present) (missing[name] ??= []).push(key);
   };
   add("hubspot", "HUBSPOT_DEAL_WEBHOOK_URL", cfg.hubspot.dealWebhook.url);
+  add("redis", "REDIS_URL", cfg.redis.url);
   const portal = cfg.learningPortal;
   for (const name of new Set([...portal.targets, portal.eligibilityEnv, portal.accessEnv])) {
     const environment = portal.environments[name];
@@ -482,6 +509,10 @@ export function missingIntegrationSettings(cfg = config) {
   add("nxtdial", "NXTDIAL_BASE_URL", cfg.nxtdial.baseUrl);
   add("nxtdial", "NXTDIAL_API_KEY", cfg.nxtdial.apiKey);
   add("nxtdial", "NXTDIAL_FROM_NUMBER", cfg.nxtdial.fromNumber);
+  if (!cfg.meet?.credentials) {
+    add("meet", "GOOGLE_CLIENT_ID", cfg.auth.googleClientId);
+    add("meet", "GOOGLE_CLIENT_SECRET", cfg.meet?.oauth?.clientSecret);
+  }
   return missing;
 }
 

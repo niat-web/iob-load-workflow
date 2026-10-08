@@ -71,25 +71,29 @@ ${button("View & Apply", url)}`,
 }
 
 export function reminderEmail(job, student, reminderType) {
-  const rows = jobRows(job);
-  const url = job.learningPortalJobUrl;
+  const rows = [
+    ["Company", job.companyName],
+    ["Role", job.jobRole],
+    ["Deadline", job.applicationEndAt ? `${formatDateTime(job.applicationEndAt)} IST` : null],
+  ];
   const final = reminderType === "REMINDER_20H";
+  const closing = job.applicationEndAt ? ` Applications close on ${formatDateTime(job.applicationEndAt)} IST.` : "";
   return {
-    subject: `${final ? "Last chance" : "Reminder"} – ${job.companyName} | ${job.jobRole}`,
+    subject: `${final ? "Final reminder" : "Reminder"} – ${job.companyName} | ${job.jobRole}`,
     html: layout({
-      preheader: `Applications for ${job.companyName} close soon.`,
+      preheader: `You have not applied for ${job.jobRole} at ${job.companyName} yet.`,
       bodyHtml: `<p style="margin:0 0 12px;">${escapeHtml(greeting(student?.studentName))}</p>
-<p style="margin:0 0 4px;">You have not applied for this opportunity yet. Applications close on
-<strong>${escapeHtml(formatDateTime(job.applicationEndAt))} IST</strong>.</p>
+<p style="margin:0 0 4px;">This is a ${final ? "final " : ""}reminder about the <strong>${escapeHtml(job.jobRole)}</strong> opportunity at
+<strong>${escapeHtml(job.companyName)}</strong>. You have not applied yet.${escapeHtml(closing)}</p>
 ${detailsTable(rows)}
-${button("View & Apply", url)}`,
+<p style="margin:0;">You can apply from your learning portal.</p>`,
     }),
-    text: `${greeting(student?.studentName)}\n\nYou have not applied yet. Applications close on ${formatDateTime(job.applicationEndAt)} IST.\n\n${textDetails(rows)}\n\nView & Apply: ${url}`,
+    text: `${greeting(student?.studentName)}\n\nThis is a ${final ? "final " : ""}reminder about the ${job.jobRole} opportunity at ${job.companyName}. You have not applied yet.${closing}\n\n${textDetails(rows)}\n\nYou can apply from your learning portal.`,
   };
 }
 
-export function jobUpdatedEmail(job, student, changes) {
-  const url = job.learningPortalJobUrl;
+export function jobUpdatedEmail(job, student, changes, formUrl) {
+  const link = formUrl && student?.studentId ? `${formUrl}?user_id=${encodeURIComponent(student.studentId)}` : null;
   const changeRows = changes
     .map(
       (change) => `<tr>
@@ -101,16 +105,18 @@ export function jobUpdatedEmail(job, student, changes) {
   const changeText = changes
     .map((change) => `${change.label}\n  ${displayValue(change.oldValue)} → ${displayValue(change.newValue)}`)
     .join("\n");
+  const ask = "Please tell us whether you are still interested in this opportunity.";
   return {
-    subject: `Important Update – ${job.companyName} | ${job.jobRole}`,
+    subject: `Job updated – ${job.companyName} | ${job.jobRole}`,
     html: layout({
-      preheader: `The requirements for ${job.jobRole} at ${job.companyName} have changed.`,
+      preheader: `Some details of ${job.jobRole} at ${job.companyName} have changed.`,
       bodyHtml: `<p style="margin:0 0 12px;">${escapeHtml(greeting(student?.studentName))}</p>
-<p style="margin:0 0 4px;">The requirements for this opportunity have been updated. Please review the changes below.</p>
+<p style="margin:0 0 4px;">You applied for <strong>${escapeHtml(job.jobRole)}</strong> at <strong>${escapeHtml(job.companyName)}</strong>. These details have changed:</p>
 <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;margin:12px 0 20px;border-top:1px solid ${COLORS.border};padding-top:8px;">${changeRows}</table>
-${button("View Updated Job", url)}`,
+${link ? `<p style="margin:0 0 12px;">${escapeHtml(ask)}</p>
+${button("Tell us if you are still interested", link)}` : ""}`,
     }),
-    text: `${greeting(student?.studentName)}\n\nThe requirements for ${job.jobRole} at ${job.companyName} have been updated:\n\n${changeText}\n\nView Updated Job: ${url}`,
+    text: `${greeting(student?.studentName)}\n\nYou applied for ${job.jobRole} at ${job.companyName}. These details have changed:\n\n${changeText}${link ? `\n\n${ask}\n${link}` : ""}`,
   };
 }
 
@@ -136,7 +142,8 @@ ${detailsTable(rows)}
   };
 }
 
-export function crmPoolReadyEmail(job, { publicLink, psmEmail }) {
+export function crmPoolReadyEmail(job, { publicLink, psmEmail }, recipient) {
+  const name = recipient?.studentName ?? job.crmOwnerName ?? "";
   const rows = [
     ["Company", job.companyName],
     ["Role", job.jobRole],
@@ -147,36 +154,13 @@ export function crmPoolReadyEmail(job, { publicLink, psmEmail }) {
   return {
     subject: `Candidate Pool Ready – ${job.companyName} | ${job.jobRole}`,
     html: layout({
-      preheader: `The candidate pool for ${job.companyName} is ready to share.`,
-      bodyHtml: `<p style="margin:0 0 12px;">Hi ${escapeHtml(job.crmOwnerName ?? "")},</p>
-<p style="margin:0 0 4px;">The candidate pool for the following opportunity has been reviewed and finalized.</p>
+      preheader: `The profiles for ${job.companyName} are ready to share.`,
+      bodyHtml: `<p style="margin:0 0 12px;">Hi ${escapeHtml(name)},</p>
+<p style="margin:0 0 4px;">The candidate profiles for the following opportunity have been reviewed and finalized. Share the link with the company. Anyone with the link can edit the sheet, add profiles and add columns.</p>
 ${detailsTable(rows)}
-${button("View Candidate Pool", publicLink)}
+${button("Open the profiles", publicLink)}
 <p style="margin:20px 0 0;color:${COLORS.muted};">Regards</p>`,
     }),
-    text: `Hi ${job.crmOwnerName ?? ""},\n\nThe candidate pool for the following opportunity has been reviewed and finalized.\n\n${textDetails(rows)}\n\nView Candidate Pool: ${publicLink}\n\nRegards`,
-  };
-}
-
-export function applicationsBelowTargetEmail(job, recipient, { appliedCount, expectedPoolCount, notApplied, link }) {
-  const rows = [
-    ["Company", job.companyName],
-    ["Role", job.jobRole],
-    ["Deal ID", job.hubspotDealId],
-    ["Applications", String(appliedCount ?? 0)],
-    ["Expected Pool", expectedPoolCount === null || expectedPoolCount === undefined ? null : String(expectedPoolCount)],
-    ["Not applied yet", String(notApplied ?? 0)],
-    ["Applications close", job.applicationEndAt ? `${formatDateTime(job.applicationEndAt)} IST` : null],
-  ];
-  return {
-    subject: `Applications below target – ${job.companyName} | ${job.jobRole}`,
-    html: layout({
-      preheader: `${appliedCount ?? 0} of ${expectedPoolCount ?? "?"} applications so far for ${job.companyName}.`,
-      bodyHtml: `<p style="margin:0 0 12px;">${escapeHtml(greeting(recipient?.studentName))}</p>
-<p style="margin:0 0 4px;">Applications for the deal you added are below the expected pool. Open the deal to send a reminder email or start AI calls to the students who have not applied yet.</p>
-${detailsTable(rows)}
-${button("Boost applications", link)}`,
-    }),
-    text: `${greeting(recipient?.studentName)}\n\nApplications for the deal you added are below the expected pool. Open the deal to send a reminder email or start AI calls to the students who have not applied yet.\n\n${textDetails(rows)}\n\nBoost applications: ${link}`,
+    text: `Hi ${name},\n\nThe candidate profiles for the following opportunity have been reviewed and finalized. Share the link with the company. Anyone with the link can edit the sheet, add profiles and add columns.\n\n${textDetails(rows)}\n\nOpen the profiles: ${publicLink}\n\nRegards`,
   };
 }

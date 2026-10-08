@@ -3,18 +3,22 @@ export const pageLoaders = {
   crm: () => import("./CRMPage"),
   crmDeals: () => import("./CRMDealsPage"),
   crmCompanies: () => import("./CRMCompaniesPage"),
+  interviews: () => import("./InterviewsPage"),
+  interviewSheet: () => import("./InterviewSheetPage"),
   boost: () => import("./BoostPage"),
   eligiblePool: () => import("./EligiblePoolPage"),
   settings: () => import("./SettingsPage"),
   psmJobs: () => import("./PSMJobsPage"),
   psmReview: () => import("./PSMReviewPage"),
-  publicPool: () => import("./PublicCandidatePoolPage"),
+  sharedProfiles: () => import("./SharedProfilesPage"),
+  jobUpdate: () => import("./JobUpdateFormPage"),
 };
 
 const NAV_PRELOADERS: Record<string, () => Promise<unknown>> = {
   "/crm": pageLoaders.crm,
   "/crm/deals": pageLoaders.crmDeals,
   "/crm/companies": pageLoaders.crmCompanies,
+  "/crm/interviews": () => Promise.all([pageLoaders.interviews(), pageLoaders.interviewSheet()]),
   "/psm": () => Promise.all([pageLoaders.psmJobs(), pageLoaders.psmReview()]),
   "/admin/eligible-pool": pageLoaders.eligiblePool,
   "/settings": pageLoaders.settings,

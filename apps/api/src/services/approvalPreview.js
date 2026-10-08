@@ -5,6 +5,7 @@ import { now } from "../utils/clock.js";
 import { hoursFromNow } from "../utils/helpers.js";
 import { hubspotRecordUrl } from "./dealMapper.js";
 import { ALL_ENROLL_PLANS, payloadForEnvironment, testUsersFor } from "./learningPortal/nkbPayload.js";
+import { getSettings } from "./settingsService.js";
 
 const DESCRIPTIONS = {
   [GATE.DEAL_DETAILS]:
@@ -44,16 +45,23 @@ export const canEditPlans = (job) =>
 
 const link = (label, url) => ({ label, value: url ? String(url) : null, href: url ? String(url) : undefined });
 
-function dealPreview(job) {
+function jdCountText(job) {
+  if (!job.jdCount) return null;
+  const earlier = job.jdCount - 1;
+  if (!earlier) return `${job.jdCount} (first deal for this company)`;
+  return `${job.jdCount} (${earlier} earlier deal${earlier === 1 ? "" : "s"} for ${job.companyName ?? "this company"})`;
+}
+
+function dealPreview(job, windowHours) {
   const owner = [job.crmOwnerName, job.crmOwnerEmail].filter(Boolean).join(" · ");
   return [
     { label: "Company", value: text(job.companyName) },
     link("Website", job.companyWebsite),
     link("LinkedIn", job.companyLinkedin),
-    link("Company logo", job.companyLogoUrl),
+    { ...link("Company logo", job.companyLogoUrl), image: Boolean(job.companyLogoUrl) },
     link("HubSpot record", hubspotRecordUrl(job)),
     { label: "Job role", value: text(job.jobRole) },
-    { label: "JD count", value: text(job.jdCount) },
+    { label: "JD count", value: jdCountText(job) },
     { label: "Job type", value: text(job.jobType) },
     { label: "Experience type", value: text(job.experienceType) },
     { label: "Job source", value: text(job.jobSource) },
@@ -72,7 +80,7 @@ function dealPreview(job) {
     { label: "CRM owner", value: text(owner) },
     { label: "Profiling POC", value: text(job.profilingPoc?.name) },
     { label: "ISE", value: text(job.ise?.name) },
-    { label: "Deadline", value: text(job.applicationDeadline) ?? `${config.workflow.applicationWindowHours} hours after students are emailed` },
+    { label: "Deadline", value: text(job.applicationDeadline) ?? `${windowHours} hours after students are emailed` },
     { label: "Compensation description", value: text(job.importantInstructions), wide: true },
   ];
 }
@@ -141,18 +149,19 @@ async function studentsPreview(job) {
   return { total, withEmail, withPhone, accessEnvironment: config.learningPortal.accessEnv };
 }
 
-async function windowPreview(job) {
+async function windowPreview(job, settings) {
   const filter = { jobId: job._id };
   const [granted, rejected, emails] = await Promise.all([
     JobEligibleStudent.countDocuments({ ...filter, accessGrantedAt: { $ne: null } }),
     JobEligibleStudent.countDocuments({ ...filter, accessRejectedReason: { $ne: null } }),
     JobEligibleStudent.countDocuments({ ...filter, accessGrantedAt: { $ne: null }, email: { $ne: null } }),
   ]);
-  const { applicationWindowHours, reminderOneHours, reminderTwoHours } = config.workflow;
+  const { applicationWindowHours, reminderOneHours, reminderTwoHours } = settings.timing;
   return {
     granted,
     rejected,
     emails,
+    studentEmailsOn: settings.studentEmails.jobEmail,
     windowHours: applicationWindowHours,
     reminderHours: [reminderOneHours, reminderTwoHours],
     closesAt: iso(hoursFromNow(applicationWindowHours, now())),
@@ -168,9 +177,10 @@ export async function approvalPreview(job) {
     description: DESCRIPTIONS[gate] ?? "",
     requestedAt: iso(job.awaitingApproval.requestedAt),
   };
-  if (gate === GATE.DEAL_DETAILS) return { ...base, deal: dealPreview(job) };
+  const settings = await getSettings();
+  if (gate === GATE.DEAL_DETAILS) return { ...base, deal: dealPreview(job, settings.timing.applicationWindowHours) };
   if (gate.startsWith("LOAD_")) return { ...base, load: await loadPreview(job, gate.slice("LOAD_".length).toLowerCase()) };
   if (gate === GATE.ELIGIBLE_STUDENTS) return { ...base, students: await studentsPreview(job) };
-  if (gate === GATE.START_WINDOW) return { ...base, window: await windowPreview(job) };
+  if (gate === GATE.START_WINDOW) return { ...base, window: await windowPreview(job, settings) };
   return base;
 }

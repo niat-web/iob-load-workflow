@@ -1,10 +1,12 @@
 import { config } from "../../config/env.js";
 import { JOB_STATUS as S, NOTIFICATION_TYPE, TASK_TYPE, WINDOW_STATUSES } from "../../config/statuses.js";
-import { Job } from "../../models/index.js";
-import { recordAppliedCount, syncApplicants } from "../../services/applicationService.js";
+import { Job, JobEligibleStudent } from "../../models/index.js";
+import { notificationKey, sendBulk } from "../../services/notificationService.js";
+import { getSettings } from "../../services/settingsService.js";
+import { syncApplicants } from "../../services/applicationService.js";
 import { AUDIT, audit } from "../../services/auditService.js";
-import { alertCrmToBoost, runResultsSyncTask } from "../../services/boostService.js";
-import { integrations } from "../../services/integrations.js";
+import { runResultsSyncTask, startAiCalls } from "../../services/boostService.js";
+import { companyCheckpoints } from "../../services/companySettingsService.js";
 import { transitionJob } from "../../services/jobService.js";
 import { enqueueTask } from "../../services/taskQueue.js";
 import { now } from "../../utils/clock.js";
@@ -14,11 +16,15 @@ import { enqueueNext } from "./shared.js";
 async function applicationCountSync({ task, job }) {
   if (!WINDOW_STATUSES.includes(job.status)) return;
   try {
-    const count = await integrations.bigquery.getApplicationCount(job.learningPortalJobId);
-    await recordAppliedCount(job, count);
+    await syncApplicants(job);
   } catch (error) {
-    logger.warn({ err: error, jobId: String(job._id) }, "Application count sync failed");
+    logger.warn({ err: error, jobId: String(job._id) }, "Applied pool sync failed; it runs again at the next interval");
   }
+  await enqueueTask({
+    jobId: job._id,
+    type: TASK_TYPE.HUBSPOT_DEAL_UPDATE,
+    dedupeKey: `${job._id}:HUBSPOT_POLL:${task.payload?.index ?? 1}`,
+  });
   const index = (task.payload?.index ?? 1) + 1;
   const next = new Date(now().getTime() + config.workflow.countSyncMinutes * 60 * 1000);
   if (job.applicationEndAt && next < job.applicationEndAt) {
@@ -38,17 +44,30 @@ const REMINDERS = {
     processing: S.REMINDER_10H_PROCESSING,
     sent: S.REMINDER_10H_SENT,
     notification: NOTIFICATION_TYPE.REMINDER_10H,
+    emails: "firstEmails",
+    calls: null,
   },
   [TASK_TYPE.REMINDER_20H]: {
     key: "r20h",
     processing: S.REMINDER_20H_PROCESSING,
     sent: S.REMINDER_20H_SENT,
     notification: NOTIFICATION_TYPE.REMINDER_20H,
+    emails: "secondEmails",
+    calls: "secondCalls",
   },
 };
 
 async function recordReminder(jobId, key, info) {
   await Job.updateOne({ _id: jobId }, { $set: { [`reminders.${key}`]: { at: now(), ...info } } });
+}
+
+async function checkpointSwitches(job) {
+  const [{ checkpoints: admin }, company] = await Promise.all([getSettings(), companyCheckpoints(job.companyKey)]);
+  return (key) => {
+    if (!admin[key]) return "turned off by the admin in Settings";
+    if (!company[key]) return `turned off for ${job.companyName ?? "this company"}`;
+    return null;
+  };
 }
 
 function reminderHandler(type) {
@@ -61,26 +80,57 @@ function reminderHandler(type) {
     }
 
     const { job: synced } = await syncApplicants(job);
-    if (synced.poolTargetReached) {
-      await recordReminder(job._id, spec.key, {
-        status: "SKIPPED",
-        reason: `Expected pool reached (${synced.appliedCount}/${synced.expectedPoolCount})`,
+    await transitionJob(job._id, spec.processing, { from: WINDOW_STATUSES });
+    const blockedBy = await checkpointSwitches(synced);
+    const parts = [];
+
+    let emailCount = 0;
+    const emailsBlocked = blockedBy(spec.emails);
+    if (emailsBlocked) {
+      parts.push(`Reminder emails ${emailsBlocked}`);
+    } else {
+      const notApplied = await JobEligibleStudent.find({
+        jobId: job._id,
+        accessGrantedAt: { $ne: null },
+        applied: { $ne: true },
+      }).lean();
+      const emails = await sendBulk({
+        job: synced,
+        type: spec.notification,
+        recipients: notApplied,
+        keyFor: (student) => notificationKey(job._id, spec.notification, student.studentId),
       });
-      await audit({ action: AUDIT.REMINDER_SKIPPED, entityId: job._id, metadata: { reminder: type, appliedCount: synced.appliedCount } });
-      return;
+      emailCount = emails.SENT;
+      parts.push(
+        emails.OFF
+          ? "Reminder emails turned off by the admin in Settings"
+          : `${emails.SENT} reminder email${emails.SENT === 1 ? "" : "s"} sent to students who have not applied`,
+      );
     }
 
-    await transitionJob(job._id, spec.processing, { from: WINDOW_STATUSES });
-    const alert = await alertCrmToBoost(synced, type);
+    let callCount = 0;
+    if (spec.calls) {
+      const callsBlocked = blockedBy(spec.calls);
+      if (callsBlocked) {
+        parts.push(`AI calls ${callsBlocked}`);
+      } else {
+        try {
+          const run = await startAiCalls(synced, null);
+          callCount = run.queued;
+          parts.push(`${run.queued} AI call${run.queued === 1 ? "" : "s"} started`);
+        } catch (error) {
+          parts.push(`AI calls not started: ${String(error?.message ?? error).slice(0, 200)}`);
+        }
+      }
+    }
+
     await recordReminder(job._id, spec.key, {
-      status: alert.outcome === "SENT" ? "SENT" : "SKIPPED",
-      emailCount: 0,
-      callCount: 0,
-      reason:
-        alert.outcome === "SENT"
-          ? `CRM ${alert.to} asked to boost applications (${alert.appliedCount} applied, ${alert.notApplied} not applied)`
-          : `CRM alert not sent (${alert.outcome})`,
+      status: emailCount > 0 || callCount > 0 ? "SENT" : "SKIPPED",
+      emailCount,
+      callCount,
+      reason: parts.join("; "),
     });
+    await audit({ action: AUDIT.REMINDER_SENT, entityId: job._id, metadata: { reminder: type, emailCount, callCount } });
     await transitionJob(job._id, spec.sent, { from: spec.processing });
   };
 }

@@ -4,6 +4,7 @@ import { reportMissingSettings } from "./config/startupReport.js";
 import { createApp } from "./app.js";
 import { bootstrapUsers } from "./services/authService.js";
 import { logger } from "./utils/logger.js";
+import { startResumeWorker } from "./services/resumeQueue.js";
 import { startWorker } from "./workers/workflowWorker.js";
 
 async function main() {
@@ -16,11 +17,15 @@ async function main() {
 
   const withWorker = config.processRole === "all" || process.argv.includes("--with-worker");
   let worker = null;
+  let resumeWorker = null;
   let stopping = false;
   const stopConnecting = connectDbInBackground({
     onConnected: async () => {
       await bootstrapUsers();
-      if (withWorker && !stopping) worker = startWorker();
+      if (withWorker && !stopping) {
+        worker = startWorker();
+        resumeWorker = startResumeWorker();
+      }
     },
   });
 
@@ -33,6 +38,7 @@ async function main() {
     force.unref();
     await new Promise((resolve) => server.close(resolve));
     if (worker) await worker.stop();
+    if (resumeWorker) await resumeWorker.stop();
     await disconnectDb();
     process.exit(0);
   };

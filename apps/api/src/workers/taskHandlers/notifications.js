@@ -4,23 +4,32 @@ import { AUDIT, audit } from "../../services/auditService.js";
 import { transitionJob } from "../../services/jobService.js";
 import { notificationKey, sendEmail } from "../../services/notificationService.js";
 import { publicLinkUrlForJob } from "../../services/publicLinkService.js";
+import { getSettings, TURNED_OFF, turnedOff } from "../../services/settingsService.js";
 import { now } from "../../utils/clock.js";
 import { PermanentError } from "../../utils/errors.js";
 
 async function crmNotification({ job }) {
   if ([S.CRM_NOTIFICATION_SENT, S.COMPLETED].includes(job.status)) return;
   if (job.status !== S.PUBLIC_LINK_GENERATED) return;
-  if (!job.crmOwnerEmail) throw new PermanentError("The deal has no CRM owner email to notify");
+  if (!(await getSettings()).crmEmails.candidatePool) {
+    await Job.updateOne({ _id: job._id }, { $set: { "crmShare.error": turnedOff("The candidate pool email to the CRM") } });
+    await audit({ action: AUDIT.CRM_NOTIFICATION_SKIPPED, entityId: job._id, metadata: { reason: TURNED_OFF } });
+    await transitionJob(job._id, S.COMPLETED, { from: S.PUBLIC_LINK_GENERATED });
+    return;
+  }
+  const recipient = job.submittedBy || job.crmOwnerEmail;
+  if (!recipient) throw new PermanentError("The deal has no CRM email to notify");
+  const crmUser = await User.findOne({ email: recipient }).lean();
 
   const publicLink = await publicLinkUrlForJob(job);
   if (!publicLink) throw new PermanentError("No active public link exists for this job");
 
   const type = NOTIFICATION_TYPE.CRM_POOL_READY;
-  const idempotencyKey = notificationKey(job._id, type, job.crmOwnerEmail);
+  const idempotencyKey = notificationKey(job._id, type, recipient);
   const outcome = await sendEmail({
     job,
     type,
-    recipient: { email: job.crmOwnerEmail, studentName: job.crmOwnerName },
+    recipient: { email: recipient, studentName: crmUser?.name || job.crmOwnerName || recipient.split("@")[0] },
     idempotencyKey,
     payload: { publicLink, psmEmail: job.reviewedBy },
     scheduleRetry: false,
@@ -34,7 +43,7 @@ async function crmNotification({ job }) {
 
   await Job.updateOne({ _id: job._id }, { $set: { "crmShare.status": "SHARED", "crmShare.sentAt": now(), "crmShare.error": null } });
   await transitionJob(job._id, S.CRM_NOTIFICATION_SENT, { from: S.PUBLIC_LINK_GENERATED });
-  await audit({ action: AUDIT.CRM_NOTIFIED, entityId: job._id, metadata: { to: job.crmOwnerEmail } });
+  await audit({ action: AUDIT.CRM_NOTIFIED, entityId: job._id, metadata: { to: recipient } });
   await transitionJob(job._id, S.COMPLETED, { from: S.CRM_NOTIFICATION_SENT });
 }
 

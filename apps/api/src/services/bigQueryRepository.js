@@ -9,11 +9,37 @@ import { mockAppliedCount, mockEligibleCount, mockScores, mockStudents } from ".
 
 const ID_CHUNK = 10000;
 
-function toIso(value) {
-  if (!value) return null;
-  const raw = value.value ?? value;
-  const date = new Date(raw);
+function istDate(value) {
+  const raw = value?.value ?? value;
+  if (!raw) return null;
+  const text = String(raw);
+  const date = new Date(/(Z|[+-]\d{2}:?\d{2})$/.test(text) ? text : `${text.replace(" ", "T")}+05:30`);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+const PROFILE_FIELDS = [
+  "product", "enrollPlan", "gender", "state", "district", "registrationYear", "highestEducation",
+  "bachelorsCourse", "bachelorsDepartment", "bachelorsYear", "bachelorsPercentage",
+  "mastersCourse", "mastersDepartment", "mastersYear", "mastersPercentage",
+  "intermediateCourse", "intermediatePercentage", "tenthPercentage",
+];
+
+function toApplicant(row) {
+  const profile = Object.fromEntries(
+    PROFILE_FIELDS.map((field) => [field, row[field] ?? null]).filter(([, value]) => value !== null && value !== ""),
+  );
+  return {
+    studentId: String(row.studentId),
+    studentName: row.studentName ?? null,
+    email: row.email ?? null,
+    mobile: row.mobile ?? null,
+    resumeUrl: row.resumeUrl ?? null,
+    appliedAt: istDate(row.appliedAt),
+    applicationStage: row.applicationStage ?? null,
+    batch: row.bachelorsYear ? String(row.bachelorsYear) : null,
+    program: row.enrollPlan ?? row.product ?? null,
+    profile,
+  };
 }
 
 function wrapError(error, what) {
@@ -82,47 +108,64 @@ class LiveBigQueryRepository {
     } while (pageToken);
   }
 
-  applicantSelect() {
-    const a = C.applications;
-    return `CAST(${a.studentId} AS STRING) AS studentId, ${a.studentName} AS studentName, ${a.email} AS email,
-      CAST(${a.mobile} AS STRING) AS mobile, ${a.campus} AS campus, CAST(${a.batch} AS STRING) AS batch,
-      ${a.program} AS program, ${a.resumeUrl} AS resumeUrl, ${a.appliedAt} AS appliedAt`;
-  }
-
-  async getApplicationCount(jobId) {
-    const a = C.applications;
-    const rows = await this.query(
-      `SELECT COUNT(DISTINCT CAST(${a.studentId} AS STRING)) AS count
-       FROM ${this.requireTable("applications")} WHERE CAST(${a.jobId} AS STRING) = @jobId`,
-      { jobId: String(jobId) },
-      "application count",
-    );
-    return Number(rows[0]?.count ?? 0);
+  applicantsSql() {
+    const nonPii = this.requireTable("applications");
+    const pii = tableRef("applicationsPii");
+    const piiCte = pii
+      ? `,
+      p AS (
+        SELECT * FROM ${pii}
+        WHERE CAST(job_id AS STRING) = @jobId
+        QUALIFY ROW_NUMBER() OVER (PARTITION BY CAST(user_id AS STRING) ORDER BY creation_datetime DESC) = 1
+      )`
+      : "";
+    const fromPii = (column, alias) => (pii ? `p.${column} AS ${alias}` : `NULL AS ${alias}`);
+    return `
+      WITH n AS (
+        SELECT * FROM ${nonPii}
+        WHERE CAST(job_id AS STRING) = @jobId AND applied_datetime IS NOT NULL
+        QUALIFY ROW_NUMBER() OVER (PARTITION BY CAST(user_id AS STRING) ORDER BY applied_datetime DESC) = 1
+      )${piiCte}
+      SELECT
+        CAST(${pii ? "COALESCE(n.user_id, p.user_id)" : "n.user_id"} AS STRING) AS studentId,
+        ${fromPii("fullName", "studentName")},
+        ${fromPii("email_id", "email")},
+        ${pii ? "CAST(p.mobile_number AS STRING) AS mobile" : "NULL AS mobile"},
+        ${fromPii("resume_link", "resumeUrl")},
+        ${pii ? "COALESCE(n.applied_datetime, p.creation_datetime)" : "n.applied_datetime"} AS appliedAt,
+        n.user_job_application_deal_stage_name AS applicationStage,
+        n.product AS product,
+        n.enroll_plan_version_tag AS enrollPlan,
+        n.gender AS gender,
+        n.current_state AS state,
+        n.current_district AS district,
+        n.registration_year AS registrationYear,
+        n.highest_education AS highestEducation,
+        n.bachelors_course_name AS bachelorsCourse,
+        n.bachelors_department_name AS bachelorsDepartment,
+        n.bachelors_year_of_graduation AS bachelorsYear,
+        n.bachelors_percentage AS bachelorsPercentage,
+        n.masters_course_name AS mastersCourse,
+        n.masters_department_name AS mastersDepartment,
+        n.master_completion_year AS mastersYear,
+        n.masters_percentage AS mastersPercentage,
+        n.intermediate_course_name AS intermediateCourse,
+        n.intermediate_percentage AS intermediatePercentage,
+        n.tenth_percentage AS tenthPercentage
+      FROM n ${pii ? "FULL OUTER JOIN p ON CAST(n.user_id AS STRING) = CAST(p.user_id AS STRING)" : ""}`;
   }
 
   async getApplicants(jobId) {
-    const a = C.applications;
-    const rows = await this.query(
-      `SELECT ${this.applicantSelect()}
-       FROM ${this.requireTable("applications")}
-       WHERE CAST(${a.jobId} AS STRING) = @jobId
-       QUALIFY ROW_NUMBER() OVER (PARTITION BY CAST(${a.studentId} AS STRING) ORDER BY ${a.appliedAt} DESC) = 1`,
-      { jobId: String(jobId) },
-      "applicant list",
-    );
-    return rows.map((row) => ({ ...row, appliedAt: toIso(row.appliedAt) }));
+    const rows = await this.query(this.applicantsSql(), { jobId: String(jobId) }, "applicant list");
+    return rows.map(toApplicant);
+  }
+
+  async getApplicationCount(jobId) {
+    return (await this.getApplicants(jobId)).length;
   }
 
   async getApplicant(studentId, jobId) {
-    const a = C.applications;
-    const rows = await this.query(
-      `SELECT ${this.applicantSelect()} FROM ${this.requireTable("applications")}
-       WHERE CAST(${a.jobId} AS STRING) = @jobId AND CAST(${a.studentId} AS STRING) = @studentId
-       ORDER BY ${a.appliedAt} DESC LIMIT 1`,
-      { jobId: String(jobId), studentId: String(studentId) },
-      "applicant lookup",
-    );
-    return rows[0] ? { ...rows[0], appliedAt: toIso(rows[0].appliedAt) } : null;
+    return (await this.getApplicants(jobId)).find((row) => row.studentId === String(studentId)) ?? null;
   }
 
   async averageScores(tableName, columns, studentIds, what) {

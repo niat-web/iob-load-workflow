@@ -1,18 +1,6 @@
 import { config } from "./env.js";
 
 const DEFAULT_COLUMNS = {
-  applications: {
-    jobId: "job_id",
-    studentId: "user_id",
-    studentName: "name",
-    email: "email",
-    mobile: "phone",
-    campus: "campus",
-    batch: "batch",
-    program: "program",
-    resumeUrl: "resume_url",
-    appliedAt: "applied_at",
-  },
   students: {
     studentId: "user_id",
     studentName: "name",

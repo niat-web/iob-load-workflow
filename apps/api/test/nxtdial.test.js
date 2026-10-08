@@ -78,6 +78,54 @@ describe("NxtDial client", () => {
     assert.equal(mapProviderStatus("failed"), "FAILED");
     assert.equal(mapProviderStatus("queued"), "QUEUED");
     assert.equal(mapProviderStatus("in-progress"), "CALLING");
+    assert.equal(mapProviderStatus("timeout"), "COMPLETED", "the call reached its time limit, so the student was reached");
+    assert.equal(mapProviderStatus("silence-timeout"), "COMPLETED");
+    assert.equal(mapProviderStatus("disconnected"), "COMPLETED");
+    assert.equal(mapProviderStatus("voicemail"), "NO_ANSWER");
+  });
+
+  test("results are read from the batch items and ratings when the server has no results endpoint yet", async () => {
+    const fetchMock = mock.method(globalThis, "fetch", async (url) => {
+      if (url.endsWith("/results")) return new Response("<!DOCTYPE html><pre>Cannot GET</pre>", { status: 404 });
+      if (url.endsWith("/items")) {
+        return respond(200, [
+          { id: "c1", studentName: "Asha", phone: "+919876500001", status: "Timeout", duration: "2m 0s", summary: "" },
+          { id: "c2", studentName: "Ravi", phone: "+919876500002", status: "No Answer", duration: "--", summary: "" },
+          { id: "c3", studentName: "Neha", phone: "+919876500003", status: "Running", duration: "0m 20s", summary: "" },
+        ]);
+      }
+      if (url.endsWith("/api/ratings/c1")) {
+        return respond(200, {
+          callStatus: "Timeout",
+          ratingStatus: "rated",
+          durationSeconds: 120,
+          startedAtIso: "2026-05-01T05:00:00.000Z",
+          endedAtIso: "2026-05-01T05:02:00.000Z",
+          recordingUrl: "https://recordings.test/c1.mp3",
+          summary: "Asha will apply tonight.",
+          overallRating: 4,
+          remarks: "Keen",
+          callBack: "",
+          columnHeaders: ["Interested", "Will Apply"],
+          cells: { Interested: { value: "Yes" }, "Will Apply": { value: "Yes" } },
+        });
+      }
+      return respond(404, { message: "Not found" });
+    });
+
+    const { calls } = await client.getBatchResults("batch-9");
+    assert.deepEqual(calls.map((call) => [call.callId, call.status]), [["c1", "timeout"], ["c2", "no-answer"], ["c3", "in-progress"]]);
+    assert.equal(calls[0].durationSeconds, 120);
+    assert.equal(calls[0].rating.cells.Interested.value, "Yes");
+    assert.equal(calls[0].summary, "Asha will apply tonight.");
+    assert.equal(calls[1].rating, null);
+    assert.equal(calls[2].durationSeconds, 20);
+    const ratingCalls = fetchMock.mock.calls.filter((call) => call.arguments[0].includes("/api/ratings/"));
+    assert.equal(ratingCalls.length, 1, "ratings are read only for answered calls");
+
+    mock.restoreAll();
+    mock.method(globalThis, "fetch", async () => respond(404, { message: "Batch not found." }));
+    await assert.rejects(client.getBatchResults("missing"), /Batch not found/);
   });
 });
 
