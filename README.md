@@ -285,7 +285,8 @@ button (Google Identity Services). Google returns a signed ID token, and the API
    app name `Job Flow Automation`, support email, then save.
 3. **APIs & Services → Credentials → Create credentials → OAuth client ID**, type **Web application**.
 4. **Authorized JavaScript origins**: `http://localhost:5173` (and `http://localhost`), plus
-   `https://<your-vercel-domain>` after deploying. No redirect URI is needed.
+   `https://<your-vercel-domain>` after deploying. Sign-in itself needs no redirect URI; Connect Google
+   for Meet needs `<web address>/api/interviews/google/callback` (see the deal flow, section 8).
 5. Copy the **Client ID** (`…apps.googleusercontent.com`) → `GOOGLE_CLIENT_ID` in `apps/api/.env`
    (the frontend reads it from `/api/auth/config`).
 6. Optional: `ALLOWED_EMAIL_DOMAINS=yourcompany.com`.
@@ -538,24 +539,48 @@ priority another candidate holds swaps the two), and every change is recorded in
    - Command override: `node src/worker.js`. No public port.
 5. Link the secret group to both services.
 
-If your plan allows only one service, run the API with `PROCESS_ROLE=all`: the worker then runs
-inside the API process (the code paths stay separate). Keep at least one instance running at all
-times; the 21-hour workflow needs the worker to wake up tasks.
+If your plan allows only one service, run the API with `PROCESS_ROLE=all`: the worker and the resume
+queue then run inside the API process (the code paths stay separate). Keep at least one instance
+running at all times; the 21-hour workflow needs the worker to wake up tasks.
+
+**Production variables** (in the secret group; values only there, never in the repository):
+
+| Variable | Value |
+|---|---|
+| `NODE_ENV` | `production` |
+| `PROCESS_ROLE` | `all` (one service) or `api` / worker command (two services) |
+| `FRONTEND_URL` | `https://<your-vercel-domain>` (links in emails, shared links, Connect Google) |
+| `TRUST_PROXY_HOPS` | `2` (Vercel, then Northflank's load balancer) |
+| `COOKIE_SAMESITE` | `lax` (the API is reached through the Vercel `/api` rewrite) |
+| `JWT_SECRET`, `SESSION_SECRET` | two different random strings, 32+ characters each |
+| `BOOTSTRAP_ADMIN_EMAILS` | the Google account(s) of the first admin; dev login is off in production |
+| `MONGODB_URI`, `REDIS_URL` | Atlas and Redis Cloud connection strings |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_MEET_ORGANIZER_EMAIL` | sign-in and Connect Google |
+| `GOOGLE_APPLICATION_CREDENTIALS_JSON` | BigQuery service account, base64-encoded |
+| `HUBSPOT_DEAL_WEBHOOK_URL` (+ method, key) | n8n webhook |
+| `BETA_API_KEY`, `PROD_API_KEY`, `LEARNING_PORTAL_*` | Learning Portal |
+| `GEMINI_API_KEY`, `AWS_*`, `SES_FROM_EMAIL`, `NXTDIAL_*` | AI, email and calls |
+
+Copy the rest from `apps/api/.env`. The API starts even when a value is missing and logs which ones;
+only the step that needs it stops.
 
 ### Frontend on Vercel
 
-1. New project → root directory `apps/web`, framework **Vite** (`vercel.json` is included).
-2. **Recommended:** keep the API on the same origin so the session cookie is first-party. Add a
-   rewrite as the first entry in `apps/web/vercel.json`:
-   ```json
-   { "source": "/api/:path*", "destination": "https://<your-northflank-api-host>/api/:path*" }
-   ```
-   and leave `VITE_API_BASE_URL` empty, with `COOKIE_SAMESITE=lax` on the API.
+1. New project → import the GitHub repository → **Root Directory `apps/web`**, framework **Vite**,
+   Node.js 22 or 24 (`vercel.json` sets the build command and output folder).
+2. The API stays on the same origin so the session cookie is first-party: the first rewrite in
+   `apps/web/vercel.json` sends `/api/*` to Northflank. Replace `REPLACE-WITH-NORTHFLANK-API-HOST`
+   with the API's public host (for example `p01--api--abcd1234.code.run`) and push. Leave
+   `VITE_API_BASE_URL` empty, with `COOKIE_SAMESITE=lax` on the API.
 3. Alternative: set `VITE_API_BASE_URL=https://<api-host>` and on the API
    `COOKIE_SAMESITE=none` and `CORS_ORIGINS=https://<your-vercel-domain>`. Browsers that block
    third-party cookies (Safari) may not keep the session this way.
-4. Add `https://<your-vercel-domain>` to **Authorized JavaScript origins** of the Google OAuth
-   client, and set `FRONTEND_URL` on the API (public links are built from it).
+4. In the Google OAuth client add `https://<your-vercel-domain>` to **Authorized JavaScript origins**
+   and `https://<your-vercel-domain>/api/interviews/google/callback` to **Authorized redirect URIs**,
+   set `FRONTEND_URL` on the API (public links are built from it), then click **Connect Google** once on
+   the deployed Interviews page.
+5. MongoDB Atlas → Network Access: allow Northflank (its egress IPs, or `0.0.0.0/0` with a strong
+   password).
 
 ### CI/CD
 

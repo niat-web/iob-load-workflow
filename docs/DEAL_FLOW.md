@@ -1,8 +1,9 @@
 # What happens after a deal is submitted
 
 This document walks through every step Job Flow Automation takes after a CRM submits a HubSpot deal,
-in order, for both flows: **Automatic** and **Step by step**. It also lists what the admin and CRMs can
-switch on or off, what has to be set up, and what happens when something goes wrong.
+in order, for both flows: **Automatic** and **Step by step**, up to the company interviews on Google
+Meet. It also lists what the admin and CRMs can switch on or off, what has to be set up, where the app
+runs, and what happens when something goes wrong.
 
 ---
 
@@ -41,6 +42,14 @@ company switch shows as off and locked.
 On the PSM review page, **Company page columns** sets which columns the company sees on the shared
 profiles page. The last saved choice is used for every company after it.
 
+### CRMs and admins: Interviews page
+
+- **Connect Google** (once for everyone): the Google account that creates every Meet. Any CRM or
+  admin can connect, reconnect or disconnect it.
+- **Company interviewer emails**, saved per company and added to that company's Meets.
+- The **Meet** button on each student row works only when the admin's Interviews switch is on and a
+  Google account is connected (see section 8).
+
 ---
 
 ## 2. What has to be set up
@@ -56,7 +65,8 @@ profiles page. The last saved choice is used for every company after it.
 | Redis Cloud (`REDIS_URL`) | The queue that analyses resumes one at a time |
 | NxtDial (key, number, agent) | AI calls |
 | Google OAuth client (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`) and one connected Google account | Google Meet interviews with auto-recording (see section 8) |
-| `FRONTEND_URL` | Links in emails: shared profiles link and job update form |
+| `FRONTEND_URL` | The web address: links in emails (shared profiles link, job update form) and the Connect Google return address |
+| Google sign-in (same OAuth client, user type Internal) | Signing in to the app. On the live site there is no test login: every user signs in with a Google account of the company Workspace and must be in Settings → Users |
 | Old tool's Google Sheet (optional, read only) | Reusing the old tool's organisation IDs and continuing its Order numbers |
 
 The app starts even when something is missing. Only the step that needs it stops, with a message
@@ -280,6 +290,12 @@ details and approval panel, and used for the organisation in the Learning Portal
 - The link expires after 30 days.
 - Status: **Completed**.
 
+**D6. Interviews (CRM)**
+- The company now appears on the **Interviews** page with its shared profiles link.
+- The CRM opens it, adds the company's interviewer emails and clicks **Meet** on each student the
+  company wants to interview. Every Meet is created with auto-recording on and saved in the row
+  (section 8).
+
 ---
 
 ## 5. Step by step flow
@@ -309,7 +325,7 @@ Notes:
 - A deal can wait at a stop for as long as needed; nothing times out.
 - Course plans can only be changed before the job is loaded into Beta, so Beta and Prod stay the same.
 - After stop 5, the rest (window, checkpoints, HubSpot checks, close, AI analysis, ranking, PSM
-  review, shared link) runs exactly as in the Automatic flow (Parts C and D).
+  review, shared link, interviews) runs exactly as in the Automatic flow (Parts C and D).
 - If the admin turns off a stop, deals waiting there continue on their own, recorded as approved by
   that admin.
 
@@ -329,6 +345,9 @@ Notes:
 | Google Meet is not connected, or Google removed the access | The Interviews page shows Connect Google or Reconnect Google, and the Meet button is greyed out | Click Connect Google and sign in as the interview account (section 8) |
 | Google refuses a Meet | The popup shows Google's message | Fix what it says, then click Create Meet again |
 | The Meet was created but auto-recording is not on | The Meet and invites stay; the Auto-recording cell says why | Check the organizer's Workspace plan and that recording is allowed, or start recording by hand in the Meet |
+| Connect Google shows `redirect_uri_mismatch` | Google does not know the return address | Add `<web address>/api/interviews/google/callback` to the OAuth client's redirect URIs (it can take a few minutes to apply) |
+| Nobody can sign in on the live site | There is no test login in production | Put the first admin's Google account in `BOOTSTRAP_ADMIN_EMAILS`, then add the other users in Settings → Users |
+| Google says "access blocked" when signing in or connecting | The account is outside the company Workspace (the app is Internal) | Use an account of the company Workspace |
 
 ---
 
@@ -369,19 +388,31 @@ admin clicks **Connect Google** at the top of the Interviews page, signs in as t
 encrypted in MongoDB and never leaves the server. **Disconnect** removes it. If Google later withdraws
 the access (password change, access removed), the card shows **Reconnect Google**.
 
-**Meet button** (one per student row) opens a popup with the event name, date and time, length, the
-organizer (the connected account), the CRM who clicked, the student's email, the company interviewer
-emails, other guests and a description. All of it except the organizer can be changed before
-confirming. On **Create Meet**:
-1. Google Calendar creates the event on the connected account's calendar with a Meet link and sends the
-   invite to the CRM, the student and the interviewers.
-2. The Google Meet API turns on auto-recording and transcripts for that Meet.
-3. The Meet link, time and recording state are saved and shown in the row.
+**Meet button** (one per student row) is greyed out, with the reason, until the admin's Interviews
+switch is on and a Google account is connected. It opens a popup with:
 
-Clicking **Update** on the same row later moves the same event: the Meet link stays and Google sends the
-new time to every guest. Recording starts when the connected account (or a teammate in the same
-Workspace allowed to record) joins; students and company interviewers cannot start it. Recordings and
-transcripts go to the connected account's Google Drive.
+| Field | Filled in with | Can be changed |
+|---|---|---|
+| Event name | "Company interview – Student name" | Yes |
+| Date and time, length | Tomorrow 11:00, 30 minutes (15 minutes to 8 hours) | Yes |
+| Organizer | The connected Google account; invites come from it | No |
+| CRM (you) | The signed-in CRM, added as a guest | No |
+| Student email | The row's Student Email cell | Yes |
+| Company interviewer emails | The company's saved list; the "Save these interviewer emails" tick keeps changes for the company | Yes |
+| Other guests, description | Empty / a short description | Yes |
+
+On **Create Meet**:
+1. Google Calendar creates the event on the connected account's calendar with a Meet link and emails
+   the invite to the CRM, the student, the interviewers and other guests.
+2. The Google Meet API turns on auto-recording and transcripts for that Meet.
+3. The Meet link, time and recording state ("On, with transcript") are saved and shown in the row.
+
+The button then reads **Update**. Clicking it moves the same event: the Meet link stays and Google sends
+the new time to every guest. Two clicks at once cannot create two Meets for the same student.
+
+Recording starts when the connected account (or a teammate in the same Workspace allowed to record)
+joins; students and company interviewers cannot start it. Recordings and transcripts go to the connected
+account's Google Drive.
 
 **Set-up (once, no Workspace admin needed):**
 1. In the Google Cloud project of the sign-in client, enable the **Google Calendar API** and the
@@ -400,3 +431,16 @@ transcripts go to the connected account's Google Drive.
 Alternative: with `GOOGLE_MEET_CREDENTIALS_JSON` set, a service account with domain-wide delegation
 (granted by the Workspace super admin) is used instead of Connect Google.
 
+---
+
+## 9. Where the app runs
+
+| Part | Where | Notes |
+|---|---|---|
+| Web app (what users open) | Vercel | Every `/api/...` request is passed on to the API, so the browser only ever talks to the web address. Sign-in, the shared profiles page and Connect Google all use that one address |
+| API, workflow worker and resume queue | Northflank | One service (`PROCESS_ROLE=all`), always on, because the 10 h, 20 h and 21 h steps need the worker awake |
+| Database | MongoDB Atlas | Deals, students, sheets, Meets and the encrypted Google permission |
+| Resume queue | Redis Cloud | One resume at a time |
+
+Keys and passwords live only in the Northflank secret group and in `apps/api/.env` on a developer's
+machine, never in the repository. The README's Deployment section has the full set-up.
