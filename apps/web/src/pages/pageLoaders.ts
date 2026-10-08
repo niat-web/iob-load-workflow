@@ -12,6 +12,7 @@ export const pageLoaders = {
   psmReview: () => import("./PSMReviewPage"),
   sharedProfiles: () => import("./SharedProfilesPage"),
   jobUpdate: () => import("./JobUpdateFormPage"),
+  privacy: () => import("./PrivacyPage"),
 };
 
 const NAV_PRELOADERS: Record<string, () => Promise<unknown>> = {
