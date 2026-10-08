@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
-import { BriefcaseBusiness, ChartColumn, LoaderCircle, Sparkles, UsersRound, type LucideIcon } from "lucide-react";
+import { BriefcaseBusiness, LoaderCircle, Sparkles, UsersRound, type LucideIcon } from "lucide-react";
 import { useCallback, useState } from "react";
 import { Navigate, useLocation } from "react-router";
 import { devLogin, loginWithEmailCode, loginWithGoogle, useAuthConfig } from "../api/auth";
@@ -10,6 +10,7 @@ import { DevLoginForm } from "../components/DevLoginForm";
 import { EmailCodeForm } from "../components/EmailCodeForm";
 import { ErrorState } from "../components/ErrorState";
 import { GoogleSignInButton } from "../components/GoogleSignInButton";
+import { LogoMark } from "../components/LogoMark";
 import { PageLoader, Skeleton } from "../components/LoadingSkeleton";
 import { Button } from "../components/ui/Button";
 import type { LoginResponse, User } from "../types/api";
@@ -179,9 +180,7 @@ export function LoginPage() {
         className="hidden w-[44%] max-w-[640px] flex-col justify-between bg-ink px-12 py-12 text-white lg:flex"
       >
         <div className="flex items-center gap-3">
-          <span className="flex size-11 items-center justify-center rounded-xl bg-primary">
-            <ChartColumn className="size-6" strokeWidth={2.4} aria-hidden />
-          </span>
+          <LogoMark className="size-11 rounded-xl" />
           <span className="text-lg font-bold tracking-tight">Job Flow Automation</span>
         </div>
 
@@ -211,9 +210,7 @@ export function LoginPage() {
       <section className="flex flex-1 items-center justify-center bg-canvas px-4 py-10 sm:px-8 lg:bg-surface">
         <div className="w-full max-w-[400px]">
           <div className="mb-8 flex items-center gap-3 lg:hidden">
-            <span className="flex size-10 items-center justify-center rounded-xl bg-primary text-white">
-              <ChartColumn className="size-5" strokeWidth={2.4} aria-hidden />
-            </span>
+            <LogoMark className="size-10 rounded-xl" />
             <span className="text-base font-bold text-ink">Job Flow Automation</span>
           </div>
           <div className="rounded-2xl border bg-surface p-6 shadow-card sm:p-8 lg:border-0 lg:p-0 lg:shadow-none">

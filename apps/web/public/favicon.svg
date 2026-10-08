@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+  <defs>
+    <linearGradient id="jf-bg" x1="3" y1="2" x2="45" y2="46" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7B5CFF"/><stop offset="0.5" stop-color="#4B2FE6"/><stop offset="1" stop-color="#1C1270"/>
+    </linearGradient>
+    <linearGradient id="jf-gl" x1="24" y1="0" x2="24" y2="24" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.24"/><stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="jf-fl" x1="10" y1="0" x2="34" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.95"/><stop offset="1" stop-color="#9FF6EA"/>
+    </linearGradient>
+    <radialGradient id="jf-glow" cx="33.5" cy="24" r="13" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#3EF0DA" stop-opacity="0.55"/><stop offset="1" stop-color="#3EF0DA" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="48" height="48" rx="13" fill="url(#jf-bg)"/>
+  <rect width="48" height="48" rx="13" fill="url(#jf-gl)"/>
+  <circle cx="33.5" cy="24" r="13" fill="url(#jf-glow)"/>
+  <path d="M11.5 13.5c8.5 0 8.5 10.5 17 10.5M11.5 24h17M11.5 34.5c8.5 0 8.5-10.5 17-10.5" fill="none" stroke="url(#jf-fl)" stroke-width="3.4" stroke-linecap="round"/>
+  <circle cx="11.5" cy="13.5" r="3" fill="#fff"/><circle cx="11.5" cy="24" r="3" fill="#fff"/><circle cx="11.5" cy="34.5" r="3" fill="#fff"/>
+  <circle cx="33.5" cy="24" r="7.2" fill="#3EF0DA"/>
+  <path d="M30.2 24.1l2.3 2.3 4-4.2" fill="none" stroke="#14104A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

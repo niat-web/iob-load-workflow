@@ -1,8 +1,8 @@
-import { ChartColumn } from "lucide-react";
 import { Link, useLocation } from "react-router";
 import { homePathFor } from "../auth/roles";
 import type { User } from "../types/api";
 import { UserEmailMenu } from "./UserEmailMenu";
+import { LogoMark } from "./LogoMark";
 
 function brandFor(user: User, pathname: string) {
   const psm = pathname.startsWith("/psm") || (user.role === "PSM" && !pathname.startsWith("/crm"));
@@ -18,9 +18,7 @@ export function Brand({ user }: { user: User }) {
       aria-label={`${brand.title} ${brand.subtitle} home`}
       className="focus-ring flex items-center gap-3 rounded-xl"
     >
-      <span className="flex size-9 shrink-0 items-center justify-center rounded-[10px] bg-brand text-white shadow-glow">
-        <ChartColumn className="size-5" strokeWidth={2.4} aria-hidden />
-      </span>
+      <LogoMark className="size-9 shrink-0 rounded-[10px] shadow-glow" />
       <span className="flex flex-col leading-tight">
         <span className="text-lg font-bold text-ink">{brand.title}</span>
         <span className="text-xs text-muted">{brand.subtitle}</span>
