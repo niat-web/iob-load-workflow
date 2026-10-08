@@ -46,7 +46,7 @@ describe("Google sign-in", () => {
 
   test("the login page gets the Google client ID, and the old Microsoft route is gone", async () => {
     const response = await api().get("/api/auth/config");
-    assert.deepEqual(response.body, { googleClientId: CLIENT, devLoginEnabled: true });
+    assert.deepEqual(response.body, { googleClientId: CLIENT, devLoginEnabled: true, emailCodeEnabled: true });
     assert.equal((await api().post("/api/auth/microsoft").set(XHR).send({ idToken: "x".repeat(30) })).status, 404);
   });
 

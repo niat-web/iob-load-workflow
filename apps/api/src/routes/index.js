@@ -50,6 +50,8 @@ export function authRoutes() {
   router.get("/config", auth.getConfig);
   router.post("/google", validate({ body: auth.googleLoginSchema }), a(auth.googleLogin));
   router.post("/dev-login", validate({ body: auth.devLoginSchema }), a(auth.devLogin));
+  router.post("/email/code", validate({ body: auth.emailCodeSchema }), a(auth.sendEmailCode));
+  router.post("/email/verify", validate({ body: auth.verifyCodeSchema }), a(auth.emailCodeLogin));
   router.get("/me", requireAuth, auth.me);
   router.post("/logout", auth.logout);
   return router;

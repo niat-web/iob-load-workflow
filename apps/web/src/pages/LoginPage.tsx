@@ -2,11 +2,12 @@ import { useMutation } from "@tanstack/react-query";
 import { BriefcaseBusiness, ChartColumn, LoaderCircle, Sparkles, UsersRound, type LucideIcon } from "lucide-react";
 import { useCallback, useState } from "react";
 import { Navigate, useLocation } from "react-router";
-import { devLogin, loginWithGoogle, useAuthConfig } from "../api/auth";
+import { devLogin, loginWithEmailCode, loginWithGoogle, useAuthConfig } from "../api/auth";
 import { errorMessage, hasStatus } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { canAccessPath, homePathFor, isSafeInternalPath } from "../auth/roles";
 import { DevLoginForm } from "../components/DevLoginForm";
+import { EmailCodeForm } from "../components/EmailCodeForm";
 import { ErrorState } from "../components/ErrorState";
 import { GoogleSignInButton } from "../components/GoogleSignInButton";
 import { PageLoader, Skeleton } from "../components/LoadingSkeleton";
@@ -14,10 +15,15 @@ import { Button } from "../components/ui/Button";
 import type { LoginResponse, User } from "../types/api";
 import { AccessDenied } from "./AccessDenied";
 
-type LoginInput = { kind: "google"; credential: string } | { kind: "dev"; email: string };
+type LoginInput =
+  | { kind: "google"; credential: string }
+  | { kind: "dev"; email: string }
+  | { kind: "code"; email: string; code: string };
 
 function login(input: LoginInput): Promise<LoginResponse> {
-  return input.kind === "google" ? loginWithGoogle(input.credential) : devLogin(input.email);
+  if (input.kind === "google") return loginWithGoogle(input.credential);
+  if (input.kind === "code") return loginWithEmailCode(input.email, input.code);
+  return devLogin(input.email);
 }
 
 const FEATURES: { icon: LucideIcon; title: string; text: string }[] = [
@@ -109,23 +115,35 @@ export function LoginPage() {
       );
     }
 
-    const { googleClientId, devLoginEnabled } = config.data;
+    const { googleClientId, devLoginEnabled, emailCodeEnabled } = config.data;
+    const divider = (
+      <div className="flex items-center gap-3" aria-hidden>
+        <span className="h-px flex-1 bg-line" />
+        <span className="text-xs font-semibold tracking-wider text-muted uppercase">or</span>
+        <span className="h-px flex-1 bg-line" />
+      </div>
+    );
     return (
       <div className="space-y-6">
         {devLoginEnabled ? (
-          <DevLoginForm
-            pending={mutation.isPending && mutation.variables.kind === "dev"}
-            onSubmit={(email) => mutate({ kind: "dev", email })}
-          />
+          <>
+            <DevLoginForm
+              pending={mutation.isPending && mutation.variables.kind === "dev"}
+              onSubmit={(email) => mutate({ kind: "dev", email })}
+            />
+            {divider}
+          </>
         ) : (
-          <p className="rounded-lg bg-slate-50 px-4 py-3 text-center text-sm text-muted">Email sign-in is turned off.</p>
+          emailCodeEnabled && (
+            <>
+              <EmailCodeForm
+                pending={mutation.isPending && mutation.variables.kind === "code"}
+                onSubmit={(email, code) => mutate({ kind: "code", email, code })}
+              />
+              {divider}
+            </>
+          )
         )}
-
-        <div className="flex items-center gap-3" aria-hidden>
-          <span className="h-px flex-1 bg-line" />
-          <span className="text-xs font-semibold tracking-wider text-muted uppercase">or</span>
-          <span className="h-px flex-1 bg-line" />
-        </div>
 
         {googleClientId ? (
           <GoogleSignInButton clientId={googleClientId} disabled={mutation.isPending} onCredential={handleCredential} />

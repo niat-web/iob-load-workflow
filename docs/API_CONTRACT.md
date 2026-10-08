@@ -51,12 +51,14 @@ The UI only maps `tone` to colours; it never derives labels from raw statuses.
 ```json
 {
   "googleClientId": "1234567890-abc123.apps.googleusercontent.com",
-  "devLoginEnabled": false
+  "devLoginEnabled": false,
+  "emailCodeEnabled": true
 }
 ```
 
 `googleClientId` is `null` when Google sign-in is not configured.
 `devLoginEnabled` is only ever `true` outside production, for local testing without Google.
+`emailCodeEnabled` is `true` when AWS SES is set up.
 
 ### `POST /api/auth/google`
 
@@ -74,6 +76,19 @@ verified, and that it is at most 10 minutes old.
 ### `POST /api/auth/dev-login`
 
 Body `{ "email": "crm@example.com" }`. Same responses as `/google`. `404` when dev login is disabled.
+
+### `POST /api/auth/email/code`
+
+Body `{ "email": "name@company.com" }` → always `200 { sent: true, expiresInMinutes: 10, resendAfterSeconds: 60 }`,
+so the answer does not reveal who has access. A 6-digit code is emailed only when the email is an active
+user (and in `ALLOWED_EMAIL_DOMAINS` when set), at most once a minute. Only a keyed hash of the code is
+stored. `503 CODE_NOT_SENT` when SES fails.
+
+### `POST /api/auth/email/verify`
+
+Body `{ "email": "name@company.com", "code": "123456" }`. Same responses as `/google`, plus
+`400 INVALID_CODE` for a wrong, used or expired code. A code works once, for 10 minutes, and is
+deleted after 5 wrong tries.
 
 ### `GET /api/auth/me`
 

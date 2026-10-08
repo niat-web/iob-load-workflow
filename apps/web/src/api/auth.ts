@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import type { AuthConfig, LoginResponse, MeResponse } from "../types/api";
+import type { AuthConfig, EmailCodeSent, LoginResponse, MeResponse } from "../types/api";
 import { api } from "./client";
 
 export const authKeys = {
@@ -20,6 +20,14 @@ export function loginWithGoogle(credential: string): Promise<LoginResponse> {
 
 export function devLogin(email: string): Promise<LoginResponse> {
   return api.post<LoginResponse>("/auth/dev-login", { email });
+}
+
+export function requestEmailCode(email: string): Promise<EmailCodeSent> {
+  return api.post<EmailCodeSent>("/auth/email/code", { email });
+}
+
+export function loginWithEmailCode(email: string, code: string): Promise<LoginResponse> {
+  return api.post<LoginResponse>("/auth/email/verify", { email, code });
 }
 
 export function logout(): Promise<void> {

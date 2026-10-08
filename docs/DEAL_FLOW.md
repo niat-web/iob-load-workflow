@@ -66,7 +66,7 @@ profiles page. The last saved choice is used for every company after it.
 | NxtDial (key, number, agent) | AI calls |
 | Google OAuth client (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`) and one connected Google account | Google Meet interviews with auto-recording (see section 8) |
 | `FRONTEND_URL` | The web address: links in emails (shared profiles link, job update form) and the Connect Google return address |
-| Google sign-in (same OAuth client, user type Internal) | Signing in to the app. On the live site there is no test login: every user signs in with a Google account of the company Workspace and must be in Settings → Users |
+| Sign-in (same OAuth client, user type External, plus AWS SES) | Signing in to the app with **Sign in with Google** or with an **emailed 6-digit code**. Either way the email must be in Settings → Users (and in `ALLOWED_EMAIL_DOMAINS`). A session lasts `SESSION_TTL_HOURS` (default 168 hours, 7 days). The test login without a password works only on a developer's computer |
 | Old tool's Google Sheet (optional, read only) | Reusing the old tool's organisation IDs and continuing its Order numbers |
 
 The app starts even when something is missing. Only the step that needs it stops, with a message
@@ -346,7 +346,8 @@ Notes:
 | Google refuses a Meet | The popup shows Google's message | Fix what it says, then click Create Meet again |
 | The Meet was created but auto-recording is not on | The Meet and invites stay; the Auto-recording cell says why | Check the organizer's Workspace plan and that recording is allowed, or start recording by hand in the Meet |
 | Connect Google shows `redirect_uri_mismatch` | Google does not know the return address | Add `<web address>/api/interviews/google/callback` to the OAuth client's redirect URIs (it can take a few minutes to apply) |
-| Nobody can sign in on the live site | There is no test login in production | Put the first admin's Google account in `BOOTSTRAP_ADMIN_EMAILS`, then add the other users in Settings → Users |
+| Nobody can sign in on the live site | There is no test login in production | Put the first admin's email in `BOOTSTRAP_ADMIN_EMAILS`, then add the other users in Settings → Users |
+| The sign-in code email does not arrive | Codes go only to active users, at most once a minute | Check the email is in Settings → Users and spelled the same, check spam, then click Send a new code after a minute |
 | Google says "access blocked" when signing in or connecting | The account is outside the company Workspace (the app is Internal) | Use an account of the company Workspace |
 
 ---

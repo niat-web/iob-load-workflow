@@ -164,3 +164,22 @@ ${button("Open the profiles", publicLink)}
     text: `Hi ${name},\n\nThe candidate profiles for the following opportunity have been reviewed and finalized. Share the link with the company. Anyone with the link can edit the sheet, add profiles and add columns.\n\n${textDetails(rows)}\n\nOpen the profiles: ${publicLink}\n\nRegards`,
   };
 }
+
+export function loginCodeEmail(code, minutes) {
+  return {
+    subject: `${code} is your Job Flow Automation sign-in code`,
+    html: layout({
+      preheader: `Your sign-in code is ${code}. It expires in ${minutes} minutes.`,
+      bodyHtml: `<p style="margin:0 0 12px;">Hi,</p>
+<p style="margin:0 0 12px;">Use this code to sign in to Job Flow Automation:</p>
+<p style="margin:0 0 16px;font-size:28px;font-weight:700;letter-spacing:6px;color:${COLORS.text};">${escapeHtml(code)}</p>
+<p style="margin:0 0 12px;color:${COLORS.muted};">It expires in ${minutes} minutes and works once. If you did not try to sign in, ignore this email; nobody can sign in without the code.</p>`,
+    }),
+    text: `Hi,
+
+Use this code to sign in to Job Flow Automation: ${code}
+
+It expires in ${minutes} minutes and works once. If you did not try to sign in, ignore this email; nobody can sign in without the code.`,
+  };
+}
+

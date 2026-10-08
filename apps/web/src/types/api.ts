@@ -83,6 +83,13 @@ export interface User {
 export interface AuthConfig {
   googleClientId: string | null;
   devLoginEnabled: boolean;
+  emailCodeEnabled: boolean;
+}
+
+export interface EmailCodeSent {
+  sent: boolean;
+  expiresInMinutes: number;
+  resendAfterSeconds: number;
 }
 
 export interface LoginResponse {

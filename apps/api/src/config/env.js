@@ -79,7 +79,7 @@ const schema = z.object({
 
   JWT_SECRET: optionalString,
   SESSION_SECRET: optionalString,
-  SESSION_TTL_HOURS: number(12, { min: 1, max: 24 * 30 }),
+  SESSION_TTL_HOURS: number(168, { min: 1, max: 24 * 30 }),
   COOKIE_SAMESITE: z.enum(["lax", "strict", "none"]).default("lax"),
   GOOGLE_CLIENT_ID: optionalString,
   GOOGLE_CLIENT_SECRET: optionalString,
