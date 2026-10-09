@@ -231,6 +231,11 @@ export function adminRoutes() {
     validate({ params: admin.tableParams, query: admin.tableRowsQuery }),
     a(admin.bigQueryTableRows),
   );
+  router.get(
+    "/bigquery/datasets/:dataset/tables/:table/export",
+    validate({ params: admin.tableParams }),
+    a(admin.bigQueryTableExport),
+  );
   return router;
 }
 

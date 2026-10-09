@@ -1,6 +1,10 @@
+import { Transform } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { BigQuery } from "@google-cloud/bigquery";
 import { config } from "../config/env.js";
+import { CSV_BOM, csvLine } from "../utils/csv.js";
 import { AppError } from "../utils/errors.js";
+import { logger } from "../utils/logger.js";
 
 const COUNT_TTL_MS = 5 * 60 * 1000;
 const MAX_CELL_CHARS = 2000;
@@ -131,5 +135,63 @@ export async function readTableRows(datasetId, tableId, { page, limit }) {
     };
   } catch (error) {
     throw bigQueryError(error, `Reading ${datasetId}.${tableId}`);
+  }
+}
+
+/** Full, untruncated text of a BigQuery value for CSV. */
+function exportValue(value) {
+  if (value === null || value === undefined) return "";
+  if (Buffer.isBuffer(value)) return value.toString("base64");
+  if (typeof value === "object" && "value" in value && Object.keys(value).length === 1) return exportValue(value.value);
+  if (typeof value === "bigint") return value.toString();
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === "object") {
+    const text = typeof value.toJSON === "function" ? value.toJSON() : value;
+    return typeof text === "string" ? text : JSON.stringify(text);
+  }
+  return String(value);
+}
+
+/**
+ * Streams every row of a table or view to `res` as a CSV download. Rows are written as BigQuery
+ * returns them, so large tables never sit in memory. Problems found before the first byte (missing
+ * table, no access, bad query) become normal JSON errors; a failure mid-download ends the response.
+ */
+export async function streamTableCsv(datasetId, tableId, res) {
+  const bq = bigquery();
+  let metadata;
+  try {
+    [metadata] = await bq.dataset(datasetId).table(tableId).getMetadata();
+  } catch (error) {
+    throw bigQueryError(error, `Table ${datasetId}.${tableId}`);
+  }
+  const names = columnsOf(metadata).map((column) => column.name);
+  const ref = `\`${config.bigquery.projectId}.${datasetId}.${tableId}\``;
+  let job;
+  try {
+    [job] = await bq.createQueryJob({ query: `SELECT * FROM ${ref}`, location: config.bigquery.location });
+  } catch (error) {
+    throw bigQueryError(error, `Exporting ${datasetId}.${tableId}`);
+  }
+
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="${tableId}.csv"`);
+  res.setHeader("Cache-Control", "no-store");
+  res.write(`${CSV_BOM}${csvLine(names)}`);
+
+  const toCsv = new Transform({
+    writableObjectMode: true,
+    transform(row, _encoding, done) {
+      done(null, csvLine(names.map((name) => exportValue(row[name]))));
+    },
+  });
+  try {
+    await pipeline(job.getQueryResultsStream(), toCsv, res);
+  } catch (error) {
+    // Headers are already sent, so the only signal left is to cut the download short.
+    if (error?.code !== "ERR_STREAM_PREMATURE_CLOSE") {
+      logger.error({ err: error, table: `${datasetId}.${tableId}` }, "BigQuery CSV export failed mid-download");
+    }
+    res.destroy(error);
   }
 }

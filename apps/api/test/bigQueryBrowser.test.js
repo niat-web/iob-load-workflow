@@ -1,6 +1,7 @@
 import "./setup.js";
 import { after, before, beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
+import { Readable } from "node:stream";
 import { config } from "../src/config/env.js";
 import { setBigQueryBrowserClient } from "../src/services/bigQueryBrowser.js";
 import { loginAs, resetDb, startTestDb, stopTestDb } from "./helpers.js";
@@ -23,6 +24,19 @@ function fakeBigQuery(queries) {
       },
       table: () => ({ getMetadata: async () => [{ type: "VIEW", schema: SCHEMA }] }),
     }),
+    createQueryJob: async (options) => {
+      queries.push(options);
+      return [
+        {
+          getQueryResultsStream: () =>
+            Readable.from([
+              { user_id: "u1", applied_datetime: { value: "2026-10-01T10:00:00" }, score: 81.5 },
+              { user_id: 'say "hi", ok', applied_datetime: null, score: 0 },
+              { user_id: "=HYPERLINK(1)", applied_datetime: { value: "2026-10-02T09:30:00" }, score: 70 },
+            ]),
+        },
+      ];
+    },
     query: async (options) => {
       queries.push(options);
       if (options.query.includes("COUNT(*)")) return [[{ total: 120 }]];
@@ -73,6 +87,35 @@ describe("BigQuery browser (admin settings)", () => {
     const pageQuery = queries.find((options) => options.query.includes("LIMIT"));
     assert.deepEqual(pageQuery.params, { limit: 50, offset: 100 });
     assert.match(pageQuery.query, /`test-project\.placement\.applications`/);
+  });
+
+  test("export downloads every row of the clicked table as CSV", async () => {
+    const response = await adminAgent
+      .get("/api/admin/bigquery/datasets/placement/tables/applications/export")
+      .buffer(true)
+      .parse((res, done) => {
+        let text = "";
+        res.setEncoding("utf8");
+        res.on("data", (part) => (text += part));
+        res.on("end", () => done(null, text));
+      });
+    assert.equal(response.status, 200);
+    assert.match(response.headers["content-type"], /^text\/csv/);
+    assert.match(response.headers["content-disposition"], /attachment; filename="applications\.csv"/);
+    assert.equal(
+      response.body,
+      "\uFEFFuser_id,applied_datetime,score\r\n" +
+        "u1,2026-10-01T10:00:00,81.5\r\n" +
+        '"say ""hi"", ok",,0\r\n' +
+        "'=HYPERLINK(1),2026-10-02T09:30:00,70\r\n",
+    );
+    const exportQuery = queries.find((options) => options.query.startsWith("SELECT * FROM") && !options.query.includes("LIMIT"));
+    assert.match(exportQuery.query, /`test-project\.placement\.applications`$/);
+
+    for (const role of ["CRM", "PSM"]) {
+      const agent = await loginAs(`${role.toLowerCase()}.export@example.com`, role);
+      assert.equal((await agent.get("/api/admin/bigquery/datasets/placement/tables/applications/export")).status, 403);
+    }
   });
 
   test("unsafe names are refused and other roles cannot browse BigQuery", async () => {

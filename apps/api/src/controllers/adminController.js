@@ -5,7 +5,7 @@ import { User } from "../models/index.js";
 import { releaseWaitingDeals } from "../services/approvalService.js";
 import { auditLogFilters, listAuditLogs } from "../services/auditLogService.js";
 import { AUDIT, audit } from "../services/auditService.js";
-import { listDatasets, listTables, readTableRows } from "../services/bigQueryBrowser.js";
+import { listDatasets, listTables, readTableRows, streamTableCsv } from "../services/bigQueryBrowser.js";
 import {
   BULK_LIMIT,
   EDITABLE_PRODUCTS,
@@ -198,6 +198,18 @@ export async function bigQueryTableRows(req, res) {
     ip: req.ip,
   });
   res.json(await readTableRows(dataset, table, req.valid.query));
+}
+
+export async function bigQueryTableExport(req, res) {
+  const { dataset, table } = req.valid.params;
+  await audit({
+    actor: req.user,
+    action: AUDIT.BIGQUERY_EXPORTED,
+    entityType: "BigQueryTable",
+    entityId: `${dataset}.${table}`,
+    ip: req.ip,
+  });
+  await streamTableCsv(dataset, table, res);
 }
 
 const optionalText = (max) =>

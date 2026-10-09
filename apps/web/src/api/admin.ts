@@ -20,7 +20,7 @@ import type {
   PoolStudentInput,
   Role,
 } from "../types/api";
-import { api, seg } from "./client";
+import { api, apiUrl, seg } from "./client";
 import { crmKeys } from "./crm";
 
 export const adminKeys = {
@@ -166,6 +166,11 @@ export function useBigQueryTables(dataset: string | null) {
     enabled: Boolean(dataset),
     staleTime: BIGQUERY_STALE_MS,
   });
+}
+
+/** Download link for every row of a BigQuery table or view as CSV (streamed by the API). */
+export function bigQueryExportUrl(dataset: string, table: string): string {
+  return apiUrl(`/admin/bigquery/datasets/${seg(dataset)}/tables/${seg(table)}/export`);
 }
 
 export function useBigQueryRows(dataset: string | null, table: string | null, page: number, limit: number) {

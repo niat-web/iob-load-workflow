@@ -1,8 +1,8 @@
 import { useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
-import { ChevronDown, ChevronRight, Database, Eye, RefreshCw, Table2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Database, Download, Eye, RefreshCw, Table2 } from "lucide-react";
 import { useMemo, useState } from "react";
-import { adminKeys, useBigQueryDatasets, useBigQueryRows, useBigQueryTables } from "../../api/admin";
+import { adminKeys, bigQueryExportUrl, useBigQueryDatasets, useBigQueryRows, useBigQueryTables } from "../../api/admin";
 import type { BigQueryCell, BigQueryColumn, BigQueryTableInfo } from "../../types/api";
 import { cn } from "../../utils/cn";
 import { DASH, formatDateTime, formatNumber } from "../../utils/format";
@@ -12,7 +12,7 @@ import { EmptyState } from "../EmptyState";
 import { ErrorState } from "../ErrorState";
 import { Skeleton } from "../LoadingSkeleton";
 import { Pagination } from "../Pagination";
-import { IconButton } from "../ui/Button";
+import { IconButton, buttonClass } from "../ui/Button";
 import { cardClass } from "../ui/styles";
 
 interface RowItem {
@@ -77,13 +77,24 @@ function TableRowsPanel({ dataset, table }: { dataset: string; table: BigQueryTa
 
   return (
     <section aria-label={`Rows of ${dataset}.${table.id}`} className="mt-3 flex flex-col gap-3">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h4 className="text-sm font-bold break-all text-ink">
           {dataset}.{table.id}
         </h4>
-        <span className="text-xs text-muted">
-          {formatNumber(columnsInfo.length)} columns{pagination ? ` · ${formatNumber(pagination.total)} rows` : ""}
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-muted">
+            {formatNumber(columnsInfo.length)} columns{pagination ? ` · ${formatNumber(pagination.total)} rows` : ""}
+          </span>
+          <a
+            href={bigQueryExportUrl(dataset, table.id)}
+            download={`${table.id}.csv`}
+            title={`Download every row of ${table.id} as a CSV file`}
+            className={cn(buttonClass("secondary", "sm"), "gap-2")}
+          >
+            <Download className="size-4" aria-hidden />
+            Export CSV
+          </a>
+        </div>
       </div>
       <div className="flex flex-col">
         <DataTable

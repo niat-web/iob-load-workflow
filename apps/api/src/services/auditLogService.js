@@ -93,6 +93,7 @@ export const ACTION_LABELS = Object.freeze({
   [AUDIT.POOL_STUDENT_DELETED]: "Pool student deleted",
   [AUDIT.POOL_STUDENTS_IMPORTED]: "Pool students added in bulk",
   [AUDIT.BIGQUERY_VIEWED]: "BigQuery table viewed",
+  [AUDIT.BIGQUERY_EXPORTED]: "BigQuery table exported",
   [AUDIT.SETTINGS_UPDATED]: "Settings changed",
   [AUDIT.COMPANY_CONTROLS_UPDATED]: "Company switches changed",
   [AUDIT.DEAL_REMINDERS_UPDATED]: "Reminder switches changed",
@@ -229,6 +230,7 @@ const DESCRIBERS = {
       meta.updated ? `, ${number(meta.updated)} updated` : ""
     }`,
   [AUDIT.BIGQUERY_VIEWED]: (meta, log) => `Viewed the BigQuery table ${log.entityId}`,
+  [AUDIT.BIGQUERY_EXPORTED]: (meta, log) => `Exported the BigQuery table ${log.entityId} as CSV`,
   [AUDIT.SETTINGS_UPDATED]: (meta) => `Changed settings: ${list(meta.changed).join(", ") || "no change"}`,
   [AUDIT.COMPANY_CONTROLS_UPDATED]: (meta) => {
     const switches = Object.entries(meta).filter(([key]) => key !== "company");

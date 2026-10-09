@@ -2,6 +2,7 @@ import { config } from "../config/env.js";
 import { APPROVAL_GATE as GATE, WINDOW_STATUSES } from "../config/statuses.js";
 import { Job, JobEligibleStudent } from "../models/index.js";
 import { now } from "../utils/clock.js";
+import { csvCell } from "../utils/csv.js";
 import { PermanentError, conflict } from "../utils/errors.js";
 import { chunk, escapeRegex, formatDateTime } from "../utils/helpers.js";
 import { AUDIT, audit } from "./auditService.js";
@@ -243,12 +244,6 @@ const CSV_COLUMNS = [
   ["Applied at", (row) => istTime(row.appliedAt)],
   ["Added to deal at", (row) => istTime(row.eligibleAt)],
 ];
-
-function csvCell(value) {
-  let text = value === null || value === undefined ? "" : String(value);
-  if (/^[=@\t\r]/.test(text) || /^[+-](?![\d\s()-]+$)/.test(text)) text = `'${text}`;
-  return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
-}
 
 export async function dealStudentsCsv(job, query) {
   const rows = (await JobEligibleStudent.find(studentsFilter(job, query)).sort({ eligibleAt: -1, studentName: 1 }).lean()).map(
