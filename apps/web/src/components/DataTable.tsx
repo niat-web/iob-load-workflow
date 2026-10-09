@@ -67,7 +67,6 @@ export function DataTable<T>({
   const showError = Boolean(error) && rows.length === 0;
   const showSkeleton = !showError && isLoading && rows.length === 0;
   const showEmpty = !showError && !showSkeleton && rows.length === 0;
-  const scrolls = rows.length > 0 || showSkeleton;
   const leafColumns = table.getVisibleLeafColumns();
 
   return (
@@ -77,15 +76,11 @@ export function DataTable<T>({
           <div className="h-full w-1/3 animate-indeterminate bg-primary/60" />
         </div>
       )}
-      <div
-        data-scroll-region={scrolls ? "" : undefined}
-        className={cn(
-          "overscroll-contain",
-          scrolls ? "min-h-0 flex-1 overflow-auto" : "shrink-0 overflow-x-auto overflow-y-hidden",
-        )}
-      >
+      {/* The empty and error states live inside the scroll region so the horizontal scrollbar
+          always sits at the bottom of the table, never directly under the header row. */}
+      <div data-scroll-region="" className="flex min-h-0 flex-1 flex-col overflow-auto overscroll-contain">
         <table
-          className="w-full min-w-max border-separate border-spacing-0 text-left text-sm [&>tbody>tr:last-child>td]:border-b-0"
+          className="w-full min-w-max shrink-0 border-separate border-spacing-0 text-left text-sm [&>tbody>tr:last-child>td]:border-b-0"
           aria-busy={showSkeleton || undefined}
         >
           <caption className="sr-only">{caption}</caption>
@@ -174,13 +169,14 @@ export function DataTable<T>({
             Loading…
           </span>
         )}
+        {/* sticky left-0 keeps the message centred in the visible area while the header scrolls sideways. */}
+        {showError && (
+          <div className="sticky left-0 flex flex-1 items-center justify-center">
+            <ErrorState error={error} onRetry={onRetry} retrying={isFetching} />
+          </div>
+        )}
+        {showEmpty && <div className="sticky left-0 flex flex-1 items-center justify-center">{emptyState}</div>}
       </div>
-      {showError && (
-        <div className="flex flex-1 items-center justify-center">
-          <ErrorState error={error} onRetry={onRetry} retrying={isFetching} />
-        </div>
-      )}
-      {showEmpty && <div className="flex flex-1 items-center justify-center">{emptyState}</div>}
       {footer && !showError && <div className="shrink-0 border-t">{footer}</div>}
     </div>
   );
