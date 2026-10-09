@@ -300,8 +300,10 @@ export interface ApprovalPreview {
     rejected: number;
     emails: number;
     windowHours: number;
+    plannedWindowHours: number;
     reminderHours: number[];
     closesAt: string | null;
+    closed: boolean;
     studentEmailsOn: boolean;
   };
 }

@@ -1,10 +1,10 @@
 import "./setup.js";
 import { after, before, beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { JOB_STATUS } from "../src/config/statuses.js";
-import { Job, JobEligibleStudent, NotificationLog } from "../src/models/index.js";
+import { JOB_STATUS, TASK_TYPE } from "../src/config/statuses.js";
+import { Job, JobEligibleStudent, NotificationLog, WorkflowTask } from "../src/models/index.js";
 import { integrations } from "../src/services/integrations.js";
-import { XHR, loginAs, resetDb, runDueTasks, startTestDb, stopTestDb } from "./helpers.js";
+import { XHR, advanceAndRun, loginAs, resetDb, runDueTasks, startTestDb, stopTestDb } from "./helpers.js";
 
 const callsOf = (op) => integrations.learningPortal.calls.filter((call) => call.op === op);
 const envsOf = (op) => callsOf(op).map((call) => call.env);
@@ -110,6 +110,53 @@ describe("step-by-step flow", () => {
         ["START_WINDOW", "crm.user@example.com"],
       ],
     );
+  });
+
+  const runToStartWindow = async () => {
+    const id = (await submit("12345")).body.job.id;
+    await runDueTasks();
+    for (const gate of ["DEAL_DETAILS", "LOAD_BETA", "LOAD_PROD", "ELIGIBLE_STUDENTS"]) {
+      await approve(id, gate);
+      await runDueTasks();
+    }
+    assert.equal(await waitingGate(id), "START_WINDOW");
+    return id;
+  };
+
+  test("time spent waiting at the stops comes out of the window, and the job is never sent to the portal again", async () => {
+    const id = await runToStartWindow();
+    const deadline = (await Job.findById(id)).learningPortalDeadline;
+    await advanceAndRun({ hours: 2 });
+
+    const window = (await preview(id)).window;
+    assert.equal(window.closed, false);
+    assert.equal(window.plannedWindowHours, 21);
+    assert.equal(window.windowHours, 19);
+    assert.equal(window.closesAt, deadline.toISOString());
+
+    await approve(id, "START_WINDOW");
+    await runDueTasks();
+    const open = await Job.findById(id);
+    assert.equal(open.status, JOB_STATUS.APPLICATIONS_OPEN, open.lastError);
+    assert.equal(open.applicationEndAt.getTime(), deadline.getTime(), "the window closes at the portal deadline");
+    assert.deepEqual(envsOf("upsertJob"), ["beta", "prod"], "the job is not re-sent when the window starts");
+    const close = await WorkflowTask.findOne({ jobId: id, type: TASK_TYPE.APPLICATION_CLOSE_21H });
+    assert.equal(close.scheduledFor.getTime(), deadline.getTime());
+    assert.ok(await NotificationLog.countDocuments({ jobId: id, type: "INITIAL_JOB_EMAIL", status: "SENT" }));
+  });
+
+  test("a window cannot open after the job's portal deadline has passed", async () => {
+    const id = await runToStartWindow();
+    await advanceAndRun({ hours: 22 });
+    assert.equal((await preview(id)).window.closed, true);
+
+    await approve(id, "START_WINDOW");
+    await runDueTasks();
+    const failed = await Job.findById(id);
+    assert.equal(failed.status, JOB_STATUS.FAILED);
+    assert.match(failed.lastError, /closes on the Learning Portal at .* which has already passed/);
+    assert.equal(await NotificationLog.countDocuments({ jobId: id, type: "INITIAL_JOB_EMAIL" }), 0);
+    assert.deepEqual(envsOf("upsertJob"), ["beta", "prod"]);
   });
 
   test("approving the wrong step or the same step twice is refused", async () => {

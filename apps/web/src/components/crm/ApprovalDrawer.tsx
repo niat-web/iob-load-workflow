@@ -232,9 +232,16 @@ function StepPreview({ jobId, preview }: { jobId: string; preview: ApprovalPrevi
                   : "None. Job emails to students are turned off in Settings",
               },
               { label: "Refused by the portal", value: formatNumber(preview.window.rejected) },
-              { label: "Window length", value: hoursLabel(preview.window.windowHours) },
-              { label: "CRM checkpoints after", value: preview.window.reminderHours.map(hoursLabel).join(" and ") },
-              { label: "Closes about", value: formatDateTime(preview.window.closesAt) },
+              {
+                label: "Window length",
+                value: preview.window.closed
+                  ? "None. The job's deadline on the portal has passed"
+                  : preview.window.windowHours < preview.window.plannedWindowHours
+                    ? `${hoursLabel(preview.window.windowHours)} left of ${hoursLabel(preview.window.plannedWindowHours)}`
+                    : hoursLabel(preview.window.windowHours),
+              },
+              { label: "Student checkpoints after", value: preview.window.reminderHours.map(hoursLabel).join(" and ") },
+              { label: "Closes at", value: formatDateTime(preview.window.closesAt) },
             ]}
           />
         </DetailSection>

@@ -195,8 +195,12 @@ details and approval panel, and used for the organisation in the Learning Portal
 
 **B3. Open the application window and email students**
 - The application window opens (default **21 hours**). The 10 h and 20 h checkpoints, the 30-minute
-  checks and the 21 h close are scheduled. If the window starts later than planned (for example
-  after Step by step approvals), the deadline in Beta and Prod is moved to match.
+  checks and the close are scheduled.
+- The window always closes at the job's apply-by deadline on the Learning Portal, set when the job
+  was prepared (A3). The job is never sent to the portal again, because the portal cannot update a
+  job that already exists. So in Step by step, time spent waiting at the stops comes out of the
+  window: the "Email students and start window" stop shows the time left and the closing time. If
+  that deadline has already passed, the deal fails here with a clear message and no email is sent.
 - Every student with access and an email gets the **job email** with the apply link (if "Job email
   when applications open" is on).
 - Status: **Application Window**.
@@ -347,7 +351,9 @@ How it works for the person approving:
 Notes:
 - Each deal keeps the flow it was submitted with.
 - Any CRM or admin can approve. Every approval is recorded with who approved and when.
-- A deal can wait at a stop for as long as needed; nothing times out.
+- A deal can wait at a stop for as long as needed; nothing times out. But the job's apply-by
+  deadline is set when the job is prepared, so after the job is loaded, waiting shortens the
+  application window (see B3).
 - Course plans can only be changed before the job is loaded into Beta, so Beta and Prod stay the same.
 - After stop 5, the rest (window, checkpoints, HubSpot checks, close, AI analysis, ranking, PSM
   review, shared link, interviews) runs exactly as in the Automatic flow (Parts C and D).

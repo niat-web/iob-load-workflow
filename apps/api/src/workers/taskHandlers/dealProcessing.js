@@ -18,17 +18,14 @@ import {
   loadInto,
   nextOrderNumber,
   prepareOrganisation,
-  resendToTargets,
 } from "../../services/learningPortal/portalLoader.js";
-import { formatIst } from "../../services/learningPortal/nkbPayload.js";
 import { notificationKey, sendBulk } from "../../services/notificationService.js";
 import { enqueueTask } from "../../services/taskQueue.js";
 import { now } from "../../utils/clock.js";
 import { PermanentError } from "../../utils/errors.js";
-import { chunk, hoursFromNow } from "../../utils/helpers.js";
+import { chunk, formatDateTime, hoursFromNow } from "../../utils/helpers.js";
 import { enqueueNext, isPast, proceed } from "./shared.js";
 
-const DEADLINE_SYNC_TOLERANCE_MS = 5 * 60 * 1000;
 const DEAL_FIELDS = [
   "companyName", "companyWebsite", "companyLinkedin", "companyLogoUrl", "jobRole", "jobDescription", "skills",
   "eligibility", "batch", "campus", "program", "location", "ctc", "employmentType", "openings",
@@ -250,32 +247,20 @@ async function sendInitialNotifications({ job, heartbeat }) {
     from: [S.GRANTING_ACCESS, S.INITIAL_NOTIFICATION_SENDING],
   });
 
-  const start = now();
-  await Job.updateOne(
-    { _id: job._id, applicationStartAt: null },
-    {
-      $set: {
-        applicationStartAt: start,
-        applicationEndAt: hoursFromNow((await getSettings()).timing.applicationWindowHours, start),
-      },
-    },
-  );
-  let current = await Job.findById(job._id);
-
-  const drift = Math.abs((current.learningPortalDeadline?.getTime() ?? 0) - current.applicationEndAt.getTime());
-  if (drift > DEADLINE_SYNC_TOLERANCE_MS && current.learningPortalPayload) {
-    await resendToTargets(current, current.learningPortalPayload, { deadline: current.applicationEndAt });
-    current = await Job.findByIdAndUpdate(
-      job._id,
-      {
-        $set: {
-          learningPortalDeadline: current.applicationEndAt,
-          "learningPortalPayload.job_details.apply_by": formatIst(current.applicationEndAt),
-        },
-      },
-      { returnDocument: "after" },
+  const loaded = await Job.findById(job._id).lean();
+  const start = loaded.applicationStartAt ?? now();
+  const end =
+    loaded.learningPortalDeadline ?? hoursFromNow((await getSettings()).timing.applicationWindowHours, start);
+  if (end <= now()) {
+    throw new PermanentError(
+      `The job closes on the Learning Portal at ${formatDateTime(end)} IST, which has already passed, so the application window cannot open.`,
     );
   }
+  const current = await Job.findByIdAndUpdate(
+    job._id,
+    { $set: { applicationStartAt: start, applicationEndAt: end } },
+    { returnDocument: "after" },
+  );
 
   await scheduleWindowTasks(current);
 

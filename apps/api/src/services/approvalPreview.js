@@ -16,7 +16,7 @@ const DESCRIPTIONS = {
     "Check the job on Beta first. Approving loads the same job, with the same job ID, into Prod and gives the Prod test accounts access.",
   [GATE.ELIGIBLE_STUDENTS]: "Approving gives these students access to apply for the job.",
   [GATE.START_WINDOW]:
-    "Approving emails every student who has access and starts the application window. The reminders and the closing then run automatically.",
+    "Approving emails every student who has access and starts the application window. The window closes at the job's deadline on the Learning Portal, set when the job was prepared, so time spent waiting here comes out of the window. The reminders and the closing then run automatically.",
 };
 
 const iso = (date) => (date ? new Date(date).toISOString() : null);
@@ -157,14 +157,18 @@ async function windowPreview(job, settings) {
     JobEligibleStudent.countDocuments({ ...filter, accessGrantedAt: { $ne: null }, email: { $ne: null } }),
   ]);
   const { applicationWindowHours, reminderOneHours, reminderTwoHours } = settings.timing;
+  const closesAt = job.learningPortalDeadline ?? hoursFromNow(applicationWindowHours, now());
+  const hoursLeft = (new Date(closesAt).getTime() - now().getTime()) / (60 * 60 * 1000);
   return {
     granted,
     rejected,
     emails,
     studentEmailsOn: settings.studentEmails.jobEmail,
-    windowHours: applicationWindowHours,
+    windowHours: Math.max(0, Math.round(hoursLeft * 10) / 10),
+    plannedWindowHours: applicationWindowHours,
     reminderHours: [reminderOneHours, reminderTwoHours],
-    closesAt: iso(hoursFromNow(applicationWindowHours, now())),
+    closesAt: iso(closesAt),
+    closed: hoursLeft <= 0,
   };
 }
 
