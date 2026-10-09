@@ -153,7 +153,7 @@ function Sheet({ jobId, sheet, crmEmail }: { jobId: string; sheet: InterviewShee
         </span>
       </div>
 
-      <div className={cn(cardClass, "min-h-[320px] flex-1 overflow-auto")}>
+      <div data-scroll-region="" className={cn(cardClass, "min-h-[320px] flex-1 overflow-auto")}>
         <table className="w-full border-collapse text-sm">
           <thead className="sticky top-0 z-10 bg-header">
             <tr>

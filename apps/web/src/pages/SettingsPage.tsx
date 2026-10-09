@@ -22,6 +22,7 @@ import { DataTable } from "../components/DataTable";
 import { DetailList } from "../components/DetailList";
 import { EmptyState } from "../components/EmptyState";
 import { HubspotOwnerSelect } from "../components/HubspotOwnerSelect";
+import { ProductMultiSelect } from "../components/ProductMultiSelect";
 import { StatusBadge } from "../components/StatusBadge";
 import { useToast } from "../components/toast-context";
 import { AuditLogSection } from "../components/settings/AuditLogSection";
@@ -52,52 +53,6 @@ const HOME_LABELS: Record<Role, string> = {
   PSM: "Candidate Pools",
   POOL_MANAGER: "Eligible Pool",
 };
-
-function ProductPicker({
-  value,
-  onChange,
-  disabled,
-  label,
-  compact,
-}: {
-  value: readonly PoolProduct[];
-  onChange: (products: PoolProduct[]) => void;
-  disabled?: boolean;
-  label: string;
-  compact?: boolean;
-}) {
-  const toggle = (product: PoolProduct) => {
-    const next = value.includes(product) ? value.filter((item) => item !== product) : [...value, product];
-    if (next.length) onChange(EDITABLE_PRODUCTS.filter((item) => next.includes(item)));
-  };
-  return (
-    <div role="group" aria-label={label} className="flex flex-wrap gap-2">
-      {EDITABLE_PRODUCTS.map((product) => {
-        const checked = value.includes(product);
-        return (
-          <label
-            key={product}
-            className={cn(
-              "inline-flex cursor-pointer items-center gap-2 rounded-lg border px-3 text-sm font-medium",
-              compact ? "h-8" : "h-10",
-              checked ? "border-primary bg-primary-soft text-primary" : "border-line text-ink hover:bg-slate-50",
-              disabled && "cursor-not-allowed opacity-60",
-            )}
-          >
-            <input
-              type="checkbox"
-              checked={checked}
-              disabled={disabled || (checked && value.length === 1)}
-              onChange={() => toggle(product)}
-              className="size-4 accent-primary"
-            />
-            {product}
-          </label>
-        );
-      })}
-    </div>
-  );
-}
 
 const labelClass = "mb-1.5 block text-[13px] font-semibold text-ink";
 
@@ -312,10 +267,11 @@ function AddUserDialog({ open, onClose, owners, ownersLoading }: AddUserDialogPr
             </div>
             {poolManager ? (
               <div>
-                <span className={labelClass}>
+                <label htmlFor={`${id}-products`} className={labelClass}>
                   Products<span className="ml-0.5 text-red-500">*</span>
-                </span>
-                <ProductPicker
+                </label>
+                <ProductMultiSelect
+                  id={`${id}-products`}
                   label="Products this Pool Manager manages"
                   value={products}
                   onChange={(next) => {
@@ -415,12 +371,15 @@ function buildUserColumns({
       header: "Products",
       cell: ({ row }) =>
         row.original.role === "POOL_MANAGER" ? (
-          <ProductPicker
-            compact
-            label={`Products for ${row.original.email}`}
-            value={row.original.products}
-            onChange={(products) => onChange({ email: row.original.email, products }, "products")}
-          />
+          <div className="w-48">
+            <ProductMultiSelect
+              compact
+              keepOne
+              label={`Products for ${row.original.email}`}
+              value={row.original.products}
+              onChange={(products) => onChange({ email: row.original.email, products }, "products")}
+            />
+          </div>
         ) : (
           <span className="text-muted/60">—</span>
         ),
@@ -583,10 +542,10 @@ export function SettingsPage() {
   if (section && !showUsers && !showBigQuery && !showConfig && !showAudit) return <Navigate to="/settings" replace />;
 
   return (
-    <div className="flex min-h-full flex-col gap-6">
+    <div className="flex min-h-0 flex-1 flex-col gap-6">
       <h1 className="sr-only">Settings</h1>
       <SettingsNav isAdmin={isAdmin} />
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         {showUsers ? (
           <UsersSection currentEmail={user.email} />
         ) : showBigQuery ? (

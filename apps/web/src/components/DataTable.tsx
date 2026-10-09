@@ -78,6 +78,7 @@ export function DataTable<T>({
         </div>
       )}
       <div
+        data-scroll-region={scrolls ? "" : undefined}
         className={cn(
           "overscroll-contain",
           scrolls ? "min-h-0 flex-1 overflow-auto" : "shrink-0 overflow-x-auto overflow-y-hidden",

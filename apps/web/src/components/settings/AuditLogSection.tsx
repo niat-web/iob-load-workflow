@@ -36,7 +36,7 @@ function buildColumns(onOpen: (entry: AuditLogEntry) => void): ColumnDef<AuditLo
       id: "at",
       header: "When",
       cell: ({ row }) => <span className="whitespace-nowrap text-muted tabular-nums">{formatDateTime(row.original.at)}</span>,
-      meta: { headerClassName: "w-44", cellClassName: "w-44" },
+      meta: { headerClassName: "w-40", cellClassName: "w-40" },
     },
     {
       id: "actor",
@@ -47,13 +47,17 @@ function buildColumns(onOpen: (entry: AuditLogEntry) => void): ColumnDef<AuditLo
           <StatusBadge label={row.original.actor.roleLabel} tone={ROLE_TONES[row.original.actor.role] ?? "gray"} className="self-start" />
         </span>
       ),
-      meta: { headerClassName: "w-48", cellClassName: "w-48" },
+      meta: { headerClassName: "w-44", cellClassName: "w-44" },
     },
     {
       id: "what",
       header: "What happened",
       cell: ({ row }) => (
-        <button type="button" onClick={() => onOpen(row.original)} className="focus-ring block max-w-[640px] rounded text-left">
+        <button
+          type="button"
+          onClick={() => onOpen(row.original)}
+          className="focus-ring block min-w-[280px] max-w-[480px] rounded py-1 text-left whitespace-normal"
+        >
           <span className="block text-xs font-semibold tracking-wide text-muted uppercase">{row.original.label}</span>
           <span className="block text-sm text-ink hover:text-primary">{row.original.text}</span>
         </button>
@@ -72,7 +76,7 @@ function buildColumns(onOpen: (entry: AuditLogEntry) => void): ColumnDef<AuditLo
           </span>
         );
       },
-      meta: { headerClassName: "w-56", cellClassName: "w-56 max-w-56" },
+      meta: { headerClassName: "w-52", cellClassName: "w-52 max-w-52 whitespace-normal" },
     },
   ];
 }

@@ -1,6 +1,7 @@
 import { BriefcaseBusiness, Building2, GraduationCap, House, Settings, UsersRound, Video, type LucideIcon } from "lucide-react";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { NavLink } from "react-router";
+import { useWheelScroll } from "../hooks/useWheelScroll";
 import { preloadPage, preloadPagesWhenIdle } from "../pages/pageLoaders";
 import type { Role, User } from "../types/api";
 import { cn } from "../utils/cn";
@@ -88,15 +89,20 @@ function TopNav({ user }: { user: User }) {
 }
 
 export function AppShell({ user, children }: { user: User; children: ReactNode }) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const mainRef = useRef<HTMLElement>(null);
   useEffect(() => preloadPagesWhenIdle(navItemsFor(user.role).map((item) => item.to)), [user.role]);
+  useWheelScroll(rootRef, mainRef);
 
   return (
-    <div className="flex h-dvh overflow-hidden bg-canvas">
+    <div ref={rootRef} className="flex h-dvh overflow-hidden bg-canvas">
       <SideNav user={user} />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <AppHeader user={user} />
         <TopNav user={user} />
-        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto p-4 sm:p-6">{children}</main>
+        <main ref={mainRef} className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto p-4 sm:p-6">
+          {children}
+        </main>
       </div>
     </div>
   );
