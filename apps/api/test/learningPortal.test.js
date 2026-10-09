@@ -3,7 +3,7 @@ import { after, before, beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { config } from "../src/config/env.js";
 import { JOB_STATUS } from "../src/config/statuses.js";
-import { Job, LearningPortalOrganisation } from "../src/models/index.js";
+import { Counter, Job, LearningPortalOrganisation } from "../src/models/index.js";
 import { InMemorySheets } from "../src/services/googleSheets.js";
 import { integrations, overrideIntegration } from "../src/services/integrations.js";
 import { ensureOrganisation } from "../src/services/learningPortal/portalLoader.js";
@@ -135,18 +135,17 @@ describe("Learning Portal loading (beta then prod, as CRM_Job_Loading)", () => {
     }
   });
 
-  test("order numbers continue from the tracker sheet, and nothing is written to the sheet", async () => {
-    const headers = ["Date", "Job Deal ID", "Job ID", "Order", "Remarks"];
-    const lastRow = headers.map((header) => (header === "Order" ? "41" : ""));
-    const sheets = new InMemorySheets({ "Loaded Jobs Tracker": [headers, lastRow] });
+  test("order numbers come from the MongoDB counter, without the tracker sheet", async () => {
+    await Counter.create({ _id: "learningPortalOrder", value: 541 });
+    const sheets = new InMemorySheets({});
     overrideIntegration("sheets", sheets);
 
     const first = await openApplicationWindow(crm, "12345");
     const second = await openApplicationWindow(crm, "12346");
-    assert.equal(first.learningPortalPayload.job_details.order, 42);
-    assert.equal(second.learningPortalPayload.job_details.order, 43);
+    assert.equal(first.learningPortalPayload.job_details.order, 542);
+    assert.equal(second.learningPortalPayload.job_details.order, 543);
 
-    assert.deepEqual(sheets.worksheets["Loaded Jobs Tracker"], [headers, lastRow], "the sheet is only read");
+    assert.deepEqual(sheets.worksheets, {}, "no sheet tab is read for the order or written to");
     const saved = await Job.findById(first._id).lean();
     assert.equal(saved.learningPortalJobId, first.learningPortalJobId, "loaded-job details live in the database");
     assert.ok(saved.learningPortalLoads.prod.loadedAt);
@@ -166,7 +165,7 @@ describe("Learning Portal organisations", () => {
     assert.deepEqual([...first.createdIn], ["beta", "prod"]);
   });
 
-  test("the org sheet's Org ID is reused; a similar name stops for confirmation; an empty Org ID creates one", async () => {
+  test("the org sheet's Org ID is reused on an exact name; a similar name or an empty Org ID creates a new one", async () => {
     overrideIntegration("sheets", new InMemorySheets({
       "NIAT Internships": [
         ["Company Name", "Org ID"],
@@ -180,15 +179,14 @@ describe("Learning Portal organisations", () => {
     assert.equal(acme.source, "SHEET");
     assert.equal(callsOf("createOrganisation").length, 0, "an org from the sheet already exists in the portals");
 
-    await assert.rejects(
-      ensureOrganisation({ companyName: "Acme" }),
-      (error) => error.retryable === false && /similar companies are: Acme Technologies Pvt Ltd \(org-acme\)/.test(error.message),
-    );
-    assert.equal(await LearningPortalOrganisation.countDocuments({ normalizedName: "acme" }), 0);
+    const similar = await ensureOrganisation({ companyName: "Acme" });
+    assert.notEqual(similar.organisationId, "org-acme", "only an exact name reuses an Org ID");
+    assert.equal(similar.source, "CREATED");
+    assert.equal(await LearningPortalOrganisation.countDocuments({ normalizedName: "acme" }), 1);
 
     const globex = await ensureOrganisation({ companyName: "Globex" });
     assert.notEqual(globex.organisationId, "");
     assert.equal(globex.source, "CREATED");
-    assert.deepEqual(envsOf("createOrganisation"), ["beta", "prod"]);
+    assert.deepEqual(envsOf("createOrganisation"), ["beta", "prod", "beta", "prod"]);
   });
 });

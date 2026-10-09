@@ -139,7 +139,6 @@ const schema = z.object({
   JOB_LOADING_SHEET_ID: optionalString,
   SHEET_ID: optionalString,
   JOB_LOADING_ORG_WORKSHEET: z.string().default("NIAT Internships"),
-  JOB_LOADING_TRACKER_WORKSHEET: z.string().default("Loaded Jobs Tracker"),
   GOOGLE_SHEETS_CREDENTIALS_JSON: optionalString,
 
   ELIGIBILITY_SOURCE: z.enum(["pool", "learning_portal", "mock"]).optional(),
@@ -359,7 +358,6 @@ function buildConfig(env) {
     jobLoadingSheet: {
       sheetId: env.JOB_LOADING_SHEET_ID ?? env.SHEET_ID,
       orgWorksheet: env.JOB_LOADING_ORG_WORKSHEET,
-      trackerWorksheet: env.JOB_LOADING_TRACKER_WORKSHEET,
       credentials:
         parseCredentials(env.GOOGLE_SHEETS_CREDENTIALS_JSON, "GOOGLE_SHEETS_CREDENTIALS_JSON") ?? bigqueryCredentials,
     },

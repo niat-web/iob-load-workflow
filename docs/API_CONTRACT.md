@@ -264,7 +264,7 @@ type CrmDealDetail = CrmDealRow & {
   learningPortal: {
     jobId: string | null;              // same job id in every environment
     organisationId: string | null;
-    order: number | null;              // portal "Order" (null without the tracker sheet)
+    order: number | null;              // portal "Order", from the MongoDB counter
     environments: { name: "beta" | "prod"; loadedAt: string | null }[];
     hubspotWriteBack: "PENDING" | "DONE" | "FAILED" | "SKIPPED";
   };

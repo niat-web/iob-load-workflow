@@ -67,7 +67,7 @@ profiles page. The last saved choice is used for every company after it.
 | Google OAuth client (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`) and one connected Google account | Google Meet interviews with auto-recording (see section 8) |
 | `FRONTEND_URL` | The web address: links in emails (shared profiles link, job update form) and the Connect Google return address |
 | Sign-in (same OAuth client, user type External, plus AWS SES) | Signing in to the app with **Sign in with Google** or with an **emailed 6-digit code**. Either way the email must be in Settings → Users (and in `ALLOWED_EMAIL_DOMAINS`). A session lasts `SESSION_TTL_HOURS` (default 168 hours, 7 days). The test login without a password works only on a developer's computer |
-| Old tool's Google Sheet (optional, read only) | Reusing the old tool's organisation IDs and continuing its Order numbers |
+| Old tool's Google Sheet (`JOB_LOADING_SHEET_ID`, read only, "NIAT Internships" tab) | Reusing the old tool's organisation IDs so no company is created twice |
 
 The app starts even when something is missing. Only the step that needs it stops, with a message
 saying what to add.
@@ -130,15 +130,17 @@ details and approval panel, and used for the organisation in the Learning Portal
 
 **A3. Prepare the job**
 - Find the company's **organisation**: first among organisations this app has used before, then in
-  the old tool's Google Sheet (read only, if connected). If it is not found, a new organisation is
-  created with a new ID, the company name, website and logo.
+  the old tool's Google Sheet ("NIAT Internships" tab, read only, if connected). Only the **same
+  name** reuses an Org ID (case, punctuation and endings such as "Pvt Ltd" are ignored, so "ACME" and
+  "Acme Pvt Ltd" match). Any other name, even a similar one, gets a new organisation with a new ID,
+  the company name, website and logo. The deal never stops here to ask.
 - Create one **job ID** (a new UUID), used in both Beta and Prod.
 - Write the job text: title, description, eligibility and disclaimer. Gemini writes it when
   "AI-written job text" is on; otherwise the rule-based text is used.
 - Set the apply-by deadline (now + the window length), the course plans and the job details sent to
   the portal: locations, CTC, skills, openings, durations, job type, apply link, CRM, Profiling POC,
-  ISE and the HubSpot deal ID. The Order number continues from the old tool's tracker sheet when it
-  is connected.
+  ISE and the HubSpot deal ID. The Order number is the next number of a counter kept in our database
+  (it continues from the old tool's last Order, 541); the old tool's tracker sheet is not used.
 
 **A4. Load into Beta, then Prod**
 - The organisation is created in each portal if it is new there.

@@ -24,30 +24,14 @@ export async function findOrgInSheet(companyName) {
   if (!sheets.enabled) return null;
   const records = toRecords(await sheets.getRows(config.jobLoadingSheet.orgWorksheet));
   const target = normalizeCompanyName(companyName);
-  const near = [];
+  if (!target) return { status: "none" };
   for (const record of records) {
     const name = String(record[COMPANY_NAME_HEADER] ?? "").trim();
-    if (!name) continue;
-    const normalized = normalizeCompanyName(name);
-    const organisationId = String(record[ORG_ID_HEADER] ?? "").trim();
-    if (normalized === target) return { status: "exact", organisationId };
-    if (target && (normalized.includes(target) || target.includes(normalized))) near.push({ name, organisationId });
+    if (name && normalizeCompanyName(name) === target) {
+      return { status: "exact", organisationId: String(record[ORG_ID_HEADER] ?? "").trim() };
+    }
   }
-  return near.length ? { status: "near", candidates: near } : { status: "none" };
-}
-
-export async function lastOrderInSheet() {
-  const { sheets } = integrations;
-  if (!sheets.enabled) return null;
-  const rows = await sheets.getRows(config.jobLoadingSheet.trackerWorksheet);
-  const column = (rows[0] ?? []).map((header) => String(header).trim()).indexOf("Order");
-  if (column < 0) return null;
-  const orders = rows
-    .slice(1)
-    .map((row) => String(row[column] ?? "").trim().replaceAll(",", ""))
-    .filter((value) => /^\d+$/.test(value))
-    .map(Number);
-  return orders.length ? orders.at(-1) : null;
+  return { status: "none" };
 }
 
 export async function sheetEligibilityTemplates() {

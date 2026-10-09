@@ -1,7 +1,7 @@
 import { config } from "../../config/env.js";
 import { Counter, Job, LearningPortalOrganisation } from "../../models/index.js";
 import { now } from "../../utils/clock.js";
-import { PermanentError, isDuplicateKeyError } from "../../utils/errors.js";
+import { isDuplicateKeyError } from "../../utils/errors.js";
 import { normalizeCompanyName } from "../../utils/helpers.js";
 import { logger } from "../../utils/logger.js";
 import { AUDIT, audit } from "../auditService.js";
@@ -10,7 +10,7 @@ import { usableLogo } from "../companyLogoService.js";
 import { getSettings } from "../settingsService.js";
 import { DEFAULT_ELIGIBILITY_TEMPLATES } from "./eligibilityTemplates.js";
 import { buildJobContent } from "./jobContent.js";
-import { findOrgInSheet, lastOrderInSheet, sheetEligibilityTemplates } from "./jobLoadingSheet.js";
+import { findOrgInSheet, sheetEligibilityTemplates } from "./jobLoadingSheet.js";
 import { resolveLogo } from "./logoResolver.js";
 import {
   buildNkbJobPayload,
@@ -45,13 +45,6 @@ export async function prepareOrganisation(job) {
 
   if (!organisation) {
     const fromSheet = await findOrgInSheet(job.companyName);
-    if (fromSheet?.status === "near") {
-      const names = fromSheet.candidates.map((row) => `${row.name} (${row.organisationId || "no Org ID"})`).join(", ");
-      throw new PermanentError(
-        `"${job.companyName}" is not in the "${config.jobLoadingSheet.orgWorksheet}" sheet, but similar companies are: ${names}. ` +
-          `Add "${job.companyName}" with its Org ID to the sheet (leave Org ID empty to create a new organisation), then retry.`,
-      );
-    }
     const known = fromSheet?.status === "exact" && fromSheet.organisationId;
     const record = known
       ? { organisationId: fromSheet.organisationId, source: "SHEET", createdIn: [...portal.targets] }
@@ -99,14 +92,14 @@ export async function ensureOrganisation(job) {
   return organisation;
 }
 
+export const ORDER_COUNTER_ID = "learningPortalOrder";
+
 export async function nextOrderNumber() {
-  if (!integrations.sheets.enabled) return undefined;
-  const lastInSheet = (await lastOrderInSheet()) ?? 0;
-  const counter = await Counter.collection.findOneAndUpdate(
-    { _id: "learningPortalOrder" },
-    [{ $set: { value: { $add: [{ $max: [{ $ifNull: ["$value", 0] }, lastInSheet] }, 1] } } }],
+  const counter = await Counter.findOneAndUpdate(
+    { _id: ORDER_COUNTER_ID },
+    { $inc: { value: 1 } },
     { upsert: true, returnDocument: "after" },
-  );
+  ).lean();
   return counter.value;
 }
 

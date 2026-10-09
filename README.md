@@ -377,9 +377,9 @@ Deals are loaded the way `CRM_Job_Loading/retool_phase1.py` loads them, using th
   `LEARNING_PORTAL_ACCESS_ENV=beta`.
 - **Organisations**: looked up in this app's records, then in the tool's Google Sheet ("NIAT
   Internships", by normalised company name), else created with a new UUID in both environments
-  (with a logo found from the website, LinkedIn page or HubSpot). A *similar* but not identical name
-  in the sheet stops the step (as the tool does) so nobody creates a duplicate: add the exact name
-  with its Org ID (or an empty Org ID for a new organisation) and press **Retry Failed Step**.
+  (with a logo found from the website, LinkedIn page or HubSpot). Only an exact name match (ignoring
+  case, punctuation and endings such as "Pvt Ltd") reuses an Org ID; any other name gets a new
+  organisation, with no stop.
 - **Content**: the payload ([nkbPayload.js](apps/api/src/services/learningPortal/nkbPayload.js)) and
   the student-facing text ([jobContent.js](apps/api/src/services/learningPortal/jobContent.js)) port
   the tool's rules and prompts: eligibility criteria per enroll plan and the disclaimer are written
@@ -392,8 +392,9 @@ Deals are loaded the way `CRM_Job_Loading/retool_phase1.py` loads them, using th
 - **After loading**: the job ID is written to the deal's `job_id` property and to its twin deal in
   the other job pipeline (`HUBSPOT_WRITE_JOB_ID`, needs `crm.objects.deals.write`). Loaded-job details are kept
   in MongoDB only; nothing is written to any Google Sheet. When `JOB_LOADING_SHEET_ID` is set, the
-  old tool's sheet is only read (read-only access): the company → Org ID list, and the last "Order"
-  in "Loaded Jobs Tracker" so the portal "Order" continues from it.
+  old tool's sheet is only read (read-only access): the company → Org ID list. The portal "Order"
+  comes from a counter in MongoDB (`counters`, id `learningPortalOrder`), set once to the old tool's
+  last Order; the "Loaded Jobs Tracker" tab is not used.
 - **Not ported** (manual steps of the tool's UI): the operator's enroll-plan confirmation before
   prod, NIAT batch selection, the Google-Sheet student lists (`USER_IDS` mode) and the CRM / ISE /
   profiling-agent pickers. Eligible students come from the Eligible Pool page (see Eligibility).
