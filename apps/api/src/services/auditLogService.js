@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { LOGO_SOURCE_LABELS } from "../config/logoSources.js";
 import { APPROVAL_GATE_LABELS } from "../config/statuses.js";
 import { AuditLog, Job, User } from "../models/index.js";
 import { escapeRegex, formatDateTime } from "../utils/helpers.js";
@@ -96,6 +97,7 @@ export const ACTION_LABELS = Object.freeze({
   [AUDIT.BIGQUERY_EXPORTED]: "BigQuery table exported",
   [AUDIT.SETTINGS_UPDATED]: "Settings changed",
   [AUDIT.COMPANY_CONTROLS_UPDATED]: "Company switches changed",
+  [AUDIT.COMPANY_LOGO_CHANGED]: "Company logo changed",
   [AUDIT.DEAL_REMINDERS_UPDATED]: "Reminder switches changed",
   [AUDIT.INTERVIEW_MEET_SCHEDULED]: "Meet created",
   [AUDIT.INTERVIEW_MEET_UPDATED]: "Meet moved",
@@ -145,7 +147,14 @@ const studentText = (log, meta) =>
 const DESCRIBERS = {
   [AUDIT.DEAL_SUBMITTED]: (meta) => `Submitted HubSpot deal ${meta.hubspotDealId ?? ""}`.trim(),
   [AUDIT.DEAL_FETCHED]: (meta) =>
-    `Fetched the deal from HubSpot: ${plural(meta.fields, "field")}, JD ${meta.jdCount ?? 1}, ${meta.logo ? "logo found" : "no logo found"}`,
+    `Fetched the deal from HubSpot: ${plural(meta.fields, "field")}, JD ${meta.jdCount ?? 1}, ${
+      meta.logo ? `logo found${LOGO_SOURCE_LABELS[meta.logoSource] ? ` (${LOGO_SOURCE_LABELS[meta.logoSource]})` : ""}` : "no logo found"
+    }`,
+  [AUDIT.COMPANY_LOGO_CHANGED]: (meta) => {
+    if (meta.how === "REMOVED") return "Removed the company logo";
+    if (meta.how === "SET") return "Set the company logo from a pasted link";
+    return `Found the company logo again${LOGO_SOURCE_LABELS[meta.source] ? ` (${LOGO_SOURCE_LABELS[meta.source]})` : ""}`;
+  },
   [AUDIT.ORG_REUSED]: (meta) =>
     `Reused organisation ${shortId(meta.organisationId)} (${meta.source === "SHEET" ? "found in the old tool's sheet" : "already used by this app"})`,
   [AUDIT.ORG_CREATED]: (meta) => `Created a new organisation ${shortId(meta.organisationId)} for ${meta.company ?? "the company"}`,

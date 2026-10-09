@@ -79,6 +79,8 @@ export function mapDeal({ deal, company, owner }) {
     companyWebsite: domain ? (domain.startsWith("http") ? domain : `https://www.${domain}`) : null,
     companyLinkedin: clean(props.company_linkedin_profile) ?? clean(company?.linkedin),
     companyLogoUrl: clean(props.company_logo_link) ?? clean(company?.logo),
+    companyLogoLink: clean(props.company_logo_link),
+    hubspotCompanyLogo: clean(company?.logo),
     jobRole: clean(read("jobRole")) ?? clean(props.dealname),
     jobDescription: clean(read("jobDescription")),
     skills: splitList(read("skills")),

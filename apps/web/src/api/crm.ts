@@ -224,6 +224,23 @@ export function useAddNewEligible(jobId: string) {
   });
 }
 
+function useDealLogoAction<TInput>(jobId: string, request: (input: TInput) => Promise<CrmDealDetail>) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: request,
+    onSuccess: (deal) => {
+      queryClient.setQueryData(crmKeys.deal(jobId), deal);
+      void queryClient.invalidateQueries({ queryKey: crmKeys.logs(jobId) });
+    },
+  });
+}
+
+export const useSetDealLogo = (jobId: string) =>
+  useDealLogoAction(jobId, (url: string | null) => api.patch<CrmDealDetail>(`/crm/deals/${seg(jobId)}/logo`, { url }));
+
+export const useFindDealLogo = (jobId: string) =>
+  useDealLogoAction<void>(jobId, () => api.post<CrmDealDetail>(`/crm/deals/${seg(jobId)}/logo/find`));
+
 export function useDealReminders(jobId: string, poll: boolean) {
   return useQuery({
     queryKey: crmKeys.reminders(jobId),

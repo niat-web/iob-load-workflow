@@ -380,7 +380,9 @@ Deals are loaded the way `CRM_Job_Loading/retool_phase1.py` loads them, using th
   `LEARNING_PORTAL_ACCESS_ENV=beta`.
 - **Organisations**: looked up in this app's records, then in the tool's Google Sheet ("NIAT
   Internships", by normalised company name), else created with a new UUID in both environments
-  (with a logo found from the website, LinkedIn page or HubSpot). Only an exact name match (ignoring
+  (with the company's real logo: the deal's logo link, the website's declared or header logo, Logo.dev
+  when `LOGO_DEV_TOKEN` is set, the website's app icons, then HubSpot; each one is downloaded and
+  checked, and favicons, guessed domains and default icons are never used). Only an exact name match (ignoring
   case, punctuation and endings such as "Pvt Ltd") reuses an Org ID; any other name gets a new
   organisation, with no stop.
 - **Content**: the payload ([nkbPayload.js](apps/api/src/services/learningPortal/nkbPayload.js)) and

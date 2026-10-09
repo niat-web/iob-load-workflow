@@ -135,6 +135,7 @@ const schema = z.object({
   LEARNING_PORTAL_SHOW_FOR_ALL_ENROLL_PLANS: bool(true),
   LEARNING_PORTAL_TIMEOUT_MS: number(30000, { min: 1000, max: 300000 }),
   LEARNING_PORTAL_RESOLVE_LOGOS: bool(true),
+  LOGO_DEV_TOKEN: optionalString,
 
   JOB_LOADING_SHEET_ID: optionalString,
   SHEET_ID: optionalString,
@@ -353,6 +354,10 @@ function buildConfig(env) {
       showForAllInEnrollPlans: env.LEARNING_PORTAL_SHOW_FOR_ALL_ENROLL_PLANS,
       timeoutMs: env.LEARNING_PORTAL_TIMEOUT_MS,
       resolveLogos: env.LEARNING_PORTAL_RESOLVE_LOGOS,
+    },
+
+    logos: {
+      logoDevToken: env.LOGO_DEV_TOKEN ?? null,
     },
 
     jobLoadingSheet: {

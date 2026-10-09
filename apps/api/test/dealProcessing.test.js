@@ -6,7 +6,15 @@ import { reportMissingSettings } from "../src/config/startupReport.js";
 import { JOB_STATUS, TASK_TYPE } from "../src/config/statuses.js";
 import { MockDealOverride } from "../src/services/hubspotClient.js";
 import { resetIntegrations } from "../src/services/integrations.js";
-import { Job, JobDealSnapshot, JobEligibleStudent, JobHubspotMapping, NotificationLog, WorkflowTask } from "../src/models/index.js";
+import {
+  AuditLog,
+  Job,
+  JobDealSnapshot,
+  JobEligibleStudent,
+  JobHubspotMapping,
+  NotificationLog,
+  WorkflowTask,
+} from "../src/models/index.js";
 import { runDueTasks, runTask } from "../src/workers/workflowWorker.js";
 import { claimNextTask } from "../src/services/taskQueue.js";
 import {
@@ -180,7 +188,9 @@ describe("CRM deal processing", () => {
     await runDueTasks();
 
     assert.equal((await Job.findById(plain)).companyLogoUrl, null, "nothing found means no logo");
-    assert.equal((await Job.findById(withLogo)).companyLogoUrl, "https://cdn.example.com/logo-labs.png", "the HubSpot logo is the fallback");
+    const logoJob = await Job.findById(withLogo);
+    assert.equal(logoJob.companyLogoUrl, "https://cdn.example.com/logo-labs.png", "the logo link on the deal is used");
+    assert.equal(logoJob.companyLogoSource, "CRM_LINK");
     assert.equal((await Job.findById(placeholder)).companyLogoUrl, null, "HubSpot placeholder logos are ignored");
 
     const snapshot = await JobDealSnapshot.findOne({ jobId: withLogo }).sort({ version: 1 }).lean();
@@ -188,6 +198,27 @@ describe("CRM deal processing", () => {
     assert.ok(snapshot.rawOwner.email);
     assert.ok(Object.keys(snapshot.rawProperties).length > 5);
     assert.equal(snapshot.mappedFields.companyLogoUrl, "https://cdn.example.com/logo-labs.png");
+  });
+
+  test("a CRM can paste a logo link, remove it, and look for the logo again", async () => {
+    const id = (await submitDeal(crm, "12345")).body.job.id;
+    await runDueTasks();
+    const url = `/api/crm/deals/${id}/logo`;
+    const favicon = await crm.patch(url).set(XHR).send({ url: "https://www.google.com/s2/favicons?sz=128&domain=acme.com" });
+    assert.equal(favicon.status, 400, "favicon links are refused");
+    assert.equal((await crm.patch(url).set(XHR).send({ url: "not a link" })).status, 400);
+
+    const set = await crm.patch(url).set(XHR).send({ url: "https://cdn.example.com/acme-logo.png" });
+    assert.equal(set.status, 200);
+    assert.equal(set.body.companyLogoUrl, "https://cdn.example.com/acme-logo.png");
+    assert.equal(set.body.companyLogoSource, "SET_BY_CRM");
+
+    const removed = await crm.patch(url).set(XHR).send({ url: null });
+    assert.equal(removed.body.companyLogoUrl, null);
+    const again = await crm.post(`${url}/find`).set(XHR);
+    assert.equal(again.status, 409, "a deal with no logo link and no website logo has nothing to find");
+    assert.equal(again.body.error.code, "LOGO_NOT_FOUND");
+    assert.equal(await AuditLog.countDocuments({ action: "COMPANY_LOGO_CHANGED", entityId: id }), 2);
   });
 
   test("a missing key never stops the API; only the step that needs it fails, with what to add", async () => {

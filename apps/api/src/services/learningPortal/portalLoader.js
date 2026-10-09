@@ -6,12 +6,11 @@ import { normalizeCompanyName } from "../../utils/helpers.js";
 import { logger } from "../../utils/logger.js";
 import { AUDIT, audit } from "../auditService.js";
 import { integrations } from "../integrations.js";
-import { usableLogo } from "../companyLogoService.js";
 import { getSettings } from "../settingsService.js";
 import { DEFAULT_ELIGIBILITY_TEMPLATES } from "./eligibilityTemplates.js";
 import { buildJobContent } from "./jobContent.js";
 import { findOrgInSheet, sheetEligibilityTemplates } from "./jobLoadingSheet.js";
-import { resolveLogo } from "./logoResolver.js";
+import { isLogoLink } from "./logoResolver.js";
 import {
   buildNkbJobPayload,
   enrollPlansFor,
@@ -63,9 +62,7 @@ export async function prepareOrganisation(job) {
           organisationId: portal.newId(),
           source: "CREATED",
           createdIn: [],
-          logoUrl: usableLogo(job.companyLogoUrl)
-            ? job.companyLogoUrl
-            : await resolveLogo({ website: job.companyWebsite, linkedin: job.companyLinkedin, hubspotLogo: job.companyLogoUrl }),
+          logoUrl: isLogoLink(job.companyLogoUrl) ? job.companyLogoUrl : "NA",
         };
     try {
       organisation = await LearningPortalOrganisation.create({

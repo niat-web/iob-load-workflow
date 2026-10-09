@@ -51,7 +51,8 @@ async function hubspotDealUpdate({ job }) {
   const bundle = await integrations.hubspot.fetchDealBundle(job.hubspotDealId);
   const mapped = applySubmittedInputs(mapDeal(bundle), job);
   if (job.jdCount > 0) mapped.jdCount = job.jdCount;
-  if (!mapped.companyLogoUrl && job.companyLogoUrl) mapped.companyLogoUrl = job.companyLogoUrl;
+  mapped.companyLogoUrl = job.companyLogoUrl ?? null;
+  mapped.companyLogoSource = job.companyLogoSource ?? null;
   const previous = await latestSnapshot(job._id);
   if (previous && previous.payloadHash === fullHash(mapped)) return;
 

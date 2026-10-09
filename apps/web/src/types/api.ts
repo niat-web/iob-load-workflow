@@ -279,6 +279,16 @@ export interface AddEligibleResult {
   eligibleCount: number;
 }
 
+export type CompanyLogoSource =
+  | "CRM_LINK"
+  | "WEBSITE_DECLARED"
+  | "WEBSITE_HEADER"
+  | "LOGO_DEV"
+  | "WEBSITE_ICON"
+  | "HUBSPOT"
+  | "PORTAL_ORGANISATION"
+  | "SET_BY_CRM";
+
 export interface CrmDealDetail extends CrmDealRow {
   addEligible: AddEligibleState;
   hubspotRecordUrl: string | null;
@@ -286,6 +296,8 @@ export interface CrmDealDetail extends CrmDealRow {
   companyWebsite: string | null;
   companyLinkedin: string | null;
   companyLogoUrl: string | null;
+  companyLogoSource: CompanyLogoSource | null;
+  logoOnPortal: boolean;
   jdCount: number | null;
   jobType: string | null;
   experienceType: string | null;

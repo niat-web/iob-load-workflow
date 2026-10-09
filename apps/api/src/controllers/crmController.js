@@ -27,6 +27,7 @@ import { latestSnapshot } from "../services/dealSnapshotService.js";
 import { findHubspotOwner, hubspotOwnerForUser, listHubspotOwners } from "../services/hubspotOwners.js";
 import { ALL_ENROLL_PLANS } from "../services/learningPortal/nkbPayload.js";
 import { buildPortalPayload } from "../services/learningPortal/portalLoader.js";
+import { findLogoAgain, setCompanyLogo } from "../services/companyLogoService.js";
 import { CHECKPOINT_SWITCHES } from "../services/companySettingsService.js";
 import { dealReminders, updateDealCheckpoints } from "../services/dealReminderService.js";
 import {
@@ -200,6 +201,18 @@ async function crmDetail(job) {
 
 export async function dealDetail(req, res) {
   res.json(await crmDetail(await loadJob(req.valid.params.jobId)));
+}
+
+export const logoSchema = z.object({ url: z.string().trim().min(1, "Paste a logo link").max(2000).nullable() });
+
+export async function updateLogo(req, res) {
+  const job = await loadJob(req.valid.params.jobId);
+  res.json(await crmDetail(await setCompanyLogo(job, req.valid.body.url, req.user)));
+}
+
+export async function findLogo(req, res) {
+  const job = await loadJob(req.valid.params.jobId);
+  res.json(await crmDetail(await findLogoAgain(job, req.user)));
 }
 
 export async function newEligibleDetail(req, res) {

@@ -1,5 +1,5 @@
 import "./setup.js";
-import { resolveLogo } from "../src/services/learningPortal/logoResolver.js";
+import { findCompanyLogo, imageInfo } from "../src/services/learningPortal/logoResolver.js";
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { requestFields } from "../src/app.js";
@@ -394,7 +394,7 @@ describe("HubSpot owner list", () => {
   });
 });
 
-describe("company logo lookup (same order as CRM_Job_Loading)", () => {
+describe("company logo lookup", () => {
   const live = async (run) => {
     const mode = config.modes.learningPortal;
     config.modes.learningPortal = "live";
@@ -404,40 +404,112 @@ describe("company logo lookup (same order as CRM_Job_Loading)", () => {
       config.modes.learningPortal = mode;
     }
   };
-  const site = (status, html = "") => new Response(html, { status, headers: { "Content-Type": "text/html" } });
-  const fetchFor = (ok, pages = {}) => {
+  const png = (width, height) => {
+    const buffer = Buffer.alloc(33);
+    buffer.writeUInt32BE(0x89504e47, 0);
+    buffer.writeUInt32BE(0x0d0a1a0a, 4);
+    buffer.writeUInt32BE(13, 8);
+    buffer.write("IHDR", 12, "ascii");
+    buffer.writeUInt32BE(width, 16);
+    buffer.writeUInt32BE(height, 20);
+    return buffer;
+  };
+  const routes = (map) => {
     const calls = [];
     const fetchImpl = async (target) => {
       const url = String(target);
       calls.push(url);
-      if (pages[url]) return site(200, pages[url]);
-      return site(ok.some((part) => url.includes(part)) ? 200 : 404);
+      const route = map[url];
+      if (!route) return new Response("", { status: 404 });
+      if (typeof route === "string") return new Response(route, { status: 200, headers: { "Content-Type": "text/html" } });
+      if (route.redirect) return new Response("", { status: 301, headers: { Location: route.redirect } });
+      return new Response(route.image, { status: 200, headers: { "Content-Type": "image/png" } });
     };
     return { calls, fetchImpl };
   };
-  const input = { website: "https://www.acme.com", linkedin: "https://www.linkedin.com/company/acme-labs/", hubspotLogo: "https://cdn.example.com/hubspot.png" };
+  const home = "https://www.acme.com/";
+  const page = ({ declared = true } = {}) => `<html><head>
+    <link rel="icon" href="/favicon.ico">
+    ${declared ? '<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","name":"Acme Labs","url":"https://www.acme.com/","logo":{"@id":"https://www.acme.com/#logo"}},{"@type":"ImageObject","@id":"https://www.acme.com/#logo","url":"https://www.acme.com/brand/acme-mark.png"}]}</script>' : ""}
+    </head><body>
+    <header><a href="/" class="custom-logo-link"><img class="custom-logo" src="/img/acme-logo.png" alt="Acme Labs"></a></header>
+    <section class="clients"><img class="client-logo" src="/img/globex-logo.png" alt="Globex logo"></section>
+    </body></html>`;
+  const input = { companyName: "Acme Labs", website: "https://www.acme.com", hubspotLogo: "https://cdn.example.com/hubspot.png" };
 
-  test("website logo services come first, before the HubSpot logo", async () => {
+  test("a logo link the CRM put on the deal is used first when it opens a real image", async () => {
     await live(async () => {
-      const { calls, fetchImpl } = fetchFor(["google.com/s2/favicons"]);
-      assert.equal(await resolveLogo(input, { fetchImpl }), "https://www.google.com/s2/favicons?sz=128&domain=acme.com");
-      assert.ok(calls[0].startsWith("https://logo.clearbit.com/acme.com"));
+      const { fetchImpl } = routes({ "https://cdn.acme.com/logo.png": { image: png(400, 120) } });
+      assert.deepEqual(await findCompanyLogo({ ...input, crmLogo: "https://cdn.acme.com/logo.png" }, { fetchImpl }), {
+        url: "https://cdn.acme.com/logo.png",
+        source: "CRM_LINK",
+      });
     });
   });
 
-  test("then the website itself, then the LinkedIn guess, then HubSpot, then NA", async () => {
+  test("the company website's declared logo comes next, then its header logo; client logos and favicons are never used", async () => {
     await live(async () => {
-      const scraped = fetchFor(["acme.com/img/brand-logo.png"], {
-        "https://www.acme.com/": '<html><img src="/img/brand-logo.png"></html>',
+      const declared = routes({
+        [home]: page(),
+        "https://www.acme.com/brand/acme-mark.png": { image: png(512, 512) },
+        "https://www.acme.com/img/acme-logo.png": { image: png(300, 80) },
       });
-      assert.equal(await resolveLogo(input, scraped), "https://www.acme.com/img/brand-logo.png");
+      assert.deepEqual(await findCompanyLogo(input, declared), {
+        url: "https://www.acme.com/brand/acme-mark.png",
+        source: "WEBSITE_DECLARED",
+      });
 
-      const linkedin = fetchFor(["logo.clearbit.com/acme-labs.com"]);
-      assert.equal(await resolveLogo(input, linkedin), "https://logo.clearbit.com/acme-labs.com");
-
-      const hubspot = fetchFor([]);
-      assert.equal(await resolveLogo(input, hubspot), "https://cdn.example.com/hubspot.png");
-      assert.equal(await resolveLogo({ ...input, hubspotLogo: "https://f.hubspot-logos.com/x.png" }, hubspot), "NA");
+      const header = routes({ [home]: page({ declared: false }), "https://www.acme.com/img/acme-logo.png": { image: png(300, 80) } });
+      assert.deepEqual(await findCompanyLogo(input, header), { url: "https://www.acme.com/img/acme-logo.png", source: "WEBSITE_HEADER" });
+      for (const { calls } of [declared, header]) {
+        assert.ok(!calls.some((url) => /globex|favicon|google\.com\/s2|clearbit|linkedin/.test(url)), calls.join(" "));
+      }
     });
+  });
+
+  test("tiny icons and known default images are rejected; nothing confirmed means no logo", async () => {
+    await live(async () => {
+      const html = `<html><head><link rel="apple-touch-icon" href="/wp-includes/images/w-logo-blue.png"></head>
+        <body><header><a href="/"><img src="/img/logo.png"></a></header></body></html>`;
+      const tiny = routes({ [home]: html, "https://www.acme.com/img/logo.png": { image: png(32, 32) } });
+      assert.equal(await findCompanyLogo({ ...input, hubspotLogo: "https://f.hubspot-logos.com/x.png" }, tiny), null);
+      assert.ok(!tiny.calls.some((url) => url.includes("wp-includes")));
+    });
+  });
+
+  test("a website that redirects to another domain is not read, and the HubSpot logo is the last check", async () => {
+    await live(async () => {
+      const parked = routes({
+        [home]: { redirect: "https://parked.example.net/" },
+        "https://parked.example.net/": page(),
+        "https://cdn.example.com/hubspot.png": { image: png(200, 200) },
+      });
+      assert.deepEqual(await findCompanyLogo(input, parked), { url: "https://cdn.example.com/hubspot.png", source: "HUBSPOT" });
+      assert.ok(!parked.calls.some((url) => url.includes("acme-mark")));
+    });
+  });
+
+  test("Logo.dev is asked after the website when its key is set", async () => {
+    await live(async () => {
+      const saved = config.logos.logoDevToken;
+      config.logos.logoDevToken = "pk_test";
+      try {
+        const logoDev = "https://img.logo.dev/acme.com?token=pk_test&size=256&format=png&fallback=404";
+        const service = routes({ [home]: "<html><body>No logo here</body></html>", [logoDev]: { image: png(256, 256) } });
+        assert.deepEqual(await findCompanyLogo(input, service), { url: logoDev, source: "LOGO_DEV" });
+      } finally {
+        config.logos.logoDevToken = saved;
+      }
+    });
+  });
+
+  test("image sizes are read from the file itself", () => {
+    assert.deepEqual(imageInfo(png(300, 80)), { type: "png", width: 300, height: 80 });
+    assert.deepEqual(imageInfo(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 60"></svg>')), {
+      type: "svg",
+      width: 240,
+      height: 60,
+    });
+    assert.equal(imageInfo(Buffer.from("<html>not an image</html>")), null);
   });
 });

@@ -1,4 +1,5 @@
 import { config } from "../config/env.js";
+import { LOGO_SOURCE_LABELS } from "../config/logoSources.js";
 import { APPROVAL_GATE as GATE, APPROVAL_GATE_LABELS, loadGateFor } from "../config/statuses.js";
 import { JobEligibleStudent, LearningPortalOrganisation } from "../models/index.js";
 import { now } from "../utils/clock.js";
@@ -60,6 +61,12 @@ function dealPreview(job, windowHours) {
     link("Website", job.companyWebsite),
     link("LinkedIn", job.companyLinkedin),
     { ...link("Company logo", job.companyLogoUrl), image: Boolean(job.companyLogoUrl) },
+    {
+      label: "Logo source",
+      value: job.companyLogoUrl
+        ? (LOGO_SOURCE_LABELS[job.companyLogoSource]?.replace(/^./, (letter) => letter.toUpperCase()) ?? null)
+        : "No logo could be confirmed. Add one on the deal page before approving, or the organisation is created without a logo.",
+    },
     link("HubSpot record", hubspotRecordUrl(job)),
     { label: "Job role", value: text(job.jobRole) },
     { label: "JD count", value: jdCountText(job) },

@@ -172,15 +172,38 @@ shows where the deal is.
   "ACME" and "Acme Pvt Ltd" count as the same company. Stopped and failed deals count; deleted
   deals do not. A retried deal keeps its number.
 
-**A2b. Find the company logo** (at the same time as A2, same order as the old tool)
-1. Logo services for the company website domain: Clearbit, then Google, then Hunter.
-2. The company website itself: its "logo" data, then its share image, then an image named "logo".
-3. A guess from the LinkedIn company page name (`<name>.com`) with the same logo services.
-4. The logo saved in HubSpot (company logo link), unless it is HubSpot's default placeholder.
-5. Nothing found: the deal carries on without a logo.
+**A2b. Find the company's real logo** (at the same time as A2)
 
-A logo only counts if its link really opens. The logo is saved on the deal, shown in the deal
-details and approval panel, and used for the organisation in the Learning Portal.
+Only sources that belong to this company are used: the deal's own website domain from HubSpot and
+the logo links on the deal. The app never guesses a domain (no `<linkedin name>.com`) and never uses
+favicons. It tries, in order:
+1. The **logo link on the HubSpot deal** (`company_logo_link`), when the CRM filled it in.
+2. The **logo the company website declares about itself** (its Organization logo data for search
+   engines). When the site describes several organisations, only the one matching the site's own
+   domain or the company name is used, so partner or client logos are never picked.
+3. The **logo image in the website's header**: the image linked to the home page, or marked as the
+   logo in its class, id or alt text (WordPress `custom-logo` included). Images marked as client,
+   partner, social, award, payment or banner images are skipped, and light or footer variants rank
+   lower.
+4. **Logo.dev** by the website domain, only when `LOGO_DEV_TOKEN` is set in `apps/api/.env`. It is
+   asked to answer "not found" rather than draw a placeholder.
+5. The **website's own large app icons**: its web-app manifest icons and Apple touch icon (128 px or
+   more).
+6. The **HubSpot company record's logo**, unless it is HubSpot's default placeholder.
+7. Nothing confirmed: the deal carries on **without a logo**, and the organisation is created without
+   one rather than with a wrong one.
+
+Every candidate is downloaded and checked before it is accepted: it must really be an image (PNG,
+JPG, WebP, GIF, ICO or SVG, up to 2 MB), at least 80 pixels on its long side, not a thin banner, and
+not a known default (WordPress's "W", Google's globe, favicon files, Clearbit or Hunter links,
+HubSpot placeholders). If the website redirects to a different company's domain (a parked or
+for-sale page), it is not read.
+
+The logo and **where it came from** are saved on the deal and shown in the deal's Company Profile
+and the Deal details approval panel. There a CRM can **Change logo** (paste a direct link to the
+image, which gets the same check, or clear it) or **Find again** (run the search again now). Before
+the job is loaded, the new logo is also used for the organisation the app is about to create on the
+Learning Portal. After that the portal keeps the logo its organisation was created with.
 
 **A3. Prepare the job**
 - Find the company's **organisation**: first among organisations this app has used before, then in

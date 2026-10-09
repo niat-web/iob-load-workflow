@@ -1,15 +1,19 @@
 import { ArrowUpRight, Copy } from "lucide-react";
-import type { ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { Link } from "react-router";
+import { errorMessage } from "../../api/client";
+import { useFindDealLogo, useSetDealLogo } from "../../api/crm";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
-import type { CrmDealDetail, HubspotWriteBack, Tone } from "../../types/api";
+import type { CompanyLogoSource, CrmDealDetail, HubspotWriteBack, Tone } from "../../types/api";
 import { cn } from "../../utils/cn";
 import { DASH, formatDate, formatDateTime, formatNumber, orDash } from "../../utils/format";
+import { ConfirmDialog } from "../ConfirmDialog";
 import { DetailList, DetailSection } from "../DetailList";
 import { ProgressBar } from "../ProgressBar";
 import { StatusBadge } from "../StatusBadge";
+import { useToast } from "../toast-context";
 import { IconButton } from "../ui/Button";
-import { cardClass, linkClass } from "../ui/styles";
+import { cardClass, fieldClass, linkClass } from "../ui/styles";
 
 const WRITE_BACK: Record<HubspotWriteBack, { label: string; tone: Tone }> = {
   PENDING: { label: "Pending", tone: "gray" },
@@ -118,6 +122,119 @@ export function JobMetaSection({ deal }: { deal: CrmDealDetail }) {
   );
 }
 
+const LOGO_SOURCES: Record<CompanyLogoSource, string> = {
+  CRM_LINK: "From the logo link on the HubSpot deal",
+  WEBSITE_DECLARED: "Declared by the company website",
+  WEBSITE_HEADER: "From the company website's header",
+  LOGO_DEV: "From Logo.dev",
+  WEBSITE_ICON: "The company website's app icon",
+  HUBSPOT: "From the HubSpot company record",
+  PORTAL_ORGANISATION: "From the Learning Portal organisation",
+  SET_BY_CRM: "Set by a CRM",
+};
+
+function CompanyLogoField({ deal }: { deal: CrmDealDetail }) {
+  const inputId = useId();
+  const toast = useToast();
+  const setLogo = useSetDealLogo(deal.id);
+  const findLogo = useFindDealLogo(deal.id);
+  const [draft, setDraft] = useState<string | null>(null);
+  const source = deal.companyLogoSource ? LOGO_SOURCES[deal.companyLogoSource] : null;
+
+  const close = () => {
+    setLogo.reset();
+    setDraft(null);
+  };
+  const save = (url: string | null) =>
+    setLogo.mutate(url, {
+      onSuccess: () => {
+        toast.success(url ? "Logo saved" : "Logo removed");
+        setDraft(null);
+      },
+    });
+  const findAgain = () =>
+    findLogo.mutate(undefined, {
+      onSuccess: () => toast.success("Logo found and saved"),
+      onError: (err) => toast.error(errorMessage(err, "No logo could be found.")),
+    });
+
+  return (
+    <span className="flex flex-col items-start gap-1.5">
+      {deal.companyLogoUrl ? (
+        <span className="inline-flex items-center gap-2.5">
+          <img
+            src={deal.companyLogoUrl}
+            alt={`${deal.companyName ?? "Company"} logo`}
+            className="h-10 max-w-[120px] min-w-10 rounded-md border bg-surface object-contain p-1"
+            loading="lazy"
+            referrerPolicy="no-referrer"
+          />
+          <ExternalLink href={deal.companyLogoUrl}>View URL</ExternalLink>
+        </span>
+      ) : (
+        <span className="font-normal text-amber-700">No logo confirmed</span>
+      )}
+      {source && <span className="text-xs font-normal text-muted">{source}</span>}
+      {deal.companyLogoSource === "LOGO_DEV" && (
+        <a href="https://logo.dev" target="_blank" rel="noopener noreferrer" className={cn(linkClass, "text-xs font-normal")}>
+          Logo by Logo.dev
+          <span className="sr-only"> (opens in a new tab)</span>
+        </a>
+      )}
+      <span className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+        <button
+          type="button"
+          onClick={() => setDraft(deal.companyLogoUrl ?? "")}
+          className="focus-ring rounded font-semibold text-primary hover:underline"
+        >
+          Change logo
+        </button>
+        <button
+          type="button"
+          onClick={findAgain}
+          disabled={findLogo.isPending}
+          className="focus-ring rounded font-semibold text-primary hover:underline disabled:cursor-wait disabled:opacity-60"
+        >
+          {findLogo.isPending ? "Looking for the logo…" : "Find again"}
+        </button>
+      </span>
+      {deal.logoOnPortal && (
+        <span className="max-w-xs text-xs font-normal text-muted">
+          Changes here do not update the Learning Portal, which keeps the logo its organisation was created with.
+        </span>
+      )}
+      <ConfirmDialog
+        open={draft !== null}
+        title="Change company logo"
+        confirmLabel="Save logo"
+        pending={setLogo.isPending}
+        error={setLogo.error ? errorMessage(setLogo.error, "The logo could not be saved.") : null}
+        onCancel={close}
+        onConfirm={() => save(draft?.trim() ? draft.trim() : null)}
+        message={
+          <div className="mt-2 flex flex-col gap-2">
+            <label htmlFor={inputId} className="text-[13px] font-semibold text-ink">
+              Logo image link
+            </label>
+            <input
+              id={inputId}
+              type="url"
+              value={draft ?? ""}
+              onChange={(event) => setDraft(event.target.value)}
+              placeholder="https://www.company.com/images/logo.png"
+              className={fieldClass}
+            />
+            <p className="text-xs text-muted">
+              Paste a direct link to the company&apos;s logo image (PNG, JPG, WebP or SVG, at least 80 pixels). Favicon and
+              placeholder links are refused. Leave it empty and save to remove the logo.
+            </p>
+          </div>
+        }
+      />
+    </span>
+  );
+}
+
 export function CompanyProfileSection({ deal }: { deal: CrmDealDetail }) {
   return (
     <DetailSection title="Company Profile">
@@ -137,22 +254,7 @@ export function CompanyProfileSection({ deal }: { deal: CrmDealDetail }) {
             label: "LinkedIn",
             value: deal.companyLinkedin ? <ExternalLink href={deal.companyLinkedin}>LinkedIn Company Page</ExternalLink> : DASH,
           },
-          {
-            label: "Company Logo",
-            value: deal.companyLogoUrl ? (
-              <span className="inline-flex items-center gap-2.5">
-                <img
-                  src={deal.companyLogoUrl}
-                  alt={`${deal.companyName ?? "Company"} logo`}
-                  className="size-10 rounded-md border bg-surface object-contain p-1"
-                  loading="lazy"
-                />
-                <ExternalLink href={deal.companyLogoUrl}>View URL</ExternalLink>
-              </span>
-            ) : (
-              DASH
-            ),
-          },
+          { label: "Company Logo", value: <CompanyLogoField deal={deal} /> },
         ]}
       />
     </DetailSection>

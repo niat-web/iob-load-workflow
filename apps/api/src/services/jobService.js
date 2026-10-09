@@ -152,6 +152,8 @@ function dealFields(job) {
     companyWebsite: job.companyWebsite ?? null,
     companyLinkedin: job.companyLinkedin ?? null,
     companyLogoUrl: job.companyLogoUrl ?? null,
+    companyLogoSource: job.companyLogoSource ?? null,
+    logoOnPortal: Boolean(firstLoadedAt(job)),
     jdCount: job.jdCount ?? null,
     jobType: details.job_type ?? job.jobType ?? null,
     experienceType: job.experienceType ?? null,

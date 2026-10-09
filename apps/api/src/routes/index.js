@@ -68,6 +68,8 @@ export function crmRoutes() {
   router.get("/deals/:jobId", validate({ params: crm.jobIdParams }), a(crm.dealDetail));
   router.get("/deals/:jobId/logs", validate({ params: crm.jobIdParams }), a(crm.dealLogs));
   router.post("/deals/:jobId/retry", validate({ params: crm.jobIdParams }), a(crm.retryDeal));
+  router.patch("/deals/:jobId/logo", validate({ params: crm.jobIdParams, body: crm.logoSchema }), a(crm.updateLogo));
+  router.post("/deals/:jobId/logo/find", validate({ params: crm.jobIdParams }), a(crm.findLogo));
   router.get("/deals/:jobId/new-eligible", validate({ params: crm.jobIdParams }), a(crm.newEligibleDetail));
   router.post("/deals/:jobId/new-eligible", validate({ params: crm.jobIdParams }), a(crm.addNewEligible));
   router.get(

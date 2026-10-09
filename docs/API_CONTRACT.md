@@ -157,6 +157,21 @@ checkpoints, applicationWindowHours }`: the flows CRMs may pick (empty = no choi
 when they do not pick, the steps a Step by step deal stops at, whether the Boost page actions are on,
 the admin's checkpoint switches, and the hours the form's Deadline field starts at.
 
+### Company logo on a deal (`CRM` and `ADMIN`)
+
+The deal detail carries `companyLogoUrl`, `companyLogoSource` (`CRM_LINK`, `WEBSITE_DECLARED`,
+`WEBSITE_HEADER`, `LOGO_DEV`, `WEBSITE_ICON`, `HUBSPOT`, `PORTAL_ORGANISATION`, `SET_BY_CRM` or `null`)
+and `logoOnPortal` (the organisation already exists on the Learning Portal, which keeps its logo).
+
+- `PATCH /api/crm/deals/:jobId/logo` with `{ url: string | null }` → `CrmDealDetail`. A link must be an
+  https image link that downloads as a real image (PNG, JPG, WebP, GIF, ICO or SVG, at least 80
+  pixels); favicon, placeholder and default-icon links are `400`. `null` removes the logo.
+- `POST /api/crm/deals/:jobId/logo/find` → `CrmDealDetail` after searching again (same order as when
+  the deal is fetched). `409 LOGO_NOT_FOUND` when nothing could be confirmed.
+
+Both are audited (`COMPANY_LOGO_CHANGED`). Before the job is loaded, the new logo is also used for the
+organisation the app is about to create on the Learning Portal.
+
 ### Deal reminder switches (`CRM` and `ADMIN`)
 
 - `GET /api/crm/deals/:jobId/reminders` →

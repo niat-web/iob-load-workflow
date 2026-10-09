@@ -6,6 +6,7 @@ import { AUDIT, audit } from "../../services/auditService.js";
 import { applySubmittedInputs, mapDeal, missingRequiredFields } from "../../services/dealMapper.js";
 import { latestSnapshot, saveSnapshot } from "../../services/dealSnapshotService.js";
 import { companyLogoFor, usableLogo } from "../../services/companyLogoService.js";
+import { LOGO_SOURCE } from "../../config/logoSources.js";
 import { findEligibleStudents } from "../../services/eligibilityService.js";
 import { productGroupsForPlans } from "../../services/eligiblePoolService.js";
 import { getSettings } from "../../services/settingsService.js";
@@ -27,7 +28,7 @@ import { formatDateTime, hoursFromNow } from "../../utils/helpers.js";
 import { enqueueNext, isPast, proceed } from "./shared.js";
 
 const DEAL_FIELDS = [
-  "companyName", "companyWebsite", "companyLinkedin", "companyLogoUrl", "jobRole", "jobDescription", "skills",
+  "companyName", "companyWebsite", "companyLinkedin", "companyLogoUrl", "companyLogoSource", "jobRole", "jobDescription", "skills",
   "eligibility", "batch", "campus", "program", "location", "ctc", "employmentType", "openings",
   "expectedPoolCount", "crmOwnerName", "crmOwnerEmail", "applicationDeadline", "importantInstructions", "jdCount",
   "jobType", "experienceType", "jobSource", "applicationMode", "internshipDuration", "enrollPlans",
@@ -52,12 +53,13 @@ async function fetchDeal({ job }) {
     throw new PermanentError(`HubSpot deal ${job.hubspotDealId} is missing required fields: ${missing.join(", ")}`);
   }
 
-  const [{ companyKey, jdCount }, companyLogoUrl] = await Promise.all([
+  const [{ companyKey, jdCount }, logo] = await Promise.all([
     companyJdCount(job, mapped.companyName),
     companyLogoFor(job, mapped),
   ]);
   mapped.jdCount = jdCount;
-  mapped.companyLogoUrl = companyLogoUrl;
+  mapped.companyLogoUrl = logo?.url ?? null;
+  mapped.companyLogoSource = logo?.source ?? null;
 
   await saveSnapshot(job, mapped, bundle.deal.properties, "INITIAL", { company: bundle.company, owner: bundle.owner });
   await Job.updateOne({ _id: job._id }, { $set: { ...pick(mapped), companyKey } });
@@ -71,7 +73,8 @@ async function fetchDeal({ job }) {
       jobRole: mapped.jobRole ?? null,
       fields: Object.keys(bundle.deal.properties ?? {}).length,
       jdCount,
-      logo: Boolean(companyLogoUrl),
+      logo: Boolean(logo),
+      logoSource: logo?.source ?? null,
     },
   });
   await proceed(job, GATE.DEAL_DETAILS, TASK_TYPE.CREATE_JOB);
@@ -89,9 +92,10 @@ async function createJob({ job }) {
   let current = await Job.findById(job._id);
   if (!current.learningPortalOrgId) {
     const organisation = await prepareOrganisation(current);
+    const orgLogo = !current.companyLogoUrl && usableLogo(organisation.logoUrl) ? organisation.logoUrl : null;
     current = await save({
       learningPortalOrgId: organisation.organisationId,
-      companyLogoUrl: current.companyLogoUrl ?? (usableLogo(organisation.logoUrl) ? organisation.logoUrl : null),
+      ...(orgLogo ? { companyLogoUrl: orgLogo, companyLogoSource: LOGO_SOURCE.PORTAL_ORGANISATION } : {}),
     });
   }
   if (!current.learningPortalJobId) {

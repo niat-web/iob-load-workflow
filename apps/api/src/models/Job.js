@@ -86,6 +86,7 @@ const jobSchema = new mongoose.Schema(
     companyWebsite: { type: String, default: null },
     companyLinkedin: { type: String, default: null },
     companyLogoUrl: { type: String, default: null },
+    companyLogoSource: { type: String, default: null },
     jobRole: { type: String, default: null },
     jobDescription: { type: String, default: null },
     skills: { type: [String], default: [] },
