@@ -8,8 +8,8 @@ import { integrations } from "../src/services/integrations.js";
 import { normalizePhone } from "../src/utils/helpers.js";
 import { XHR, advanceAndRun, loginAs, openApplicationWindow, resetDb, startTestDb, stopTestDb } from "./helpers.js";
 
-async function notApplied(job) {
-  return JobEligibleStudent.find({ jobId: job._id, applied: { $ne: true }, accessGrantedAt: { $ne: null } }).lean();
+async function notApplied(job, product = "NIAT") {
+  return JobEligibleStudent.find({ jobId: job._id, product, applied: { $ne: true }, accessGrantedAt: { $ne: null } }).lean();
 }
 
 describe("boost applications (CRM page)", () => {
@@ -23,10 +23,12 @@ describe("boost applications (CRM page)", () => {
     job = await openApplicationWindow(crm, "12345");
   });
 
-  test("the page shows who has not applied, with email and mobile counts", async () => {
+  test("the page shows which NIAT students have not applied, with email and mobile counts", async () => {
     const response = await crm.get(`/api/crm/deals/${job._id}/boost`);
     assert.equal(response.status, 200);
     const students = await notApplied(job);
+    assert.equal(response.body.notApplied.product, "NIAT");
+    assert.ok(response.body.notApplied.othersWithAccess > 0, "the Academy students are counted apart");
     assert.equal(response.body.notApplied.total, students.length);
     assert.equal(response.body.notApplied.withEmail, students.filter((s) => s.email).length);
     assert.equal(response.body.notApplied.withPhone, students.filter((s) => normalizePhone(s.mobile)).length);
@@ -34,12 +36,19 @@ describe("boost applications (CRM page)", () => {
     assert.equal(response.body.calls.setupProblem, null);
   });
 
-  test("reminder emails go only to students who have not applied, with a cooldown before the next send", async () => {
+  test("reminder emails go only to NIAT students who have not applied, with a cooldown before the next send", async () => {
     const sent = await crm.post(`/api/crm/deals/${job._id}/boost/emails`).set(XHR);
     assert.equal(sent.status, 200);
     const students = (await notApplied(job)).filter((s) => s.email);
     assert.equal(sent.body.run.sent, students.length);
     assert.equal(await NotificationLog.countDocuments({ jobId: job._id, type: NOTIFICATION_TYPE.BOOST_REMINDER }), students.length);
+    const academyIds = (await notApplied(job, "Academy")).map((s) => s.studentId);
+    assert.ok(academyIds.length > 0);
+    assert.equal(
+      await NotificationLog.countDocuments({ jobId: job._id, type: NOTIFICATION_TYPE.BOOST_REMINDER, studentId: { $in: academyIds } }),
+      0,
+      "Academy students are not reminded",
+    );
     assert.ok(sent.body.boost.emails.availableAt);
 
     const again = await crm.post(`/api/crm/deals/${job._id}/boost/emails`).set(XHR);
@@ -106,6 +115,20 @@ describe("boost applications (CRM page)", () => {
     } finally {
       config.nxtdial.agentId = shared;
     }
+  });
+
+  test("a deal with no NIAT students cannot send reminders or start AI calls", async () => {
+    await JobEligibleStudent.updateMany({ jobId: job._id }, { $set: { product: "Academy" } });
+    const page = (await crm.get(`/api/crm/deals/${job._id}/boost`)).body;
+    assert.equal(page.notApplied.total, 0);
+    assert.equal(page.notApplied.niatWithAccess, 0);
+    const emails = await crm.post(`/api/crm/deals/${job._id}/boost/emails`).set(XHR);
+    const calls = await crm.post(`/api/crm/deals/${job._id}/boost/calls`).set(XHR);
+    assert.equal(emails.status, 409);
+    assert.equal(emails.body.error.code, "NO_NIAT_STUDENTS");
+    assert.equal(calls.status, 409);
+    assert.equal(calls.body.error.code, "NO_NIAT_STUDENTS");
+    assert.equal(await AiCall.countDocuments({ jobId: job._id }), 0);
   });
 
   test("nothing can be sent after the application window closes", async () => {

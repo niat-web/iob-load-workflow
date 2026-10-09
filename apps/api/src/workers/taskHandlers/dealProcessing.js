@@ -160,6 +160,7 @@ async function identifyEligible({ job, heartbeat }) {
               mobile: student.mobile ?? null,
               campus: student.campus ?? null,
               batch: student.batch ?? null,
+              product: student.product ?? null,
               learningPortalJobId: current.learningPortalJobId ?? null,
             },
             $setOnInsert: { eligibleAt: now() },

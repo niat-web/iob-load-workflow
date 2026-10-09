@@ -6,6 +6,7 @@ import { AppError, conflict } from "../utils/errors.js";
 import { formatDateTime, normalizePhone } from "../utils/helpers.js";
 import { AUDIT, audit } from "./auditService.js";
 import { ensureCallAgent } from "./callAgentService.js";
+import { REMINDER_PRODUCT, reminderAudience } from "./eligibilityService.js";
 import { integrations } from "./integrations.js";
 import { notificationKey, sendBulk } from "./notificationService.js";
 import { getSettings } from "./settingsService.js";
@@ -20,7 +21,16 @@ const ACTIVE_STATUSES = ["QUEUED", "CALLING"];
 const windowOpen = (job) => WINDOW_STATUSES.includes(job.status);
 const iso = (date) => (date ? new Date(date).toISOString() : null);
 
-const notAppliedFilter = (job) => ({ jobId: job._id, accessGrantedAt: { $ne: null }, applied: { $ne: true } });
+async function niatNotApplied(job) {
+  const audience = await reminderAudience(job);
+  if (!audience.niatWithAccess) {
+    throw conflict(
+      "Reminders and AI calls are for NIAT students only, and this deal has no NIAT students with access.",
+      "NO_NIAT_STUDENTS",
+    );
+  }
+  return audience.students;
+}
 
 const headerKey = (text) => String(text ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "");
 
@@ -96,11 +106,12 @@ function nxtDialProblem() {
 }
 
 export async function boostOverview(job) {
-  const [students, eligibleCount, calls] = await Promise.all([
-    JobEligibleStudent.find(notAppliedFilter(job), { email: 1, mobile: 1 }).lean(),
+  const [audience, eligibleCount, calls] = await Promise.all([
+    reminderAudience(job),
     JobEligibleStudent.countDocuments({ jobId: job._id, accessGrantedAt: { $ne: null } }),
     AiCall.find({ jobId: job._id }).sort({ createdAt: -1 }).limit(2000).lean(),
   ]);
+  const students = audience.students;
   const counts = Object.fromEntries(["QUEUED", "CALLING", ...AI_CALL_FINAL].map((status) => [status, 0]));
   for (const call of calls) counts[call.status] = (counts[call.status] ?? 0) + 1;
   const settings = await getSettings();
@@ -122,9 +133,12 @@ export async function boostOverview(job) {
       poolTargetReached: Boolean(job.poolTargetReached),
     },
     notApplied: {
+      product: REMINDER_PRODUCT,
       total: students.length,
       withEmail: students.filter((student) => student.email).length,
       withPhone: students.filter((student) => normalizePhone(student.mobile)).length,
+      niatWithAccess: audience.niatWithAccess,
+      othersWithAccess: audience.othersWithAccess,
     },
     emails: {
       availableAt: emailAvailableAt && emailAvailableAt > now() ? iso(emailAvailableAt) : null,
@@ -163,9 +177,9 @@ export async function sendBoostEmails(job, actor) {
   }
   await takeLock(job, "emailLockAt");
   try {
-    const recipients = await JobEligibleStudent.find(notAppliedFilter(job)).lean();
+    const recipients = await niatNotApplied(job);
     const withEmail = recipients.filter((student) => student.email);
-    if (!withEmail.length) throw conflict("No student who has not applied has an email address.", "NO_RECIPIENTS");
+    if (!withEmail.length) throw conflict("No NIAT student who has not applied has an email address.", "NO_RECIPIENTS");
     const run = (job.boost?.emailRuns?.length ?? 0) + 1;
     const type = NOTIFICATION_TYPE.BOOST_REMINDER;
     const counts = await sendBulk({
@@ -183,7 +197,12 @@ export async function sendBoostEmails(job, actor) {
       failed: counts.FAILED + counts.RETRYING,
     };
     await Job.updateOne({ _id: job._id }, { $push: { "boost.emailRuns": entry } });
-    await audit({ actor, action: AUDIT.BOOST_EMAILS_SENT, entityId: job._id, metadata: { run, ...counts } });
+    await audit({
+      actor,
+      action: AUDIT.BOOST_EMAILS_SENT,
+      entityId: job._id,
+      metadata: { run, ...counts, product: REMINDER_PRODUCT },
+    });
     return { ...entry, at: iso(entry.at) };
   } finally {
     await releaseLock(job, "emailLockAt");
@@ -201,7 +220,7 @@ export async function startAiCalls(job, actor) {
   await takeLock(job, "callLockAt");
   try {
     const reached = new Set(await AiCall.distinct("studentId", { jobId: job._id, status: "COMPLETED" }));
-    const students = await JobEligibleStudent.find(notAppliedFilter(job)).lean();
+    const students = await niatNotApplied(job);
     const callable = [];
     let skippedNoPhone = 0;
     const seen = new Set();
@@ -219,8 +238,8 @@ export async function startAiCalls(job, actor) {
     if (!callable.length) {
       throw conflict(
         skippedNoPhone
-          ? `None of the ${skippedNoPhone} students who have not applied has a valid mobile number.`
-          : "Everyone who has not applied has already been reached by an AI call.",
+          ? `None of the ${skippedNoPhone} NIAT students who have not applied has a valid mobile number.`
+          : "Every NIAT student who has not applied has already been reached by an AI call.",
         "NO_RECIPIENTS",
       );
     }
@@ -260,7 +279,7 @@ export async function startAiCalls(job, actor) {
       actor,
       action: AUDIT.AI_CALLS_TRIGGERED,
       entityId: job._id,
-      metadata: { batchId: batch.id, agentId, queued: callable.length, skippedNoPhone },
+      metadata: { batchId: batch.id, agentId, queued: callable.length, skippedNoPhone, product: REMINDER_PRODUCT },
     });
     await scheduleResultsSync(job);
     return { ...run, at: iso(run.at) };

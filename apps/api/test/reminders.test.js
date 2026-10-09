@@ -2,15 +2,24 @@ import "./setup.js";
 import { after, before, beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { JOB_STATUS, NOTIFICATION_TYPE, TASK_TYPE } from "../src/config/statuses.js";
-import { AiCall, Job, JobApplication, JobEligibleStudent, NotificationLog, WorkflowTask } from "../src/models/index.js";
+import {
+  AiCall,
+  EligiblePoolStudent,
+  Job,
+  JobApplication,
+  JobEligibleStudent,
+  NotificationLog,
+  WorkflowTask,
+} from "../src/models/index.js";
 import { reminderEmail } from "../src/templates/email/index.js";
 import { runDueTasks } from "../src/workers/workflowWorker.js";
 import { XHR, advanceAndRun, loginAs, nowMs, openApplicationWindow, resetDb, startTestDb, stopTestDb } from "./helpers.js";
 
 const reminderLogs = (job, type) => NotificationLog.find({ jobId: job._id, type }).lean();
-const notAppliedWithEmail = (job) =>
+const notAppliedWithEmail = (job, product = "NIAT") =>
   JobEligibleStudent.find({
     jobId: job._id,
+    product,
     applied: { $ne: true },
     accessGrantedAt: { $ne: null },
     email: { $nin: [null, ""] },
@@ -27,20 +36,31 @@ describe("10h / 20h checkpoints", () => {
     crm = await loginAs("crm.user@example.com", "CRM");
   });
 
-  test("at 10h only students who have not applied get a reminder: no CRM email and no AI calls", async () => {
+  test("each eligible student is saved with its product", async () => {
+    const job = await openApplicationWindow(crm, "12345");
+    const products = await JobEligibleStudent.distinct("product", { jobId: job._id });
+    assert.deepEqual(products.sort(), ["Academy", "NIAT"]);
+  });
+
+  test("at 10h only NIAT students who have not applied get a reminder: no Academy student, no CRM email and no AI calls", async () => {
     const job = await openApplicationWindow(crm, "12345");
     await advanceAndRun({ hours: 10, minutes: 1 });
 
     const updated = await Job.findById(job._id);
     assert.equal(updated.reminders.r10h.status, "SENT");
     assert.equal(updated.status, JOB_STATUS.REMINDER_10H_SENT);
-    assert.match(updated.reminders.r10h.reason, /reminder emails? sent to students who have not applied/);
+    assert.match(updated.reminders.r10h.reason, /reminder emails? sent to NIAT students who have not applied/);
+    assert.match(updated.reminders.r10h.reason, /Academy students are not reminded/);
 
     const reminded = await reminderLogs(job, NOTIFICATION_TYPE.REMINDER_10H);
     const expected = await notAppliedWithEmail(job);
     assert.ok(expected.length > 0);
     assert.deepEqual(reminded.map((log) => log.studentId).sort(), expected.map((s) => s.studentId).sort());
     assert.equal(updated.reminders.r10h.emailCount, expected.length);
+    const academy = await notAppliedWithEmail(job, "Academy");
+    assert.ok(academy.length > 0);
+    const remindedIds = new Set(reminded.map((log) => log.studentId));
+    assert.ok(!academy.some((student) => remindedIds.has(student.studentId)), "Academy students are never reminded");
     const applied = await JobApplication.distinct("studentId", { jobId: job._id });
     assert.ok(applied.length > 0);
     assert.ok(!reminded.some((log) => applied.includes(log.studentId)), "applied students are never reminded");
@@ -53,7 +73,7 @@ describe("10h / 20h checkpoints", () => {
     assert.match(html, /You have not applied yet/);
   });
 
-  test("at 20h students who have not applied get a final reminder and AI calls start, still with no CRM email", async () => {
+  test("at 20h NIAT students who have not applied get a final reminder and AI calls start, still with no CRM email", async () => {
     const job = await openApplicationWindow(crm, "12345");
     await advanceAndRun({ hours: 10, minutes: 1 });
     await advanceAndRun({ hours: 10 });
@@ -62,10 +82,49 @@ describe("10h / 20h checkpoints", () => {
     assert.equal(updated.reminders.r20h.status, "SENT");
     assert.ok(updated.reminders.r20h.emailCount > 0);
     assert.ok(updated.reminders.r20h.callCount > 0, updated.reminders.r20h.reason);
-    assert.match(updated.reminders.r20h.reason, /AI calls? started/);
+    assert.match(updated.reminders.r20h.reason, /AI calls? started to NIAT students who have not applied/);
     assert.equal((await reminderLogs(job, NOTIFICATION_TYPE.REMINDER_20H)).length, (await notAppliedWithEmail(job)).length);
     assert.equal(await AiCall.countDocuments({ jobId: job._id }), updated.reminders.r20h.callCount);
+    const academyIds = await JobEligibleStudent.distinct("studentId", { jobId: job._id, product: "Academy" });
+    assert.equal(await AiCall.countDocuments({ jobId: job._id, studentId: { $in: academyIds } }), 0, "Academy students are never called");
     assert.equal(await crmEmails(job), 0);
+  });
+
+  test("a deal with no NIAT students skips both checkpoints and says why", async () => {
+    const job = await openApplicationWindow(crm, "12345");
+    await JobEligibleStudent.updateMany({ jobId: job._id }, { $set: { product: "Academy" } });
+    await advanceAndRun({ hours: 10, minutes: 1 });
+    await advanceAndRun({ hours: 10 });
+
+    const updated = await Job.findById(job._id);
+    assert.equal(updated.reminders.r10h.status, "SKIPPED");
+    assert.equal(updated.reminders.r20h.status, "SKIPPED");
+    assert.match(updated.reminders.r10h.reason, /for NIAT students only/);
+    assert.match(updated.reminders.r20h.reason, /reminders and AI calls are for NIAT students only/);
+    assert.equal((await reminderLogs(job, NOTIFICATION_TYPE.REMINDER_10H)).length, 0);
+    assert.equal((await reminderLogs(job, NOTIFICATION_TYPE.REMINDER_20H)).length, 0);
+    assert.equal(await AiCall.countDocuments({ jobId: job._id }), 0);
+  });
+
+  test("students saved before products were recorded get their product from the Eligible Pool", async () => {
+    const job = await openApplicationWindow(crm, "12345");
+    const rows = await JobEligibleStudent.find({ jobId: job._id }).lean();
+    await JobEligibleStudent.updateMany({ jobId: job._id }, { $unset: { product: "" } });
+    const niatIds = rows.filter((_, index) => index % 2 === 0).map((row) => row.studentId);
+    await EligiblePoolStudent.insertMany(
+      rows.map((row) => ({
+        studentId: row.studentId,
+        productGroup: niatIds.includes(row.studentId) ? "NIAT" : "Academy",
+        eligibilityStatus: "Eligible",
+        syncedAt: new Date(nowMs()),
+      })),
+    );
+    await advanceAndRun({ hours: 10, minutes: 1 });
+
+    const reminded = (await reminderLogs(job, NOTIFICATION_TYPE.REMINDER_10H)).map((log) => log.studentId);
+    assert.ok(reminded.length > 0);
+    assert.ok(reminded.every((id) => niatIds.includes(id)), "only students the pool marks NIAT are reminded");
+    assert.equal(await JobEligibleStudent.countDocuments({ jobId: job._id, product: null }), 0);
   });
 
   test("a CRM can turn the checkpoint emails and AI calls off for one company", async () => {

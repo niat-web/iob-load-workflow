@@ -1,6 +1,7 @@
 import { config } from "../../config/env.js";
 import { JOB_STATUS as S, NOTIFICATION_TYPE, TASK_TYPE, WINDOW_STATUSES } from "../../config/statuses.js";
-import { Job, JobEligibleStudent } from "../../models/index.js";
+import { Job } from "../../models/index.js";
+import { REMINDER_PRODUCT, reminderAudience } from "../../services/eligibilityService.js";
 import { notificationKey, sendBulk } from "../../services/notificationService.js";
 import { getSettings } from "../../services/settingsService.js";
 import { syncApplicants } from "../../services/applicationService.js";
@@ -87,44 +88,47 @@ function reminderHandler(type) {
     const { job: synced } = await syncApplicants(job);
     await transitionJob(job._id, spec.processing, { from: WINDOW_STATUSES });
     const blockedBy = await checkpointSwitches(synced);
+    const audience = await reminderAudience(synced);
+    const academyNote = audience.othersWithAccess ? " (Academy students are not reminded)" : "";
     const parts = [];
-
     let emailCount = 0;
-    const emailsBlocked = blockedBy(spec.emails);
-    if (emailsBlocked) {
-      parts.push(`Reminder emails ${emailsBlocked}`);
-    } else {
-      const notApplied = await JobEligibleStudent.find({
-        jobId: job._id,
-        accessGrantedAt: { $ne: null },
-        applied: { $ne: true },
-      }).lean();
-      const emails = await sendBulk({
-        job: synced,
-        type: spec.notification,
-        recipients: notApplied,
-        keyFor: (student) => notificationKey(job._id, spec.notification, student.studentId),
-      });
-      emailCount = emails.SENT;
-      parts.push(
-        emails.OFF
-          ? "Reminder emails turned off by the admin in Settings"
-          : `${emails.SENT} reminder email${emails.SENT === 1 ? "" : "s"} sent to students who have not applied`,
-      );
-    }
-
     let callCount = 0;
-    if (spec.calls) {
-      const callsBlocked = blockedBy(spec.calls);
-      if (callsBlocked) {
-        parts.push(`AI calls ${callsBlocked}`);
+
+    if (!audience.niatWithAccess) {
+      parts.push(
+        `Skipped: checkpoint reminders${spec.calls ? " and AI calls" : ""} are for NIAT students only, and this deal has no NIAT students with access`,
+      );
+    } else {
+      const emailsBlocked = blockedBy(spec.emails);
+      if (emailsBlocked) {
+        parts.push(`Reminder emails ${emailsBlocked}`);
       } else {
-        try {
-          const run = await startAiCalls(synced, null);
-          callCount = run.queued;
-          parts.push(`${run.queued} AI call${run.queued === 1 ? "" : "s"} started`);
-        } catch (error) {
-          parts.push(`AI calls not started: ${String(error?.message ?? error).slice(0, 200)}`);
+        const emails = await sendBulk({
+          job: synced,
+          type: spec.notification,
+          recipients: audience.students,
+          keyFor: (student) => notificationKey(job._id, spec.notification, student.studentId),
+        });
+        emailCount = emails.SENT;
+        parts.push(
+          emails.OFF
+            ? "Reminder emails turned off by the admin in Settings"
+            : `${emails.SENT} reminder email${emails.SENT === 1 ? "" : "s"} sent to NIAT students who have not applied${academyNote}`,
+        );
+      }
+
+      if (spec.calls) {
+        const callsBlocked = blockedBy(spec.calls);
+        if (callsBlocked) {
+          parts.push(`AI calls ${callsBlocked}`);
+        } else {
+          try {
+            const run = await startAiCalls(synced, null);
+            callCount = run.queued;
+            parts.push(`${run.queued} AI call${run.queued === 1 ? "" : "s"} started to NIAT students who have not applied`);
+          } catch (error) {
+            parts.push(`AI calls not started: ${String(error?.message ?? error).slice(0, 200)}`);
+          }
         }
       }
     }
@@ -135,7 +139,11 @@ function reminderHandler(type) {
       callCount,
       reason: parts.join("; "),
     });
-    await audit({ action: AUDIT.REMINDER_SENT, entityId: job._id, metadata: { reminder: type, emailCount, callCount } });
+    await audit({
+      action: AUDIT.REMINDER_SENT,
+      entityId: job._id,
+      metadata: { reminder: type, emailCount, callCount, product: REMINDER_PRODUCT },
+    });
     await transitionJob(job._id, spec.sent, { from: spec.processing });
   };
 }

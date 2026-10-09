@@ -45,7 +45,16 @@ export function poolSyncConfigured() {
 export async function eligibleFromPool({ products, years = [] }) {
   const filter = { productGroup: { $in: products }, eligibilityStatus: ELIGIBLE };
   if (years.length) filter.batch = { $in: [...years, null, ""] };
-  return EligiblePoolStudent.find(filter, { _id: 0, studentId: 1, studentName: 1, email: 1, mobile: 1, campus: 1, batch: 1 })
+  return EligiblePoolStudent.find(filter, {
+    _id: 0,
+    studentId: 1,
+    studentName: 1,
+    email: 1,
+    mobile: 1,
+    campus: 1,
+    batch: 1,
+    productGroup: 1,
+  })
     .sort({ studentId: 1 })
     .lean();
 }

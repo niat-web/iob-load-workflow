@@ -74,7 +74,7 @@ tasks are scheduled the moment the window opens.
 | Grant eligible students apply access (prod) | `GRANT_ACCESS` | `GRANTING_ACCESS` |
 | Open the 21h window, schedule 10h/20h/21h, send initial emails | `SEND_INITIAL_NOTIFICATIONS` | `APPLICATIONS_OPEN` |
 | Refresh the applied pool (all applicants, PII and non-PII, by job ID) every `APPLICATION_COUNT_SYNC_MINUTES`, active jobs only | `APPLICATION_COUNT_SYNC` | — |
-| 10h: remind students who have not applied. 20h: final reminder and automatic AI calls. No CRM email | `REMINDER_10H` / `REMINDER_20H` | `REMINDER_xxH_SENT` |
+| 10h: remind NIAT students who have not applied. 20h: final reminder and automatic AI calls to NIAT students. Academy students are not reminded. No CRM email | `REMINDER_10H` / `REMINDER_20H` | `REMINDER_xxH_SENT` |
 | Every 30 min: re-read the HubSpot deal; on a student-facing change update the job and email applied students an interest-form link | `HUBSPOT_DEAL_UPDATE` | — |
 | HubSpot change: update the same job in beta and prod, email changes | `HUBSPOT_DEAL_UPDATE` | — |
 | 21h: close (never earlier, even if the target is reached) | `APPLICATION_CLOSE_21H` | `APPLICATIONS_CLOSED` |
@@ -485,8 +485,8 @@ Required: `NXTDIAL_BASE_URL`, `NXTDIAL_API_KEY` (an `acai_…` key from NxtDial 
 
 1. At the 10 h and 20 h checkpoints, if applications are below the expected pool, the CRM who added
    the deal gets an email with a link to **Boost applications** (`/crm/deals/<id>/boost`).
-2. On that page the CRM either sends a reminder email to students who have not applied, or starts
-   **AI calls**.
+2. On that page the CRM either sends a reminder email to the NIAT students who have not applied, or
+   starts **AI calls** to them. Academy students are not reminded or called.
 3. AI calls use one of two agent setups:
    - **One shared agent (recommended)**: create it once in NxtDial and put its ID in
      `NXTDIAL_AGENT_ID`. Every job reuses it; the job details reach each call as variables.

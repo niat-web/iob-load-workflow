@@ -20,7 +20,7 @@ default.
 | Flow used when the CRM does not choose | The flow every deal uses when no choice is shown, and the one selected first when both are shown |
 | Steps that need approval | Which of the five Step by step stops are used (see section 5) |
 | Emails to students | Job email when applications open · Job update emails · Reminder emails from the Boost page |
-| Checkpoints | First checkpoint reminder emails · Second checkpoint reminder emails · Second checkpoint AI calls |
+| Checkpoints | First checkpoint reminder emails · Second checkpoint reminder emails · Second checkpoint AI calls (all of them reach NIAT students only) |
 | Emails to CRMs | Expected pool reached · Candidate pool ready (the shared profiles link) |
 | AI calls | Master switch for every AI call: the automatic second-checkpoint calls and calls started from the Boost page |
 | Interviews | Google Meet from the Interviews page |
@@ -180,8 +180,8 @@ details and approval panel, and used for the organisation in the Learning Portal
   Not Interested are left out.
 - If the deal has a pass-out year, students with a different year are left out; students with no
   year set are kept.
-- The list is saved for the deal: user ID, name, email, mobile, campus, batch and the Learning Portal
-  job ID.
+- The list is saved for the deal: user ID, name, email, mobile, campus, batch, product (NIAT or
+  Academy) and the Learning Portal job ID.
 - If nobody matches, the deal **fails** here with a clear message. Add students on the Eligible Pool
   page, then click **Retry**.
 - Status: **Eligible Students Identified**.
@@ -218,23 +218,29 @@ details and approval panel, and used for the organisation in the Learning Portal
 
 **C3. First checkpoint (10 h)**
 - The applied pool is refreshed first.
-- Every student who got access and **has not applied** gets a reminder email through AWS SES. It
-  names the company, role and closing time; it has no apply link. Students who applied never get
+- Every **NIAT** student who got access and **has not applied** gets a reminder email through AWS SES.
+  It names the company, role and closing time; it has no apply link. Students who applied never get
   it, and nobody gets the same reminder twice.
+- **Academy students are never reminded.** When a deal covers both products, both keep their job
+  access and the opening job email, but only the NIAT students who have not applied are reminded. A
+  deal with no NIAT students skips the checkpoint and records why.
 - Nothing is sent to the CRM and no AI calls are made.
 - Can be turned off by the admin (Checkpoints, for every company) or by a CRM or admin for one
   company (Companies page).
 
 **C4. The Boost applications page (CRM, optional)**
-- Opened from the deal's details. Shows Expected Pool, Applied, Not Applied and AI call results.
-- The CRM can send a reminder email to students who have not applied (again after the set gap) or
-  start AI calls by hand, if the admin allows them.
+- Opened from the deal's details. Shows Expected Pool, Applied, Not Applied (NIAT) and AI call
+  results.
+- The CRM can send a reminder email to the NIAT students who have not applied (again after the set
+  gap) or start AI calls to them by hand, if the admin allows them. Academy students are not
+  reminded or called from here either.
 
 **C5. Second checkpoint (20 h)**
 - The applied pool is refreshed first.
-- Students who still have not applied get a final reminder email (no apply link).
-- **AI calls** start automatically to the students who have not applied and have a valid mobile,
-  through NxtDial:
+- **NIAT** students who still have not applied get a final reminder email (no apply link). Academy
+  students get none.
+- **AI calls** start automatically to the **NIAT** students who have not applied and have a valid
+  mobile, through NxtDial (Academy students are not called):
   - one shared agent; each call uses the student's name, company, role, a short spoken summary of
     the job and the deadline;
   - two-way, short calls, one student after another; students already reached are not called again;

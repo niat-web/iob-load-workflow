@@ -73,7 +73,7 @@ const STUDENT_EMAILS: SwitchSpec[] = [
   {
     key: "boostReminder",
     label: "Reminder emails from the Boost page",
-    description: "Lets the CRM email the students who have not applied.",
+    description: "Lets the CRM email the NIAT students who have not applied. Academy students are not reminded.",
   },
 ];
 
@@ -94,17 +94,17 @@ const CHECKPOINTS: SwitchSpec[] = [
   {
     key: "firstEmails",
     label: "First checkpoint: reminder emails",
-    description: "Emails the students who have not applied. Nothing goes to the CRM.",
+    description: "Emails the NIAT students who have not applied. Academy students and the CRM get nothing.",
   },
   {
     key: "secondEmails",
     label: "Second checkpoint: reminder emails",
-    description: "A final reminder to the students who still have not applied.",
+    description: "A final reminder to the NIAT students who still have not applied.",
   },
   {
     key: "secondCalls",
     label: "Second checkpoint: AI calls",
-    description: "Starts NxtDial AI calls to the students who still have not applied and have a mobile number.",
+    description: "Starts NxtDial AI calls to the NIAT students who still have not applied and have a mobile number.",
   },
 ];
 
@@ -112,7 +112,7 @@ const AI_CALLS: SwitchSpec[] = [
   {
     key: "enabled",
     label: "AI calls from the Boost page",
-    description: "Lets the CRM start NxtDial AI calls to the students who have not applied. Call length and voice are set on the agent in NxtDial.",
+    description: "Lets the CRM start NxtDial AI calls to the NIAT students who have not applied. Call length and voice are set on the agent in NxtDial.",
   },
 ];
 

@@ -278,6 +278,8 @@ describe("eligible students for a deal come from the Eligible Pool table", () =>
       assert.deepEqual(eligible.map((row) => row.studentId).sort(), expected);
       assert.equal(saved.eligibleCount, expected.length);
       assert.ok(eligible.every((row) => row.accessGrantedAt && row.email && row.mobile));
+      const poolProduct = new Map((await EligiblePoolStudent.find({}).lean()).map((row) => [row.studentId, row.productGroup]));
+      assert.ok(eligible.every((row) => row.product === poolProduct.get(row.studentId)), "each student keeps its pool product");
     });
   });
 });

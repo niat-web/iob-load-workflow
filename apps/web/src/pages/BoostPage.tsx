@@ -235,7 +235,7 @@ function BoostContent({ data, jobId }: { data: BoostOverview; jobId: string }) {
           hint={`of ${formatNumber(deal.eligibleCount)} eligible`}
         />
         <Stat
-          label="Not Applied"
+          label={`Not Applied (${notApplied.product})`}
           value={formatNumber(notApplied.total)}
           hint={`${notApplied.withEmail} with email · ${notApplied.withPhone} with mobile`}
         />
@@ -246,11 +246,19 @@ function BoostContent({ data, jobId }: { data: BoostOverview; jobId: string }) {
         />
       </div>
 
+      <p className="rounded-md bg-slate-50 px-3 py-2 text-sm text-muted">
+        {notApplied.niatWithAccess === 0
+          ? `This deal has no ${notApplied.product} students. Reminder emails and AI calls are for ${notApplied.product} students only.`
+          : `Reminder emails and AI calls go only to ${notApplied.product} students who have not applied.${
+              notApplied.othersWithAccess > 0 ? " Academy students keep their job access but are not reminded or called." : ""
+            }`}
+      </p>
+
       <div className="grid gap-4 lg:grid-cols-2">
         <ActionCard
           icon={<Mail className="size-5" aria-hidden />}
           title="Send reminder email"
-          description={`Email the ${notApplied.withEmail} students who have not applied, with the job details and apply link.`}
+          description={`Email the ${notApplied.withEmail} ${notApplied.product} students who have not applied, with the job details and apply link.`}
         >
           {!controls.reminderEmails && <TurnedOff what="Reminder emails to students" />}
           <div className="flex flex-wrap items-center gap-3">
@@ -282,7 +290,7 @@ function BoostContent({ data, jobId }: { data: BoostOverview; jobId: string }) {
         <ActionCard
           icon={<PhoneCall className="size-5" aria-hidden />}
           title="AI calls"
-          description={`Call the ${notApplied.withPhone} students with a mobile number who have not applied. A voice agent talks with each student about this job, encourages them to apply and records their answers.`}
+          description={`Call the ${notApplied.withPhone} ${notApplied.product} students with a mobile number who have not applied. A voice agent talks with each student about this job, encourages them to apply and records their answers.`}
         >
           {!controls.aiCalls && <TurnedOff what="AI calls" />}
           {controls.aiCalls && data.calls.setupProblem && (
@@ -358,7 +366,7 @@ function BoostContent({ data, jobId }: { data: BoostOverview; jobId: string }) {
             emptyState={
               <EmptyState
                 message="No AI calls yet."
-                description="Start AI calls above to reach students who have not applied."
+                description={`Start AI calls above to reach ${notApplied.product} students who have not applied.`}
               />
             }
           />
@@ -371,8 +379,8 @@ function BoostContent({ data, jobId }: { data: BoostOverview; jobId: string }) {
         title={confirm === "emails" ? "Send reminder emails?" : "Start AI calls?"}
         message={
           confirm === "emails"
-            ? `${notApplied.withEmail} students who have not applied will get a reminder email.`
-            : `Up to ${notApplied.withPhone} students who have not applied will be called one by one. Students already reached are not called again.`
+            ? `${notApplied.withEmail} ${notApplied.product} students who have not applied will get a reminder email.`
+            : `Up to ${notApplied.withPhone} ${notApplied.product} students who have not applied will be called one by one. Students already reached are not called again.`
         }
         confirmLabel={confirm === "emails" ? "Send emails" : "Start calls"}
         pending={pendingAction.isPending}

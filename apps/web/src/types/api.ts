@@ -751,7 +751,14 @@ export interface BoostOverview {
     windowOpen: boolean;
     poolTargetReached: boolean;
   };
-  notApplied: { total: number; withEmail: number; withPhone: number };
+  notApplied: {
+    product: string;
+    total: number;
+    withEmail: number;
+    withPhone: number;
+    niatWithAccess: number;
+    othersWithAccess: number;
+  };
   emails: { availableAt: string | null; runs: BoostEmailRun[] };
   calls: {
     setupProblem: string | null;

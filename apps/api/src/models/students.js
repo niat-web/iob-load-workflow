@@ -12,6 +12,7 @@ const eligibleSchema = new mongoose.Schema(
     mobile: { type: String, default: null },
     campus: { type: String, default: null },
     batch: { type: String, default: null },
+    product: { type: String, default: null },
     eligibleAt: { type: Date, required: true },
     accessGrantedAt: { type: Date, default: null },
     accessRejectedReason: { type: String, default: null },

@@ -154,10 +154,11 @@ const DESCRIBERS = {
     `Application window opened${meta.closesAt ? `, closes ${formatDateTime(meta.closesAt)} IST` : ""}`,
   [AUDIT.APPLIED_POOL_SYNCED]: (meta) => `Applied pool updated: ${number(meta.previous)} → ${plural(meta.appliedCount, "student")} applied`,
   [AUDIT.REMINDER_SENT]: (meta) =>
-    `${meta.reminder === "REMINDER_10H" ? "First" : "Second"} checkpoint: ${plural(meta.emailCount, "reminder email")}, ${plural(meta.callCount, "AI call")}`,
+    `${meta.reminder === "REMINDER_10H" ? "First" : "Second"} checkpoint: ${plural(meta.emailCount, "reminder email")}, ${plural(meta.callCount, "AI call")}${meta.product ? ` (${meta.product} students only)` : ""}`,
   [AUDIT.AI_CALLS_TRIGGERED]: (meta) =>
-    `Started AI calls to ${plural(meta.queued, "student")}${meta.skippedNoPhone ? ` (${number(meta.skippedNoPhone)} without a mobile)` : ""}`,
-  [AUDIT.BOOST_EMAILS_SENT]: (meta) => `Boost reminder emails: ${emailCounts(meta)}`,
+    `Started AI calls to ${plural(meta.queued, `${meta.product ? `${meta.product} ` : ""}student`)}${meta.skippedNoPhone ? ` (${number(meta.skippedNoPhone)} without a mobile)` : ""}`,
+  [AUDIT.BOOST_EMAILS_SENT]: (meta) =>
+    `Boost reminder emails${meta.product ? ` to ${meta.product} students` : ""}: ${emailCounts(meta)}`,
   [AUDIT.CALL_AGENT_CREATED]: (meta) => `Set up the NxtDial call agent ${meta.agentName ?? meta.agentId ?? ""}`.trim(),
   [AUDIT.HUBSPOT_UPDATE_RECEIVED]: (meta) =>
     meta.ignored ? `HubSpot change ignored: ${meta.reason ?? "outside the application window"}` : "HubSpot change detected",
