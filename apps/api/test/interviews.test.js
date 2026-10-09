@@ -8,6 +8,7 @@ import { LiveGoogleMeetClient, MockGoogleMeetClient } from "../src/services/goog
 import { integrations, overrideIntegration } from "../src/services/integrations.js";
 import { encrypt } from "../src/utils/crypto.js";
 import { IntegrationError } from "../src/utils/errors.js";
+import { companySlug } from "../src/utils/helpers.js";
 import { XHR, api, loginAs, nowMs, resetDb, runToPsmReview, startTestDb, stopTestDb } from "./helpers.js";
 
 const CRM_EMAIL = "crm.user@example.com";
@@ -50,7 +51,7 @@ describe("Interviews page and Google Meet", () => {
     assert.equal(list.status, 200);
     const item = list.body.items.find((entry) => entry.jobId === String(job._id));
     assert.equal(item.companyName, job.companyName);
-    assert.equal(item.url, `http://localhost:5173/shared/profiles/${job.learningPortalJobId}`);
+    assert.equal(item.url, `http://localhost:5173/shared/profiles/${companySlug(job.companyName)}/${job.learningPortalJobId}`);
     assert.equal(item.linkStatus, "ACTIVE");
     assert.ok(item.profiles > 0);
     assert.equal(item.meets, 0);
@@ -69,7 +70,9 @@ describe("Interviews page and Google Meet", () => {
     const first = sheet.rows[0];
     assert.equal((await crm.patch(`${base}/rows/${first.id}`).set(XHR).send({ key: "meetLink", value: "https://meet.google.com/abc-defg-hij" })).status, 204);
     assert.equal((await crm.patch(`${base}/rows/${first.id}`).set(XHR).send({ key: "recording", value: "x" })).status, 400);
-    assert.equal((await crm.patch(`${base}/rows/${first.id}`).set(XHR).send({ key: "candidateStatus", value: "Shortlisted" })).status, 204);
+    assert.equal((await crm.patch(`${base}/rows/${first.id}`).set(XHR).send({ key: "resumeShortlisting", value: "Selected" })).status, 204);
+    assert.equal((await crm.patch(`${base}/rows/${first.id}`).set(XHR).send({ key: "email", value: "x@y.z" })).status, 400, "student details stay as fetched");
+    assert.equal((await crm.post(`${base}/rows`).set(XHR).send({ values: {} })).status, 404, "rows cannot be added");
 
     const column = (await crm.post(`${base}/columns`).set(XHR).send({ label: "Panel notes" })).body.column;
     assert.match(column.key, /^i_/);
@@ -86,9 +89,9 @@ describe("Interviews page and Google Meet", () => {
     assert.deepEqual(current.interviewerEmails, [INTERVIEWER]);
 
     const shared = (await api().get(sharedBase)).body;
-    assert.equal(shared.rows[0].values.candidateStatus, "Shortlisted", "shared cells are the same data");
+    assert.equal(shared.rows[0].values.resumeShortlisting, "Selected", "shared cells are the same data");
     const serialized = JSON.stringify(shared);
-    for (const hidden of [INTERVIEWER, "meet.google.com", "studentEmail", "meetLink", "Panel", "Strong", "students.example.com"]) {
+    for (const hidden of [INTERVIEWER, "meet.google.com", "studentEmail", "meetLink", "Panel", "Strong"]) {
       assert.ok(!serialized.includes(hidden), `${hidden} is not on the shared page`);
     }
 

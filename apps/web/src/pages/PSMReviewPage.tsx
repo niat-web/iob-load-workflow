@@ -10,19 +10,17 @@ import { ErrorState } from "../components/ErrorState";
 import { FilterSelect } from "../components/FilterSelect";
 import { Pagination } from "../components/Pagination";
 import { buildCandidateColumns } from "../components/psm/candidateColumns";
+import { ReviewColumnsMenu } from "../components/psm/ReviewColumnsMenu";
 import { SubmittedNote } from "../components/psm/SubmittedNote";
 import { SearchInput } from "../components/SearchInput";
-import { StatusBadge } from "../components/StatusBadge";
-import { SummaryStrip, SummaryStripSkeleton } from "../components/SummaryStrip";
 import { useToast } from "../components/toast-context";
-import { SharedColumnsMenu } from "../components/psm/SharedColumnsMenu";
 import { Button } from "../components/ui/Button";
 import { cardClass } from "../components/ui/styles";
 import { useClampPage, useUrlFilters } from "../hooks/useUrlFilters";
 import { DEFAULT_PAGE_SIZE } from "../utils/pagination";
-import type { CandidatePatch, CandidatesQuery, PsmJobDetail } from "../types/api";
+import type { CandidateExtraColumn, CandidatePatch, CandidatesQuery } from "../types/api";
 import { CANDIDATE_STATUS_OPTIONS } from "../utils/candidate";
-import { formatNumber, priorityOptions } from "../utils/format";
+import { priorityOptions } from "../utils/format";
 import { AccessDenied } from "./AccessDenied";
 
 const FILTER_KEYS = ["q", "aiPriority", "finalPriority", "status"] as const;
@@ -50,21 +48,7 @@ function BackLink() {
   );
 }
 
-function ReviewSummary({ job }: { job: PsmJobDetail }) {
-  return (
-    <SummaryStrip
-      items={[
-        { label: "Company", value: job.companyName },
-        { label: "Job Role", value: job.jobRole },
-        { label: "Deal ID", value: <span className="tabular-nums">{job.hubspotDealId}</span> },
-        { label: "Expected Pool", value: formatNumber(job.expectedPoolCount) },
-        { label: "Total Applied", value: formatNumber(job.appliedCount) },
-        { label: "Application Status", value: job.applicationStatus },
-        { label: "AI Analysis Status", value: <StatusBadge chip={job.aiStatus} /> },
-      ]}
-    />
-  );
-}
+const NO_EXTRAS: CandidateExtraColumn[] = [];
 
 export function PSMReviewPage() {
   const { jobId = "" } = useParams();
@@ -146,11 +130,12 @@ function PSMReview({ jobId }: { jobId: string }) {
   const detail = job.data;
   const readOnly = detail?.isSubmitted ?? true;
   const candidateCount = detail?.candidateCount ?? 0;
+  const extras = detail?.psmColumns ?? NO_EXTRAS;
   const offset = ((pagination?.page ?? page) - 1) * (pagination?.limit ?? pageSize);
 
   const columns = useMemo(
-    () => buildCandidateColumns({ jobId, offset, candidateCount, readOnly, save }),
-    [jobId, offset, candidateCount, readOnly, save],
+    () => buildCandidateColumns({ jobId, offset, candidateCount, readOnly, extras, save }),
+    [jobId, offset, candidateCount, readOnly, extras, save],
   );
   const priorities = useMemo(() => priorityOptions(candidateCount), [candidateCount]);
 
@@ -177,12 +162,14 @@ function PSMReview({ jobId }: { jobId: string }) {
       ? errorMessage(startReview.error, "The review could not be started.")
       : null;
 
+  const title = [detail?.companyName, detail?.jobRole].filter(Boolean).join(" · ");
+
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
-      <h1 className="sr-only">Candidate review</h1>
-      <BackLink />
-
-      {detail ? <ReviewSummary job={detail} /> : <SummaryStripSkeleton count={7} />}
+      <div>
+        <BackLink />
+        <h1 className="mt-2 truncate text-xl font-bold tracking-tight text-ink">{title || "Candidate review"}</h1>
+      </div>
 
       {startError && (
         <p role="alert" className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm font-medium text-amber-800">
@@ -226,9 +213,11 @@ function PSMReview({ jobId }: { jobId: string }) {
             label="Filter by candidate status"
             className="w-[calc(50%-4px)] sm:w-48"
           />
-          <div className="sm:ml-auto">
-            <SharedColumnsMenu jobId={jobId} />
-          </div>
+          {detail && (
+            <div className="sm:ml-auto">
+              <ReviewColumnsMenu jobId={jobId} selected={detail.psmColumns ?? NO_EXTRAS} />
+            </div>
+          )}
           {hasFilters && (
             <Button variant="ghost" onClick={clearFilters} icon={<FilterX className="size-4" aria-hidden />}>
               Clear Filters

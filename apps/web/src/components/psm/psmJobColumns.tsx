@@ -1,16 +1,34 @@
 import type { ColumnDef } from "@tanstack/react-table";
+import { TriangleAlert } from "lucide-react";
 import { Link } from "react-router";
 import type { PsmAction, PsmJobRow } from "../../types/api";
-import { formatDateTime, formatNumber } from "../../utils/format";
+import { formatDateTime, formatNumber, formatTime } from "../../utils/format";
 import { StatusBadge } from "../StatusBadge";
 import { TruncatedText } from "../TruncatedText";
 import { Button, buttonClass, type ButtonVariant } from "../ui/Button";
 
-const ACTIONS: Record<Exclude<PsmAction, "NONE">, { label: string; variant: ButtonVariant }> = {
-  OPEN_REVIEW: { label: "Open Review", variant: "primary" },
-  CONTINUE_REVIEW: { label: "Continue Review", variant: "primary" },
-  VIEW_POOL: { label: "View Pool", variant: "secondary" },
+const ACTIONS: Record<Exclude<PsmAction, "NONE">, { label: string; variant: ButtonVariant; page: string }> = {
+  OPEN_REVIEW: { label: "Open Review", variant: "primary", page: "review" },
+  CONTINUE_REVIEW: { label: "Continue Review", variant: "primary", page: "review" },
+  VIEW_POOL: { label: "View Pool", variant: "secondary", page: "review" },
+  VIEW_APPLICANTS: { label: "View Applicants", variant: "secondary", page: "applicants" },
 };
+
+function AppliedCount({ row }: { row: PsmJobRow }) {
+  return (
+    <span className="inline-flex flex-col items-end">
+      <span>{formatNumber(row.appliedCount)}</span>
+      {row.syncError ? (
+        <span title={row.syncError} className="inline-flex items-center gap-1 text-xs text-amber-700">
+          <TriangleAlert className="size-3" aria-hidden />
+          Sync failed
+        </span>
+      ) : (
+        row.lastSyncedAt && <span className="text-xs text-muted">synced {formatTime(row.lastSyncedAt)}</span>
+      )}
+    </span>
+  );
+}
 
 function ReviewAction({ row, backTo }: { row: PsmJobRow; backTo: string }) {
   if (row.action === "NONE") {
@@ -23,7 +41,7 @@ function ReviewAction({ row, backTo }: { row: PsmJobRow; backTo: string }) {
   const action = ACTIONS[row.action] ?? ACTIONS.VIEW_POOL;
   return (
     <Link
-      to={`/psm/jobs/${encodeURIComponent(row.id)}/review`}
+      to={`/psm/jobs/${encodeURIComponent(row.id)}/${action.page}`}
       state={{ backTo }}
       className={buttonClass(action.variant, "sm", "w-32")}
       aria-label={`${action.label}: ${row.companyName} – ${row.jobRole}`}
@@ -67,7 +85,7 @@ export function buildPsmJobColumns(offset: number, backTo: string): ColumnDef<Ps
     {
       id: "appliedCount",
       header: "Applied Count",
-      cell: ({ row }) => formatNumber(row.original.appliedCount),
+      cell: ({ row }) => <AppliedCount row={row.original} />,
       meta: numeric,
     },
     {

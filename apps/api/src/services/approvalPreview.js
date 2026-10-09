@@ -81,7 +81,8 @@ function dealPreview(job, windowHours) {
     { label: "CRM owner", value: text(owner) },
     { label: "Profiling POC", value: text(job.profilingPoc?.name) },
     { label: "ISE", value: text(job.ise?.name) },
-    { label: "Deadline", value: text(job.applicationDeadline) ?? `${windowHours} hours after students are emailed` },
+    { label: "Deadline", value: `${windowHours} hours after the job is prepared` },
+    { label: "Deadline in HubSpot", value: text(job.applicationDeadline) },
     { label: "Compensation description", value: text(job.importantInstructions), wide: true },
   ];
 }
@@ -156,14 +157,15 @@ async function windowPreview(job, settings) {
     JobEligibleStudent.countDocuments({ ...filter, accessGrantedAt: { $ne: null } }),
     JobEligibleStudent.countDocuments({ ...filter, accessRejectedReason: { $ne: null } }),
   ]);
-  const { applicationWindowHours, reminderOneHours, reminderTwoHours } = settings.timing;
-  const closesAt = job.learningPortalDeadline ?? hoursFromNow(applicationWindowHours, now());
+  const { reminderOneHours, reminderTwoHours } = settings.timing;
+  const plannedWindowHours = job.windowHours ?? settings.timing.applicationWindowHours;
+  const closesAt = job.learningPortalDeadline ?? hoursFromNow(plannedWindowHours, now());
   const hoursLeft = (new Date(closesAt).getTime() - now().getTime()) / (60 * 60 * 1000);
   return {
     granted,
     rejected,
     windowHours: Math.max(0, Math.round(hoursLeft * 10) / 10),
-    plannedWindowHours: applicationWindowHours,
+    plannedWindowHours,
     reminderHours: [reminderOneHours, reminderTwoHours],
     closesAt: iso(closesAt),
     closed: hoursLeft <= 0,
@@ -180,7 +182,9 @@ export async function approvalPreview(job) {
     requestedAt: iso(job.awaitingApproval.requestedAt),
   };
   const settings = await getSettings();
-  if (gate === GATE.DEAL_DETAILS) return { ...base, deal: dealPreview(job, settings.timing.applicationWindowHours) };
+  if (gate === GATE.DEAL_DETAILS) {
+    return { ...base, deal: dealPreview(job, job.windowHours ?? settings.timing.applicationWindowHours) };
+  }
   if (gate.startsWith("LOAD_")) return { ...base, load: await loadPreview(job, gate.slice("LOAD_".length).toLowerCase()) };
   if (gate === GATE.ELIGIBLE_STUDENTS) return { ...base, students: await studentsPreview(job) };
   if (gate === GATE.START_WINDOW) return { ...base, window: await windowPreview(job, settings) };

@@ -1,22 +1,23 @@
 import { Check, Columns3 } from "lucide-react";
 import { useId, useRef, useState } from "react";
 import { errorMessage } from "../../api/client";
-import { useSaveSharedColumns, useSharedColumns } from "../../api/psm";
+import { useSavePsmColumns } from "../../api/psm";
 import { useDismiss } from "../../hooks/useDismiss";
+import type { CandidateExtraColumn } from "../../types/api";
 import { cn } from "../../utils/cn";
 import { useToast } from "../toast-context";
 import { Button } from "../ui/Button";
+import { EXTRA_COLUMNS } from "./candidateColumns";
 
-export function SharedColumnsMenu({ jobId }: { jobId: string }) {
+export function ReviewColumnsMenu({ jobId, selected }: { jobId: string; selected: CandidateExtraColumn[] }) {
   const menuId = useId();
   const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState<string[] | null>(null);
+  const [draft, setDraft] = useState<CandidateExtraColumn[] | null>(null);
   const buttonRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
-  const choice = useSharedColumns(jobId);
-  const save = useSaveSharedColumns(jobId);
+  const save = useSavePsmColumns(jobId);
   const toast = useToast();
-  const selected = draft ?? choice.data?.selected ?? [];
+  const chosen = draft ?? selected;
 
   const close = () => {
     setOpen(false);
@@ -24,13 +25,13 @@ export function SharedColumnsMenu({ jobId }: { jobId: string }) {
   };
   useDismiss(open, close, [buttonRef, panelRef]);
 
-  const toggle = (key: string) =>
-    setDraft(selected.includes(key) ? selected.filter((item) => item !== key) : [...selected, key]);
+  const toggle = (key: CandidateExtraColumn) =>
+    setDraft(chosen.includes(key) ? chosen.filter((item) => item !== key) : [...chosen, key]);
 
   const submit = () =>
-    save.mutate(selected, {
+    save.mutate(chosen, {
       onSuccess: () => {
-        toast.success("Company page columns saved. New companies use them too.");
+        toast.success("Columns saved for this deal");
         close();
       },
       onError: (err) => toast.error(errorMessage(err, "The columns could not be saved.")),
@@ -47,7 +48,7 @@ export function SharedColumnsMenu({ jobId }: { jobId: string }) {
           aria-controls={open ? menuId : undefined}
           icon={<Columns3 className="size-4" aria-hidden />}
         >
-          Company page columns
+          Columns{selected.length ? ` (${selected.length})` : ""}
         </Button>
       </div>
       {open && (
@@ -55,14 +56,24 @@ export function SharedColumnsMenu({ jobId }: { jobId: string }) {
           ref={panelRef}
           id={menuId}
           role="dialog"
-          aria-label="Columns on the company page"
-          className="absolute top-full right-0 z-40 mt-1.5 w-72 animate-pop-in rounded-lg border bg-surface p-3 shadow-pop"
+          aria-label="More columns for this deal"
+          className="absolute top-full right-0 z-40 mt-1.5 w-80 animate-pop-in rounded-lg border bg-surface p-3 shadow-pop"
         >
-          <p className="text-sm font-semibold text-ink">Columns on the company page</p>
-          <p className="mt-0.5 text-xs text-muted">Your choice is also used for the next companies.</p>
+          <p className="text-sm font-semibold text-ink">More columns</p>
+          <p className="mt-0.5 text-xs text-muted">
+            Extra applicant details from the applied pool. Your choice is saved for this deal and only shows on this page.
+          </p>
+          <div className="mt-2 flex gap-3 text-xs font-semibold">
+            <button type="button" className="focus-ring rounded text-primary hover:underline" onClick={() => setDraft(EXTRA_COLUMNS.map((column) => column.key))}>
+              Show all
+            </button>
+            <button type="button" className="focus-ring rounded text-primary hover:underline" onClick={() => setDraft([])}>
+              Hide all
+            </button>
+          </div>
           <ul className="mt-2 max-h-72 overflow-y-auto">
-            {(choice.data?.columns ?? []).map((column) => {
-              const checked = selected.includes(column.key);
+            {EXTRA_COLUMNS.map((column) => {
+              const checked = chosen.includes(column.key);
               return (
                 <li key={column.key}>
                   <button
@@ -94,7 +105,7 @@ export function SharedColumnsMenu({ jobId }: { jobId: string }) {
             <Button variant="ghost" size="sm" onClick={close}>
               Cancel
             </Button>
-            <Button size="sm" loading={save.isPending} disabled={selected.length === 0} onClick={submit}>
+            <Button size="sm" loading={save.isPending} onClick={submit}>
               Save
             </Button>
           </div>

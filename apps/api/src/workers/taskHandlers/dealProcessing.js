@@ -100,7 +100,7 @@ async function createJob({ job }) {
 
   if (!current.learningPortalPayload) {
     const { timing } = await getSettings();
-    const deadline = hoursFromNow(timing.applicationWindowHours, now());
+    const deadline = hoursFromNow(current.windowHours ?? timing.applicationWindowHours, now());
     const payload = await buildPortalPayload(current, snapshot.rawProperties, { deadline, order: await nextOrderNumber() });
     current = await save({
       learningPortalPayload: payload,
@@ -211,7 +211,8 @@ async function startApplicationWindow({ job }) {
   const loaded = await Job.findById(job._id).lean();
   const start = loaded.applicationStartAt ?? now();
   const end =
-    loaded.learningPortalDeadline ?? hoursFromNow((await getSettings()).timing.applicationWindowHours, start);
+    loaded.learningPortalDeadline ??
+    hoursFromNow(loaded.windowHours ?? (await getSettings()).timing.applicationWindowHours, start);
   if (end <= now()) {
     throw new PermanentError(
       `The job closes on the Learning Portal at ${formatDateTime(end)} IST, which has already passed, so the application window cannot open.`,

@@ -7,7 +7,7 @@ import { enqueueTask } from "./taskQueue.js";
 
 export async function recordAppliedCount(job, appliedCount) {
   const reached = Boolean(job.expectedPoolCount) && appliedCount >= job.expectedPoolCount;
-  const set = { appliedCount, lastApplicationSyncAt: now() };
+  const set = { appliedCount, lastApplicationSyncAt: now(), applicationSyncError: null, applicationSyncFailedAt: null };
   const updated = await Job.findByIdAndUpdate(job._id, { $set: set }, { returnDocument: "after" });
   if (reached && !updated.poolTargetReached) {
     const flipped = await Job.findOneAndUpdate(

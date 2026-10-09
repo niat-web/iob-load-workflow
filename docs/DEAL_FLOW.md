@@ -47,10 +47,13 @@ Every change is in the deal's logs and the Audit Log.
 A deal that was running before the Companies page was removed keeps the switches its company had there
 until someone changes them on the deal.
 
-### PSM: company page columns
+### PSM: more columns on the review page
 
-On the PSM review page, **Company page columns** sets which columns the company sees on the shared
-profiles page. The last saved choice is used for every company after it.
+On the PSM review page, **Columns** adds extra applicant details from the applied pool to the table
+(Applied Datetime, User Id, Job Id, Product, Gender, Name, Phone Number, Email, Current District,
+Current State, Highest Education and its institute, the Masters and Bachelors details, Intermediate
+and Tenth Percentage, Resume Link, and the Interested answer). They are hidden by default. The choice
+is saved for that deal and only changes the PSM review page, never the company's shared page.
 
 ### Pool Managers: Eligible Pool only
 
@@ -133,7 +136,8 @@ On the **Dashboard**, the CRM fills in:
 | HubSpot Deal ID | The ID or the full deal link |
 | Expected Pool | How many applications the deal should get (whole number, 1 or more) |
 | CRM Owner | Required. Defaults to the signed-in CRM |
-| Profiling POC, ISE | Optional |
+| Deadline (hours) | Required. How long the job stays open: it closes this many hours after the job is prepared. Starts at the admin's application window (default 21 h); 1 to 240 hours |
+| Profiling POC, ISE | Not shown as fields. Both are the CRM owner unless changed: the small blue **Profiling POC** and **ISE** links at the end of the row open a box to pick someone else. They are still saved and sent to the portal and HubSpot, and shown in the confirmation box |
 | Flow | Only the flows the admin allows are shown; none means the admin's flow is used. The **ⓘ** icon explains each flow |
 
 The JD count is **not** entered. It is worked out automatically (step A2).
@@ -250,6 +254,13 @@ details and approval panel, and used for the organisation in the Learning Portal
 - Each applicant is saved once per job in our database; later refreshes update the same record, so
   there are no duplicates. Students who applied are marked as applied.
 - The Applied column updates. Closed jobs are not refreshed again.
+- **Candidate Pools (PSM) shows the deal live** from the moment the window opens: Application Window
+  **Open**, the Applied Count with the time of the last refresh, and **View Applicants**, which lists
+  every student who has applied so far (name, user ID, product, campus, batch, email, mobile, applied
+  time, resume) and refreshes by itself. The review (**Open Review**) still starts after the window
+  closes and the AI ranking is done.
+- If a refresh fails, the deal's Applications section and Candidate Pools show **Sync failed** with
+  the reason, and the next 30-minute refresh tries again.
 
 **C2. Expected pool reached**
 - If applications reach the Expected Pool, the CRM who submitted the deal gets one email
@@ -346,27 +357,30 @@ details and approval panel, and used for the organisation in the Learning Portal
 - Status: **PSM Review** (ready).
 
 **D4. PSM review (PSM)**
-- The PSM opens the deal in **Candidate Pools**, reviews the ranked candidates (scores, AI reason,
-  resume, Interested answer), changes priority, status and remarks where needed, and **submits** the
-  final pool.
-- **Company page columns**: the PSM picks the columns the company sees, from Final Priority, Student
-  Name, Campus, Resume, Relevant Skills, the AI Resume / GRIT / Assessment / Interview / Overall
-  scores, Candidate Status, Interested and PSM Remarks. The choice is saved and used for every
-  company after it, until a PSM changes it again.
+- The PSM opens the deal in **Candidate Pools** (**Open Review**). The page starts with the company and
+  role, then the ranked candidates: #, AI Priority, Student Name, Student ID, Campus, Resume, AI Resume,
+  GRIT Skill, Assessment, Interview, Overall, AI Reason, Final Priority, PSM Remarks and Candidate
+  Status. **Columns** adds more applicant details for this deal (section 1).
+- The PSM changes priority, status and remarks where needed and **submits** the final pool.
 - After submitting, the pool is frozen and the shared profiles link is created:
-  `/shared/profiles/<Learning Portal job ID>`.
+  `/shared/profiles/<company_name>/<Learning Portal job ID>`, for example
+  `/shared/profiles/acme_robotics/6918ae02-…`. Older links without the company name still work.
 
 **D5. CRM gets the shared profiles link**
 - The CRM who loaded the deal gets an email with the link (if "Candidate pool ready" is on).
-- The page works like a spreadsheet:
-  - it shows the columns the PSM picked, sorted by final priority, with resume links;
-  - anyone with the link (the CRM, the company) can edit any cell, add rows (new profiles) and add,
-    rename or delete their own columns;
-  - changes save straight away and everyone sees them within 30 seconds;
-  - the shortlisted profiles cannot be deleted; rows added on the page can.
-- Hidden columns, student IDs, emails, mobiles and resume storage addresses are never sent to the
-  page. Because the link uses the job ID, which also appears in students' apply links, share it only
-  with the company.
+- The page shows only one table, the same for every company, with the PSM's candidates in final
+  priority order:
+  - student details from the applied pool (read only): Full Name, Mobile Number, Email Id, Bachelors
+    Course Name, Bachelors Department Name, Bachelors Year of Completion, Bachelors Percentage and
+    Resume (**View**, opened through the app so the storage address is never shown);
+  - six dropdowns the company fills in: **Resume Shortlisting** (Selected, Rejected, On Hold) and
+    **TR Round 1**, **TR Round 2**, **HR Round**, **MR Round**, **Final Status** (Yet to Schedule,
+    Scheduled, Selected, Rejected, Hold, No Show), each choice in its own colour;
+  - choices save straight away and everyone sees them within 30 seconds;
+  - rows and columns cannot be added, removed or renamed.
+- Student IDs, scores, PSM remarks and resume storage addresses are never sent to the page. The
+  page does show students' mobile numbers and emails, and the link works without sign-in, so share
+  it only with the company.
 - The link expires after 30 days.
 - Status: **Completed**.
 
@@ -472,11 +486,11 @@ they apply (Stop and Delete ask to confirm first). Tabs:
 job role, the link (click to open, or copy), whether it is active or expired, and how many profiles,
 Meets and interviewer emails it has. **Open** shows that company's sheet.
 
-**The sheet** has the same rows and columns as the company's shared profiles page, and edits made here
-show there too. It also has columns with a lock that only appear on this page: **Student Email**
-(filled from our database for shortlisted students), **Meet Link**, **Meet Time** and **Auto-recording**,
-plus any columns added on this page. Every cell can be edited except Auto-recording. Rows added here
-also appear on the company's page.
+**The sheet** has the same rows and columns as the company's shared profiles page: the student details
+(read only) and the six status dropdowns, which are the same data as on the company's page. It also
+has columns with a lock that only appear on this page: **Student Email** (filled from the applied
+pool), **Meet Link**, **Meet Time** and **Auto-recording**, plus any columns added on this page. Every
+lock-column cell can be edited except Auto-recording. Rows cannot be added.
 
 **Company interviewer emails** are saved per company at the top of the page. They are never sent to the
 shared profiles page.

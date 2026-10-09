@@ -65,6 +65,11 @@ export const processDealSchema = z.object({
     .min(1, "Expected pool must be at least 1")
     .max(100000, "Expected pool is too large")
     .optional(),
+  windowHours: z.coerce
+    .number()
+    .min(1, "The deadline must be at least 1 hour")
+    .max(240, "The deadline can be at most 240 hours")
+    .optional(),
   crmOwnerId: hubspotOwnerId.optional(),
   profilingPocId: hubspotOwnerId.optional(),
   iseId: hubspotOwnerId.optional(),
@@ -126,7 +131,7 @@ export async function processDeal(req, res) {
     return res.status(200).json({ job: toCrmRow(existing, await publicLinkUrlForJob(existing)), duplicate: true });
   }
 
-  const { expectedPoolCount, crmOwnerId, profilingPocId, iseId } = req.valid.body;
+  const { expectedPoolCount, windowHours, crmOwnerId, profilingPocId, iseId } = req.valid.body;
   const crmOwner = ownerRef(crmOwnerId);
   const crmOwnerEmail = crmOwner
     ? (hubspotOwnerForUser(req.user)?.id === crmOwner.id ? req.user.email : crmOwner.email)
@@ -142,6 +147,7 @@ export async function processDeal(req, res) {
       flowMode,
       submittedBy: req.user.email,
       expectedPoolCount: expectedPoolCount ?? null,
+      windowHours: windowHours ?? null,
       crmOwnerId: crmOwner?.id ?? null,
       crmOwnerName: crmOwner?.name ?? null,
       crmOwnerEmail,
@@ -149,6 +155,7 @@ export async function processDeal(req, res) {
       ise: ownerRef(iseId),
       submittedInputs: {
         expectedPoolCount: expectedPoolCount ?? null,
+        windowHours: windowHours ?? null,
         crmOwnerId: crmOwner?.id ?? null,
         crmOwnerEmail,
         profilingPocId: ownerRef(profilingPocId)?.id ?? null,

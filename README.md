@@ -5,7 +5,8 @@ Learning Portal (beta, then prod, exactly as the CRM_Job_Loading tool does), eli
 20h reminders (email + NxtDial AI call), HubSpot changes are pushed to students, and at 21h the
 applied pool is analysed (Gemini resume scoring + GRIT + assessment + interview scores) and ranked
 P1…Pn. A PSM reviews and submits the pool, and the deal's CRM owner is emailed a secure,
-shared profiles link (an editable sheet) to share with the company.
+shared profiles link (one fixed table with the candidates' details and hiring-status dropdowns) to share
+with the company.
 
 ```
 CRM  ──Deal ID──▶  API ──▶ workflow_tasks (MongoDB) ◀── Worker
@@ -82,7 +83,7 @@ tasks are scheduled the moment the window opens.
 | Resume download + Gemini analysis, one candidate at a time | `AI_ANALYSIS` | `AI_ANALYSIS` |
 | GRIT/assessment/interview scores, ranking P1…Pn | `PRIORITY_GENERATION` | `READY_FOR_PSM` |
 | PSM opens review | — | `PSM_REVIEW_IN_PROGRESS` |
-| PSM submits: freeze, shared profiles link `/shared/profiles/<job ID>` | — | `PUBLIC_LINK_GENERATED` |
+| PSM submits: freeze, shared profiles link `/shared/profiles/<company_name>/<job ID>` | — | `PUBLIC_LINK_GENERATED` |
 | Email the deal's CRM owner | `CRM_NOTIFICATION` | `COMPLETED` |
 
 A plain-language walk-through of every step, for both flows, is in
@@ -155,9 +156,10 @@ per job, and each HubSpot webhook event is stored once (`eventId` or a hash of t
   validated table/column identifiers, SSRF guards on resume downloads.
 - HubSpot webhooks: signature v3 (HMAC-SHA256 with the app client secret) and a 5-minute
   timestamp window.
-- Shared profiles links use the Learning Portal job ID (`/shared/profiles/<job ID>`) and expire after
-  30 days. Anyone with the link can read and edit the sheet. The page only receives the columns the
-  PSM picked; it never receives student IDs, contact details, resume storage URLs or internal IDs.
+- Shared profiles links use the company name and the Learning Portal job ID
+  (`/shared/profiles/<company_name>/<job ID>`) and expire after 30 days. Anyone with the link can read
+  the table, which includes the candidates' names, mobiles and emails, and set the six status
+  dropdowns. It never receives student IDs, scores, remarks, resume storage URLs or internal IDs.
 - Candidate data is visible only to PSM and ADMIN. All secrets stay in the backend.
 
 ---
@@ -241,8 +243,8 @@ npm run users -w apps/api -- list
 Every account (CRM, PSM and ADMIN) is linked to its **HubSpot owner** (name, owner ID, email). `add`
 links it automatically when the email is in the HubSpot owner map; otherwise pass `--owner <id>` or run
 `owner <email> <id>` later. `owners` prints every owner with its ID. Accounts that match by email are
-also linked on API start. The linked owner is preselected as CRM owner, Profiling POC and ISE when
-that person adds a deal.
+also linked on API start. The linked owner is preselected as CRM owner when that person adds a deal,
+and the Profiling POC and ISE follow the CRM owner unless changed from their links on the form.
 
 The HubSpot owner map (names, emails and owner IDs from CRM_Job_Loading) is real staff data, so it
 is **not in the repository**. The API reads it from `HUBSPOT_OWNER_MAP_JSON` in `apps/api/.env`

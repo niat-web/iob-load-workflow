@@ -6,7 +6,6 @@ import {
   googleConnectUrl,
   googleConnectionStatus,
 } from "../services/googleConnectionService.js";
-import { addSharedRow, deleteSharedRow } from "../services/sharedSheetService.js";
 import {
   MAX_INTERVIEWERS,
   addInterviewColumn,
@@ -52,7 +51,6 @@ export const jobParams = z.object({ jobId });
 export const rowParams = z.object({ jobId, rowId });
 export const columnParams = z.object({ jobId, key: columnKey });
 export const cellSchema = z.object({ key: columnKey, value: z.string().max(2000) });
-export const rowSchema = z.object({ values: z.record(z.string(), z.string().max(2000)).optional() });
 export const columnSchema = z.object({ label: z.string().trim().min(1, "Enter a column name").max(60) });
 export const interviewersSchema = z.object({ emails: emails(MAX_INTERVIEWERS, "interviewer emails") });
 export const meetSchema = z.object({
@@ -85,17 +83,6 @@ export async function updateInterviewers(req, res) {
 export async function updateCell(req, res) {
   const { job } = await interviewJob(req.valid.params.jobId);
   await updateInterviewCell(job, req.valid.params.rowId, req.valid.body.key, req.valid.body.value);
-  res.status(204).end();
-}
-
-export async function addRow(req, res) {
-  const { job } = await interviewJob(req.valid.params.jobId);
-  res.status(201).json({ row: await addSharedRow(job, req.valid.body.values ?? {}) });
-}
-
-export async function deleteRow(req, res) {
-  const { job } = await interviewJob(req.valid.params.jobId);
-  await deleteSharedRow(job, req.valid.params.rowId);
   res.status(204).end();
 }
 

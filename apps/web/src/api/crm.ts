@@ -81,6 +81,7 @@ export interface ProcessDealInput {
   dealId: string;
   flowMode?: FlowMode;
   expectedPoolCount?: number;
+  windowHours?: number;
   crmOwnerId?: string;
   profilingPocId?: string;
   iseId?: string;

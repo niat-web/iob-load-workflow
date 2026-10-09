@@ -6,7 +6,6 @@ import type {
   InterviewSheet,
   MeetRequest,
   MeetResponse,
-  SharedRow,
 } from "../types/api";
 import { api, apiUrl, seg } from "./client";
 
@@ -85,33 +84,6 @@ export function useUpdateInterviewCell(jobId: string) {
       ...sheet,
       rows: sheet.rows.map((row) => (row.id === rowId ? { ...row, values: { ...row.values, [key]: value } } : row)),
     }),
-  );
-}
-
-export function useAddInterviewRow(jobId: string) {
-  return useSheetMutation(
-    jobId,
-    () => api.post<{ row: SharedRow }>(`${base(jobId)}/rows`, { values: {} }),
-    (sheet, _input, result) => ({
-      ...sheet,
-      rows: [
-        ...sheet.rows,
-        {
-          ...result.row,
-          studentName: "",
-          meet: null,
-          values: Object.fromEntries(sheet.columns.map((column) => [column.key, result.row.values[column.key] ?? ""])),
-        },
-      ],
-    }),
-  );
-}
-
-export function useDeleteInterviewRow(jobId: string) {
-  return useSheetMutation(
-    jobId,
-    (rowId: string) => api.delete<void>(`${base(jobId)}/rows/${seg(rowId)}`),
-    (sheet, rowId) => ({ ...sheet, rows: sheet.rows.filter((row) => row.id !== rowId) }),
   );
 }
 

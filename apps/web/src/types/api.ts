@@ -317,7 +317,9 @@ export interface CrmDealDetail extends CrmDealRow {
   applicationStartAt: string | null;
   applicationEndAt: string | null;
   poolTargetReached: boolean;
-  reminders: {
+  lastApplicationSyncAt: string | null;
+  applicationSyncError: string | null;
+  reminders:{
     r10h: ReminderInfo | null;
     r20h: ReminderInfo | null;
   };
@@ -420,7 +422,7 @@ export interface DealLogsResponse {
   items: DealLogEntry[];
 }
 
-export type PsmAction = "OPEN_REVIEW" | "CONTINUE_REVIEW" | "VIEW_POOL" | "NONE";
+export type PsmAction = "OPEN_REVIEW" | "CONTINUE_REVIEW" | "VIEW_POOL" | "VIEW_APPLICANTS" | "NONE";
 export type PsmStatusFilter = "READY" | "UNDER_REVIEW" | "COMPLETED";
 export type PriorityStatusFilter = "PENDING" | "GENERATED";
 export type AiStatusFilter = "PENDING" | "IN_PROGRESS" | "COMPLETED" | "FAILED";
@@ -438,6 +440,8 @@ export interface PsmJobRow {
   psmStatus: Chip;
   crmShareStatus: Chip;
   action: PsmAction;
+  lastSyncedAt: string | null;
+  syncError: string | null;
   updatedAt: string;
 }
 
@@ -449,6 +453,7 @@ export interface PsmJobDetail extends PsmJobRow {
   submittedAt: string | null;
   reviewedBy: string | null;
   publicLinkUrl: string | null;
+  psmColumns: CandidateExtraColumn[];
 }
 
 export interface PsmJobsQuery {
@@ -497,7 +502,36 @@ export interface Candidate {
   psmRemarks: string;
   analysisStatus: CandidateAnalysisStatus;
   interest?: CandidateInterest | null;
+  details?: CandidateDetails;
 }
+
+export interface CandidateDetails {
+  appliedAt: string | null;
+  userId: string;
+  jobId: string | null;
+  product: string | null;
+  gender: string | null;
+  name: string | null;
+  phone: string | null;
+  email: string | null;
+  district: string | null;
+  state: string | null;
+  highestEducation: string | null;
+  highestEducationInstitute: string | null;
+  mastersCourse: string | null;
+  mastersDepartment: string | null;
+  mastersYear: string | null;
+  mastersPercentage: string | null;
+  bachelorsCourse: string | null;
+  bachelorsDepartment: string | null;
+  bachelorsYear: string | null;
+  bachelorsPercentage: string | null;
+  intermediatePercentage: string | null;
+  tenthPercentage: string | null;
+  resumeLink: string | null;
+}
+
+export type CandidateExtraColumn = "interest" | keyof CandidateDetails;
 
 export type CandidateSort = "finalRank:asc" | "aiRank:asc" | "overallScore:desc";
 
@@ -527,16 +561,19 @@ export interface SubmitPoolResponse {
   publicLinkUrl: string;
 }
 
+export type SharedColumnType = "text" | "resume" | "select";
+
 export interface SharedColumn {
   key: string;
   label: string;
+  type: SharedColumnType;
+  options: string[];
   custom: boolean;
   editable: boolean;
 }
 
 export interface SharedRow {
   id: string;
-  source: "PSM" | "ADDED";
   resumeRef: string | null;
   values: Record<string, string>;
 }
@@ -544,16 +581,35 @@ export interface SharedRow {
 export interface SharedProfiles {
   companyName: string;
   jobRole: string;
-  jobId: string | null;
-  totalApplied: number;
   columns: SharedColumn[];
   rows: SharedRow[];
   updatedAt: string | null;
 }
 
-export interface SharedColumnChoice {
-  columns: { key: string; label: string }[];
-  selected: string[];
+export interface PsmApplicant {
+  studentId: string;
+  studentName: string;
+  product: string | null;
+  campus: string | null;
+  batch: string | null;
+  email: string | null;
+  mobile: string | null;
+  appliedAt: string | null;
+  hasResume: boolean;
+}
+
+export interface PsmApplicantsResponse extends Paginated<PsmApplicant> {
+  appliedCount: number;
+  windowOpen: boolean;
+  applicationEndAt: string | null;
+  lastSyncedAt: string | null;
+  syncError: string | null;
+}
+
+export interface PsmApplicantsQuery {
+  search?: string;
+  page?: number;
+  limit?: number;
 }
 
 export type SharedLinkStatus = "ACTIVE" | "EXPIRED" | "INACTIVE";
@@ -601,6 +657,10 @@ export interface InterviewMeetInfo {
 export interface InterviewRow extends SharedRow {
   studentName: string;
   meet: InterviewMeetInfo | null;
+}
+
+export interface PsmColumnsResponse {
+  psmColumns: CandidateExtraColumn[];
 }
 
 export interface InterviewSheet {
@@ -920,6 +980,7 @@ export interface CrmControls {
   reminderEmails: boolean;
   aiCalls: boolean;
   checkpoints: CheckpointSwitches;
+  applicationWindowHours: number;
 }
 
 export type InterestReason = "LOCATION" | "PAY" | "ROLE" | "TIMING" | "OTHER";

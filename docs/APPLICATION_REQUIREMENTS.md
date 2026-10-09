@@ -71,7 +71,7 @@ straight through.
 
 | # | Step | What happens | Uses |
 |---|---|---|---|
-| 1 | Add deal | CRM enters Deal ID or link, **Expected Pool**, **CRM Owner**, **Profiling POC**, **ISE** (owners preselect the signed-in user's HubSpot owner) and chooses **Automatic** or **Step by step** | App |
+| 1 | Add deal | CRM enters Deal ID or link, **Expected Pool**, **CRM Owner** (preselects the signed-in user's HubSpot owner) and **Deadline (hours)** (starts at the admin's window hours); **Profiling POC** and **ISE** are the CRM owner unless changed from their small links; then chooses **Automatic** or **Step by step** | App |
 | 2 | Fetch deal | `POST {action:"fetch", dealId, properties, companyProperties}` to the deal webhook; reply must be the deal JSON | n8n → HubSpot |
 | 3 | Prepare job | Builds the job title, description, eligibility and disclaimer (AI, or a rule-based fallback) | Gemini (optional) |
 | 4 | Load job | Creates the organisation if needed and the job in **Beta**, then **Prod**, with `job_extra_details.crm / profiling_poc / ise` | Learning Portal API |
@@ -85,7 +85,7 @@ straight through.
 | 12 | AI analysis | Each resume scored against the job | Gemini |
 | 13 | Priority | Weighted ranking (resume 40, GRIT 25, assessment 20, interview 15) | App |
 | 14 | PSM review | PSM changes priorities, remarks and candidate status, then submits | App |
-| 15 | Share | Shared profiles link `/shared/profiles/<job ID>` (editable sheet, expires in 30 days) emailed to the CRM who loaded the deal | SES |
+| 15 | Share | Shared profiles link `/shared/profiles/<company_name>/<job ID>` (one fixed table: student details plus Resume Shortlisting, TR 1, TR 2, HR, MR and Final Status dropdowns the company fills in; expires in 30 days) emailed to the CRM who loaded the deal | SES |
 
 ### Flow modes
 

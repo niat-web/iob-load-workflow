@@ -19,7 +19,13 @@ interface DealIdSubmitCardProps {
 const FLOW_LABELS: Record<FlowMode, string> = { AUTOMATIC: "Automatic", STEP_BY_STEP: "Step by step" };
 
 type OwnerField = "crm" | "profiling" | "ise";
-type FieldErrors = Partial<Record<"dealId" | "expectedPool" | "crm", string>>;
+type TeamField = Exclude<OwnerField, "crm">;
+type FieldErrors = Partial<Record<"dealId" | "expectedPool" | "windowHours" | "crm", string>>;
+
+const TEAM_LABELS: Record<TeamField, string> = { profiling: "Profiling POC", ise: "ISE" };
+const TEAM_FIELDS = Object.keys(TEAM_LABELS) as TeamField[];
+const MIN_HOURS = 1;
+const MAX_HOURS = 240;
 
 const invalidClass = "border-red-400 focus:border-red-500 focus:ring-red-500/15";
 
@@ -58,12 +64,14 @@ export function DealIdSubmitCard({ onSubmitted }: DealIdSubmitCardProps) {
   const ids = {
     pool: `${id}-pool`,
     crm: `${id}-crm`,
-    profiling: `${id}-profiling`,
-    ise: `${id}-ise`,
+    hours: `${id}-hours`,
+    team: `${id}-team`,
   };
   const [value, setValue] = useState("");
   const [expectedPool, setExpectedPool] = useState("");
+  const [windowHours, setWindowHours] = useState<string | null>(null);
   const [picks, setPicks] = useState<Partial<Record<OwnerField, string>>>({});
+  const [teamDialog, setTeamDialog] = useState<{ field: TeamField; ownerId: string } | null>(null);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [pending, setPending] = useState<ProcessDealInput | null>(null);
@@ -90,7 +98,10 @@ export function DealIdSubmitCard({ onSubmitted }: DealIdSubmitCardProps) {
   );
   const owners = ownersQuery.data?.owners ?? [];
   const defaultOwnerId = ownersQuery.data?.defaultOwnerId ?? "";
-  const ownerValue = (field: OwnerField) => picks[field] ?? defaultOwnerId;
+  const crmOwnerValue = picks.crm ?? defaultOwnerId;
+  const ownerValue = (field: OwnerField) => (field === "crm" ? crmOwnerValue : (picks[field] ?? crmOwnerValue));
+  const defaultHours = controls.data?.applicationWindowHours;
+  const hoursValue = windowHours ?? (defaultHours === undefined ? "" : String(defaultHours));
   const ownerPlaceholder = ownersQuery.isPending
     ? "Loading owners…"
     : ownersQuery.isError
@@ -107,11 +118,15 @@ export function DealIdSubmitCard({ onSubmitted }: DealIdSubmitCardProps) {
     const dealId = value.trim();
     const pool = Number(expectedPool);
     const crmOwnerId = ownerValue("crm");
+    const hours = Number(hoursValue);
     const nextErrors: FieldErrors = {};
     if (!dealId) nextErrors.dealId = "Enter a HubSpot Deal ID.";
     if (!expectedPool.trim()) nextErrors.expectedPool = "Enter the expected pool.";
     else if (!Number.isInteger(pool) || pool < 1) nextErrors.expectedPool = "Enter a whole number of 1 or more.";
     if (!crmOwnerId) nextErrors.crm = "Choose the CRM owner.";
+    if (!hoursValue.trim()) nextErrors.windowHours = "Enter the deadline in hours.";
+    else if (!Number.isFinite(hours) || hours < MIN_HOURS || hours > MAX_HOURS)
+      nextErrors.windowHours = `Enter ${MIN_HOURS} to ${MAX_HOURS} hours.`;
     setErrors(nextErrors);
     setFormError(null);
     if (Object.keys(nextErrors).length) return;
@@ -121,6 +136,7 @@ export function DealIdSubmitCard({ onSubmitted }: DealIdSubmitCardProps) {
       dealId,
       ...(flowOptions.length ? { flowMode } : {}),
       expectedPoolCount: pool,
+      windowHours: hours,
       crmOwnerId,
       profilingPocId: ownerValue("profiling") || undefined,
       iseId: ownerValue("ise") || undefined,
@@ -138,6 +154,7 @@ export function DealIdSubmitCard({ onSubmitted }: DealIdSubmitCardProps) {
         setFormError(null);
         setValue("");
         setExpectedPool("");
+        setWindowHours(null);
         if (result.duplicate) toast.info("Deal already submitted");
         else
           toast.success(
@@ -246,24 +263,39 @@ export function DealIdSubmitCard({ onSubmitted }: DealIdSubmitCardProps) {
                 invalid={Boolean(errors.crm)}
               />
             </Field>
-            <Field id={ids.profiling} label="Profiling POC">
-              <HubspotOwnerSelect
-                id={ids.profiling}
-                value={ownerValue("profiling")}
-                onChange={pickOwner("profiling")}
-                owners={owners}
-                placeholder={ownersQuery.isPending ? ownerPlaceholder : "Not set"}
+            <Field id={ids.hours} label="Deadline (hours)" required error={errors.windowHours}>
+              <input
+                id={ids.hours}
+                type="number"
+                inputMode="decimal"
+                min={MIN_HOURS}
+                max={MAX_HOURS}
+                step={0.5}
+                value={hoursValue}
+                onChange={(e) => {
+                  setWindowHours(e.target.value);
+                  if (errors.windowHours) setErrors((current) => ({ ...current, windowHours: undefined }));
+                }}
+                placeholder={controls.isPending ? "Loading…" : "e.g. 21"}
+                aria-invalid={errors.windowHours ? true : undefined}
+                aria-describedby={errors.windowHours ? `${ids.hours}-error` : undefined}
+                className={cn(toolbarFieldClass, errors.windowHours && invalidClass)}
               />
             </Field>
-            <Field id={ids.ise} label="ISE">
-              <HubspotOwnerSelect
-                id={ids.ise}
-                value={ownerValue("ise")}
-                onChange={pickOwner("ise")}
-                owners={owners}
-                placeholder={ownersQuery.isPending ? ownerPlaceholder : "Not set"}
-              />
-            </Field>
+            <div className="flex min-w-0 flex-col items-start justify-end gap-1.5 pb-1">
+              {TEAM_FIELDS.map((field) => (
+                <button
+                  key={field}
+                  type="button"
+                  onClick={() => setTeamDialog({ field, ownerId: ownerValue(field) })}
+                  title={ownerName(ownerValue(field) || undefined)}
+                  aria-label={`${TEAM_LABELS[field]}: ${ownerName(ownerValue(field) || undefined)}. Change`}
+                  className="focus-ring rounded text-xs font-semibold text-primary hover:underline"
+                >
+                  {TEAM_LABELS[field]}
+                </button>
+              ))}
+            </div>
           </div>
 
           {formError && pending === null && (
@@ -363,6 +395,10 @@ export function DealIdSubmitCard({ onSubmitted }: DealIdSubmitCardProps) {
                     value: formatNumber(pending.expectedPoolCount ?? null),
                   },
                   {
+                    label: "Deadline",
+                    value: `${formatNumber(pending.windowHours ?? null)} hours after the job is prepared`,
+                  },
+                  {
                     label: "JD Count",
                     value: "Set when the deal is fetched: earlier deals for this company + 1",
                     wide: true,
@@ -377,6 +413,33 @@ export function DealIdSubmitCard({ onSubmitted }: DealIdSubmitCardProps) {
                 ]}
               />
             </>
+          )
+        }
+      />
+      <ConfirmDialog
+        open={teamDialog !== null}
+        title={teamDialog ? TEAM_LABELS[teamDialog.field] : ""}
+        confirmLabel="Save"
+        onCancel={() => setTeamDialog(null)}
+        onConfirm={() => {
+          if (teamDialog) setPicks((current) => ({ ...current, [teamDialog.field]: teamDialog.ownerId }));
+          setTeamDialog(null);
+        }}
+        message={
+          teamDialog && (
+            <div className="mt-3">
+              <label htmlFor={ids.team} className="mb-1.5 block text-[13px] font-semibold text-ink">
+                {TEAM_LABELS[teamDialog.field]}
+              </label>
+              <HubspotOwnerSelect
+                id={ids.team}
+                value={teamDialog.ownerId}
+                onChange={(ownerId) => setTeamDialog((current) => (current ? { ...current, ownerId } : current))}
+                owners={owners}
+                placeholder={ownersQuery.isPending ? ownerPlaceholder : "Not set"}
+              />
+              <p className="mt-2 text-xs text-muted">It starts as the CRM owner. Pick someone else if needed.</p>
+            </div>
           )
         }
       />

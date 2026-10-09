@@ -1,4 +1,4 @@
-import { Check, Columns3, Pencil, X } from "lucide-react";
+import { Check, ChevronDown, Columns3, Pencil, X } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import type { SharedColumn } from "../../types/api";
 import { cn } from "../../utils/cn";
@@ -69,6 +69,64 @@ export function EditableCell({
     >
       {value || <span className="text-muted/50">—</span>}
     </button>
+  );
+}
+
+const OPTION_TONES: Record<string, string> = {
+  Selected: "bg-emerald-100 text-emerald-800",
+  Rejected: "bg-orange-100 text-orange-800",
+  "On Hold": "bg-slate-200 text-slate-700",
+  "Yet to Schedule": "bg-slate-100 text-slate-700",
+  Scheduled: "bg-violet-100 text-violet-800",
+  Hold: "bg-amber-100 text-amber-800",
+  "No Show": "bg-slate-800 text-white",
+};
+
+export function OptionCell({
+  value,
+  options,
+  label,
+  saving,
+  onSave,
+}: {
+  value: string;
+  options: string[];
+  label: string;
+  saving: boolean;
+  onSave: (next: string) => void;
+}) {
+  return (
+    <div className="relative inline-flex w-full min-w-[150px]">
+      <select
+        aria-label={label}
+        value={value}
+        disabled={saving}
+        onChange={(event) => onSave(event.target.value)}
+        className={cn(
+          "focus-ring h-8 w-full cursor-pointer appearance-none rounded-full border-0 pr-7 pl-3 text-xs font-semibold disabled:cursor-wait",
+          value ? (OPTION_TONES[value] ?? "bg-slate-100 text-ink") : "bg-slate-50 text-muted ring-1 ring-line",
+          saving && "opacity-60",
+        )}
+      >
+        <option value="" className="bg-surface text-muted">
+          Choose…
+        </option>
+        {options.map((option) => (
+          <option key={option} value={option} className="bg-surface text-ink">
+            {option}
+          </option>
+        ))}
+      </select>
+      <ChevronDown className="pointer-events-none absolute top-1/2 right-2.5 size-3.5 -translate-y-1/2" aria-hidden />
+    </div>
+  );
+}
+
+export function TextCell({ value }: { value: string }) {
+  return (
+    <span className="block max-w-[320px] min-w-[100px] px-2 py-1.5 text-sm break-words text-ink">
+      {value || <span className="text-muted/50">—</span>}
+    </span>
   );
 }
 

@@ -53,7 +53,7 @@ export const AI_STAGE_STATUSES = [
   S.PRIORITY_GENERATING,
 ];
 
-export const PSM_VISIBLE_STATUSES = STATUS_ORDER.slice(statusRank(S.APPLICATIONS_CLOSED));
+export const PSM_VISIBLE_STATUSES = STATUS_ORDER.slice(statusRank(S.APPLICATIONS_OPEN));
 
 export const SUBMITTED_STATUSES = [
   S.PSM_REVIEW_COMPLETED,
@@ -221,7 +221,7 @@ export function psmChips(job) {
     READY: "OPEN_REVIEW",
     UNDER_REVIEW: "CONTINUE_REVIEW",
     COMPLETED: "VIEW_POOL",
-    NOT_READY: "NONE",
+    NOT_READY: rankOf(current) >= rankOf(S.APPLICATIONS_OPEN) ? "VIEW_APPLICANTS" : "NONE",
   };
   return {
     applicationWindow: WINDOW_STATUSES.includes(current) ? PSM_CHIPS.window.OPEN : PSM_CHIPS.window.COMPLETED,
@@ -254,7 +254,7 @@ export function psmFilterQuery({ psmStatus, priorityStatus, aiStatus }) {
       COMPLETED: () => inStatuses(afterPriority),
       IN_PROGRESS: () => ({ status: { $in: [S.AI_ANALYSIS, S.PRIORITY_GENERATING] } }),
       FAILED: () => failedIn([S.AI_ANALYSIS, S.PRIORITY_GENERATING]),
-      PENDING: () => inStatuses([S.APPLICATIONS_CLOSED, S.FETCHING_APPLIED_POOL, S.APPLIED_POOL_READY]),
+      PENDING: () => inStatuses([...WINDOW_STATUSES, S.APPLICATIONS_CLOSED, S.FETCHING_APPLIED_POOL, S.APPLIED_POOL_READY]),
     },
   };
   const and = [];

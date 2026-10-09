@@ -92,6 +92,16 @@ export function normalizeCompanyName(name) {
   return normalized;
 }
 
+export function companySlug(name) {
+  return String(name ?? "")
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 60)
+    .replace(/_+$/g, "");
+}
+
 export function hoursFromNow(hours, from = new Date()) {
   return new Date(from.getTime() + hours * 60 * 60 * 1000);
 }

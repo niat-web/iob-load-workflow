@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { CANDIDATE_STATUS, JOB_STATUS as S, PSM_VISIBLE_STATUSES, TASK_TYPE } from "../config/statuses.js";
-import { CandidateAnalysis, CandidatePriorityHistory, Job } from "../models/index.js";
+import { CANDIDATE_STATUS, JOB_STATUS as S, PSM_VISIBLE_STATUSES, TASK_TYPE, WINDOW_STATUSES } from "../config/statuses.js";
+import { CandidateAnalysis, CandidatePriorityHistory, Job, JobApplication } from "../models/index.js";
 import { AUDIT, audit } from "../services/auditService.js";
 import {
   isReviewSubmitted,
@@ -18,10 +18,35 @@ import { AppError, conflict, notFound } from "../utils/errors.js";
 import { escapeRegex } from "../utils/helpers.js";
 import { listOf } from "../utils/queryList.js";
 import { latestInterestByStudent } from "../services/jobUpdateService.js";
-import { SHARED_COLUMNS, saveSharedColumns, sharedColumnsFor } from "../services/sharedSheetService.js";
 
 const priorityPattern = /^P([1-9]\d{0,4})$/;
 
+export const PSM_EXTRA_COLUMNS = [
+  "interest",
+  "appliedAt",
+  "userId",
+  "jobId",
+  "product",
+  "gender",
+  "name",
+  "phone",
+  "email",
+  "district",
+  "state",
+  "highestEducation",
+  "highestEducationInstitute",
+  "mastersCourse",
+  "mastersDepartment",
+  "mastersYear",
+  "mastersPercentage",
+  "bachelorsCourse",
+  "bachelorsDepartment",
+  "bachelorsYear",
+  "bachelorsPercentage",
+  "intermediatePercentage",
+  "tenthPercentage",
+  "resumeLink",
+];
 
 export const psmListSchema = z.object({
   search: z.string().trim().max(200).optional(),
@@ -95,20 +120,108 @@ export function serializeCandidate(candidate) {
   };
 }
 
-export const sharedColumnsSchema = z.object({ columns: z.array(z.string().max(40)).min(1).max(40) });
+const iso = (value) => (value ? new Date(value).toISOString() : null);
+const text = (value) => (value === null || value === undefined || value === "" ? null : String(value));
 
-export async function sharedColumns(req, res) {
+function candidateDetails(candidate, application, job) {
+  const profile = application?.profile ?? {};
+  return {
+    appliedAt: iso(application?.appliedAt),
+    userId: candidate.studentId,
+    jobId: job.learningPortalJobId ?? null,
+    product: text(profile.product ?? candidate.product),
+    gender: text(profile.gender),
+    name: text(application?.studentName),
+    phone: text(application?.mobile),
+    email: text(application?.email),
+    district: text(profile.district),
+    state: text(profile.state),
+    highestEducation: text(profile.highestEducation),
+    highestEducationInstitute: text(profile.highestEducationInstitute),
+    mastersCourse: text(profile.mastersCourse),
+    mastersDepartment: text(profile.mastersDepartment),
+    mastersYear: text(profile.mastersYear),
+    mastersPercentage: text(profile.mastersPercentage),
+    bachelorsCourse: text(profile.bachelorsCourse),
+    bachelorsDepartment: text(profile.bachelorsDepartment),
+    bachelorsYear: text(profile.bachelorsYear),
+    bachelorsPercentage: text(profile.bachelorsPercentage),
+    intermediatePercentage: text(profile.intermediatePercentage),
+    tenthPercentage: text(profile.tenthPercentage),
+    resumeLink: text(application?.resumeUrl ?? candidate.resumeUrl),
+  };
+}
+
+export const psmColumnsSchema = z.object({
+  columns: z.array(z.enum(PSM_EXTRA_COLUMNS)).max(PSM_EXTRA_COLUMNS.length),
+});
+
+export async function updatePsmColumns(req, res) {
   const job = await loadPsmJob(req.valid.params.jobId);
+  const psmColumns = PSM_EXTRA_COLUMNS.filter((key) => req.valid.body.columns.includes(key));
+  await Job.updateOne({ _id: job._id }, { $set: { psmColumns } });
+  res.json({ psmColumns });
+}
+
+export const applicantListSchema = z.object({
+  search: z.string().trim().max(200).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(500).default(50),
+});
+
+export const applicantParams = z.object({
+  jobId: z.string().regex(/^[a-f0-9]{24}$/i, "Invalid job id"),
+  studentId: z.string().min(1).max(100),
+});
+
+function applicantRow(application) {
+  return {
+    studentId: application.studentId,
+    studentName: application.studentName ?? "",
+    product: text(application.profile?.product),
+    campus: text(application.campus),
+    batch: text(application.batch),
+    email: text(application.email),
+    mobile: text(application.mobile),
+    appliedAt: iso(application.appliedAt),
+    hasResume: Boolean(application.resumeUrl),
+  };
+}
+
+export async function listApplicants(req, res) {
+  const job = await loadPsmJob(req.valid.params.jobId);
+  const { search, page, limit } = req.valid.query;
+  const filter = { jobId: job._id };
+  if (search) {
+    const pattern = new RegExp(escapeRegex(search), "i");
+    filter.$or = [{ studentName: pattern }, { studentId: pattern }, { email: pattern }];
+  }
+  const [items, total] = await Promise.all([
+    JobApplication.find(filter).sort({ appliedAt: -1, studentId: 1 }).skip((page - 1) * limit).limit(limit).lean(),
+    JobApplication.countDocuments(filter),
+  ]);
+  const current = job.status === S.FAILED ? job.failedStep : job.status;
   res.json({
-    columns: SHARED_COLUMNS.map(({ key, label }) => ({ key, label })),
-    selected: await sharedColumnsFor(job),
+    items: items.map(applicantRow),
+    pagination: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) },
+    appliedCount: job.appliedCount ?? 0,
+    windowOpen: WINDOW_STATUSES.includes(current),
+    applicationEndAt: iso(job.applicationEndAt),
+    lastSyncedAt: iso(job.lastApplicationSyncAt),
+    syncError: job.applicationSyncError ?? null,
   });
 }
 
-export async function updateSharedColumns(req, res) {
+export async function applicantResume(req, res) {
   const job = await loadPsmJob(req.valid.params.jobId);
-  const selected = await saveSharedColumns(job, req.valid.body.columns, req.user);
-  res.json({ columns: SHARED_COLUMNS.map(({ key, label }) => ({ key, label })), selected });
+  const application = await JobApplication.findOne({ jobId: job._id, studentId: req.valid.params.studentId }).lean();
+  if (!application?.resumeUrl) throw notFound("No resume for this applicant");
+  await sendResume(
+    res,
+    application.resumeUrl,
+    { studentId: application.studentId, studentName: application.studentName, jobSkills: job.skills },
+    `${application.studentName || application.studentId}-resume`,
+  );
 }
 
 export async function listJobs(req, res) {
@@ -159,12 +272,18 @@ export async function listCandidates(req, res) {
     CandidateAnalysis.find(filter).sort(CANDIDATE_SORTS[sort]).skip((page - 1) * limit).limit(limit).lean(),
     CandidateAnalysis.countDocuments(filter),
   ]);
-  const interest = await latestInterestByStudent(
-    job._id,
-    items.map((item) => item.studentId),
-  );
+  const studentIds = items.map((item) => item.studentId);
+  const [interest, applications] = await Promise.all([
+    latestInterestByStudent(job._id, studentIds),
+    JobApplication.find({ jobId: job._id, studentId: { $in: studentIds } }).lean(),
+  ]);
+  const applicationOf = new Map(applications.map((application) => [application.studentId, application]));
   res.json({
-    items: items.map((item) => ({ ...serializeCandidate(item), interest: interest.get(item.studentId) ?? null })),
+    items: items.map((item) => ({
+      ...serializeCandidate(item),
+      interest: interest.get(item.studentId) ?? null,
+      details: candidateDetails(item, applicationOf.get(item.studentId), job),
+    })),
     pagination: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) },
   });
 }

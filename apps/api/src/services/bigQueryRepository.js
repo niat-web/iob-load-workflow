@@ -19,7 +19,7 @@ function istDate(value) {
 
 const PROFILE_FIELDS = [
   "product", "enrollPlan", "gender", "state", "district", "registrationYear", "highestEducation",
-  "bachelorsCourse", "bachelorsDepartment", "bachelorsYear", "bachelorsPercentage",
+  "highestEducationInstitute", "bachelorsCourse", "bachelorsDepartment", "bachelorsYear", "bachelorsPercentage",
   "mastersCourse", "mastersDepartment", "mastersYear", "mastersPercentage",
   "intermediateCourse", "intermediatePercentage", "tenthPercentage",
 ];
@@ -141,6 +141,10 @@ class LiveBigQueryRepository {
         n.current_district AS district,
         n.registration_year AS registrationYear,
         n.highest_education AS highestEducation,
+        COALESCE(
+          JSON_VALUE(TO_JSON_STRING(n), '$.highest_education_institute_name'),
+          JSON_VALUE(TO_JSON_STRING(n), '$.highest_education_institution_name')
+        ) AS highestEducationInstitute,
         n.bachelors_course_name AS bachelorsCourse,
         n.bachelors_department_name AS bachelorsDepartment,
         n.bachelors_year_of_graduation AS bachelorsYear,
@@ -271,6 +275,20 @@ class MockBigQueryRepository {
       ...student,
       resumeUrl: index % 11 === 10 ? null : `mock://resume/${student.studentId}`,
       appliedAt: new Date(start + (index + 1) * 60 * 1000),
+      profile: {
+        product: student.program === "NIAT" ? "NIAT" : "Academy",
+        gender: index % 2 ? "Female" : "Male",
+        state: "Telangana",
+        district: "Hyderabad",
+        highestEducation: "BACHELORS",
+        highestEducationInstitute: student.campus,
+        bachelorsCourse: "B.Tech",
+        bachelorsDepartment: "Computer Science and Engineering",
+        bachelorsYear: student.batch,
+        bachelorsPercentage: 70 + (index % 25),
+        intermediatePercentage: 80 + (index % 15),
+        tenthPercentage: 85 + (index % 10),
+      },
     }));
   }
 

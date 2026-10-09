@@ -1,96 +1,51 @@
 import mongoose from "mongoose";
-import { CandidateAnalysis, Job, Preference, SharedSheet } from "../models/index.js";
+import { CandidateAnalysis, JobApplication, JobEligibleStudent, SharedSheet } from "../models/index.js";
 import { now } from "../utils/clock.js";
-import { randomToken } from "../utils/crypto.js";
-import { badRequest, conflict, notFound } from "../utils/errors.js";
-import { latestInterestByStudent } from "./jobUpdateService.js";
+import { badRequest, notFound } from "../utils/errors.js";
+
+const SHORTLIST_OPTIONS = ["Selected", "Rejected", "On Hold"];
+const ROUND_OPTIONS = ["Yet to Schedule", "Scheduled", "Selected", "Rejected", "Hold", "No Show"];
 
 export const SHARED_COLUMNS = [
-  { key: "finalPriority", label: "Final Priority" },
-  { key: "studentName", label: "Student Name" },
-  { key: "campus", label: "Campus" },
-  { key: "resume", label: "Resume", editable: false },
-  { key: "relevantSkills", label: "Relevant Skills" },
-  { key: "resumeScore", label: "AI Resume Score" },
-  { key: "gritScore", label: "GRIT Score" },
-  { key: "assessmentScore", label: "Assessment Score" },
-  { key: "interviewScore", label: "Interview Score" },
-  { key: "overallScore", label: "Overall Score" },
-  { key: "candidateStatus", label: "Candidate Status" },
-  { key: "interested", label: "Interested" },
-  { key: "psmRemarks", label: "PSM Remarks" },
+  { key: "fullName", label: "Full Name" },
+  { key: "mobile", label: "Mobile Number" },
+  { key: "email", label: "Email Id" },
+  { key: "bachelorsCourse", label: "Bachelors Course Name" },
+  { key: "bachelorsDepartment", label: "Bachelors Department Name" },
+  { key: "bachelorsYear", label: "Bachelors Year of Completion" },
+  { key: "bachelorsPercentage", label: "Bachelors Percentage" },
+  { key: "resume", label: "Resume", type: "resume" },
+  { key: "resumeShortlisting", label: "Resume Shortlisting", options: SHORTLIST_OPTIONS },
+  { key: "trRound1", label: "TR Round 1", options: ROUND_OPTIONS },
+  { key: "trRound2", label: "TR Round 2", options: ROUND_OPTIONS },
+  { key: "hrRound", label: "HR Round", options: ROUND_OPTIONS },
+  { key: "mrRound", label: "MR Round", options: ROUND_OPTIONS },
+  { key: "finalStatus", label: "Final Status", options: ROUND_OPTIONS },
 ];
 
-const DEFAULT_COLUMNS = [
-  "finalPriority", "studentName", "resume", "relevantSkills", "resumeScore", "gritScore",
-  "assessmentScore", "interviewScore", "overallScore", "candidateStatus",
-];
-const PREFERENCE_ID = "sharedProfileColumns";
-const CUSTOM_KEY = /^c_[A-Za-z0-9_-]{6,20}$/;
-const MAX_CUSTOM_COLUMNS = 30;
-const MAX_ROWS = 2000;
-const STATUS_LABELS = { RECOMMENDED: "Recommended", CONSIDER: "Consider", NOT_RECOMMENDED: "Not Recommended" };
+const STATUS_COLUMNS = new Map(SHARED_COLUMNS.filter((column) => column.options).map((column) => [column.key, column]));
 
-const cleanColumns = (keys) => SHARED_COLUMNS.map((column) => column.key).filter((key) => keys.includes(key));
-
-export async function defaultSharedColumns() {
-  const stored = await Preference.findById(PREFERENCE_ID).lean();
-  return Array.isArray(stored?.value) ? cleanColumns(stored.value) : DEFAULT_COLUMNS;
-}
-
-export async function sharedColumnsFor(job) {
-  return Array.isArray(job.sharedColumns) && job.sharedColumns.length ? cleanColumns(job.sharedColumns) : defaultSharedColumns();
-}
-
-export async function saveSharedColumns(job, keys, actor) {
-  const columns = cleanColumns(keys);
-  if (!columns.length) throw badRequest("Keep at least one column on the company page");
-  await Job.updateOne({ _id: job._id }, { $set: { sharedColumns: columns } });
-  await Preference.updateOne(
-    { _id: PREFERENCE_ID },
-    { $set: { value: columns, updatedBy: actor?.email ?? null } },
-    { upsert: true },
-  );
-  return columns;
-}
+export const sharedColumnView = (column) => ({
+  key: column.key,
+  label: column.label,
+  type: column.options ? "select" : (column.type ?? "text"),
+  options: column.options ?? [],
+  custom: false,
+  editable: Boolean(column.options),
+});
 
 const asText = (value) => (value === null || value === undefined ? "" : String(value));
-
-function rowFromCandidate(candidate, interest) {
-  return {
-    ref: candidate.publicRef ?? null,
-    source: "PSM",
-    createdAt: now(),
-    values: {
-      finalPriority: asText(candidate.finalPriority),
-      studentName: asText(candidate.studentName),
-      campus: asText(candidate.campus),
-      relevantSkills: (candidate.matchedSkills ?? []).join(", "),
-      resumeScore: asText(candidate.resumeScore),
-      gritScore: asText(candidate.gritScore),
-      assessmentScore: asText(candidate.assessmentScore),
-      interviewScore: asText(candidate.interviewScore),
-      overallScore: asText(candidate.overallScore),
-      candidateStatus: STATUS_LABELS[candidate.candidateStatus] ?? "",
-      interested: interest ? (interest.interested ? "Yes" : "No") : "",
-      psmRemarks: asText(candidate.psmRemarks),
-    },
-  };
-}
+const firstText = (...values) => asText(values.find((value) => asText(value).trim() !== "")).trim();
 
 export async function ensureSheet(job) {
   const existing = await SharedSheet.findOne({ jobId: job._id }).lean();
   if (existing) return existing;
-  const candidates = await CandidateAnalysis.find({ jobId: job._id }).sort({ finalRank: 1 }).lean();
-  const interest = await latestInterestByStudent(
-    job._id,
-    candidates.map((candidate) => candidate.studentId),
-  );
+  const candidates = await CandidateAnalysis.find({ jobId: job._id }, { publicRef: 1 }).sort({ finalRank: 1 }).lean();
   try {
     await SharedSheet.create({
       jobId: job._id,
       learningPortalJobId: job.learningPortalJobId ?? null,
-      rows: candidates.map((candidate) => rowFromCandidate(candidate, interest.get(candidate.studentId))),
+      rows: candidates.map((candidate) => ({ ref: candidate.publicRef ?? null, source: "PSM", values: {}, createdAt: now() })),
     });
   } catch (error) {
     if (error?.code !== 11000) throw error;
@@ -98,46 +53,68 @@ export async function ensureSheet(job) {
   return SharedSheet.findOne({ jobId: job._id }).lean();
 }
 
+async function studentDetailsByRef(job, refs) {
+  if (!refs.length) return new Map();
+  const candidates = await CandidateAnalysis.find(
+    { jobId: job._id, publicRef: { $in: refs } },
+    { publicRef: 1, studentId: 1, studentName: 1, resumeUrl: 1 },
+  ).lean();
+  const studentIds = candidates.map((candidate) => candidate.studentId);
+  const [applications, eligible] = await Promise.all([
+    JobApplication.find(
+      { jobId: job._id, studentId: { $in: studentIds } },
+      { studentId: 1, studentName: 1, email: 1, mobile: 1, profile: 1 },
+    ).lean(),
+    JobEligibleStudent.find(
+      { jobId: job._id, studentId: { $in: studentIds } },
+      { studentId: 1, studentName: 1, email: 1, mobile: 1 },
+    ).lean(),
+  ]);
+  const applicationOf = new Map(applications.map((row) => [row.studentId, row]));
+  const eligibleOf = new Map(eligible.map((row) => [row.studentId, row]));
+  return new Map(
+    candidates.map((candidate) => {
+      const application = applicationOf.get(candidate.studentId) ?? {};
+      const student = eligibleOf.get(candidate.studentId) ?? {};
+      const profile = application.profile ?? {};
+      return [
+        candidate.publicRef,
+        {
+          hasResume: Boolean(candidate.resumeUrl),
+          values: {
+            fullName: firstText(application.studentName, candidate.studentName, student.studentName),
+            mobile: firstText(application.mobile, student.mobile),
+            email: firstText(application.email, student.email),
+            bachelorsCourse: firstText(profile.bachelorsCourse),
+            bachelorsDepartment: firstText(profile.bachelorsDepartment),
+            bachelorsYear: firstText(profile.bachelorsYear),
+            bachelorsPercentage: firstText(profile.bachelorsPercentage),
+          },
+        },
+      ];
+    }),
+  );
+}
+
 export async function sharedSheetView(job) {
   const sheet = await ensureSheet(job);
-  const visible = await sharedColumnsFor(job);
-  const columns = [
-    ...SHARED_COLUMNS.filter((column) => visible.includes(column.key)).map((column) => ({
-      key: column.key,
-      label: column.label,
-      custom: false,
-      editable: column.editable !== false,
-    })),
-    ...sheet.customColumns.map((column) => ({ key: column.key, label: column.label, custom: true, editable: true })),
-  ];
+  const rows = sheet.rows.filter((row) => row.source === "PSM");
+  const details = await studentDetailsByRef(job, rows.map((row) => row.ref).filter(Boolean));
   return {
     companyName: job.companyName,
     jobRole: job.jobRole,
-    jobId: job.learningPortalJobId,
-    totalApplied: job.appliedCount ?? 0,
-    columns,
-    rows: sheet.rows.map((row) => ({
-      id: String(row._id),
-      source: row.source,
-      resumeRef: row.ref && row.source === "PSM" && visible.includes("resume") ? row.ref : null,
-      values: Object.fromEntries(
-        columns.filter((column) => column.key !== "resume").map((column) => [column.key, row.values?.[column.key] ?? ""]),
-      ),
-    })),
+    columns: SHARED_COLUMNS.map(sharedColumnView),
+    rows: rows.map((row) => {
+      const student = details.get(row.ref);
+      const statuses = Object.fromEntries([...STATUS_COLUMNS.keys()].map((key) => [key, asText(row.values?.[key])]));
+      return {
+        id: String(row._id),
+        resumeRef: student?.hasResume ? row.ref : null,
+        values: { ...(student?.values ?? {}), ...statuses },
+      };
+    }),
     updatedAt: sheet.updatedAt ? new Date(sheet.updatedAt).toISOString() : null,
   };
-}
-
-async function editableKey(job, sheet, key) {
-  if (CUSTOM_KEY.test(key)) {
-    if (!sheet.customColumns.some((column) => column.key === key)) throw notFound("This column no longer exists");
-    return key;
-  }
-  const column = SHARED_COLUMNS.find((item) => item.key === key);
-  if (!column || column.editable === false || !(await sharedColumnsFor(job)).includes(key)) {
-    throw badRequest("This column cannot be edited");
-  }
-  return key;
 }
 
 const rowObjectId = (rowId) => {
@@ -146,69 +123,14 @@ const rowObjectId = (rowId) => {
 };
 
 export async function updateSharedCell(job, rowId, key, value) {
-  const sheet = await ensureSheet(job);
-  const field = await editableKey(job, sheet, key);
+  const column = STATUS_COLUMNS.get(key);
+  if (!column) throw badRequest("This column cannot be edited");
+  const next = String(value ?? "").trim();
+  if (next && !column.options.includes(next)) throw badRequest(`Pick one of: ${column.options.join(", ")}`);
+  await ensureSheet(job);
   const result = await SharedSheet.updateOne(
-    { jobId: job._id, "rows._id": rowObjectId(rowId) },
-    { $set: { [`rows.$.values.${field}`]: String(value ?? "").slice(0, 2000) } },
+    { jobId: job._id, rows: { $elemMatch: { _id: rowObjectId(rowId), source: "PSM" } } },
+    { $set: { [`rows.$.values.${key}`]: next } },
   );
   if (!result.matchedCount) throw notFound("This row no longer exists");
-}
-
-export async function addSharedRow(job, values = {}) {
-  const sheet = await ensureSheet(job);
-  if (sheet.rows.length >= MAX_ROWS) throw conflict(`A sheet can have at most ${MAX_ROWS} rows`, "TOO_MANY_ROWS");
-  const allowed = new Set([...(await sharedColumnsFor(job)), ...sheet.customColumns.map((column) => column.key)]);
-  const clean = Object.fromEntries(
-    Object.entries(values)
-      .filter(([key]) => allowed.has(key) && key !== "resume")
-      .map(([key, value]) => [key, String(value ?? "").slice(0, 2000)]),
-  );
-  const row = { _id: new mongoose.Types.ObjectId(), ref: null, source: "ADDED", values: clean, createdAt: now() };
-  await SharedSheet.updateOne({ jobId: job._id }, { $push: { rows: row } });
-  return { id: String(row._id), source: row.source, resumeRef: null, values: clean };
-}
-
-export async function deleteSharedRow(job, rowId) {
-  await ensureSheet(job);
-  const id = rowObjectId(rowId);
-  const result = await SharedSheet.collection.updateOne(
-    { jobId: job._id, rows: { $elemMatch: { _id: id, source: "ADDED" } } },
-    { $pull: { rows: { _id: id, source: "ADDED" } }, $set: { updatedAt: now() } },
-  );
-  if (!result.modifiedCount) throw conflict("Only rows added on this page can be deleted", "ROW_LOCKED");
-}
-
-const cleanLabel = (label) => {
-  const text = String(label ?? "").replace(/\s+/g, " ").trim().slice(0, 60);
-  if (!text) throw badRequest("Enter a column name");
-  return text;
-};
-
-export async function addSharedColumn(job, label) {
-  const sheet = await ensureSheet(job);
-  if (sheet.customColumns.length >= MAX_CUSTOM_COLUMNS) {
-    throw conflict(`A sheet can have at most ${MAX_CUSTOM_COLUMNS} added columns`, "TOO_MANY_COLUMNS");
-  }
-  const column = { key: `c_${randomToken(6)}`, label: cleanLabel(label) };
-  await SharedSheet.updateOne({ jobId: job._id }, { $push: { customColumns: column } });
-  return { ...column, custom: true, editable: true };
-}
-
-export async function renameSharedColumn(job, key, label) {
-  if (!CUSTOM_KEY.test(key)) throw badRequest("Only added columns can be renamed");
-  const result = await SharedSheet.updateOne(
-    { jobId: job._id, "customColumns.key": key },
-    { $set: { "customColumns.$.label": cleanLabel(label) } },
-  );
-  if (!result.matchedCount) throw notFound("This column no longer exists");
-}
-
-export async function deleteSharedColumn(job, key) {
-  if (!CUSTOM_KEY.test(key)) throw badRequest("Only added columns can be deleted");
-  const result = await SharedSheet.updateOne(
-    { jobId: job._id, "customColumns.key": key },
-    { $pull: { customColumns: { key } }, $unset: { [`rows.$[].values.${key}`]: "" } },
-  );
-  if (!result.matchedCount) throw notFound("This column no longer exists");
 }

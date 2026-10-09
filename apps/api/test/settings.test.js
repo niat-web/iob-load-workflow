@@ -7,6 +7,7 @@ import { integrations, overrideIntegration } from "../src/services/integrations.
 import {
   XHR,
   loginAs,
+  nowMs,
   openApplicationWindow,
   resetDb,
   runDueTasks,
@@ -119,6 +120,19 @@ describe("admin controls in Settings → Config", () => {
     const at = async (type) => (await WorkflowTask.findOne({ jobId: job._id, type }).lean()).scheduledFor.getTime();
     assert.equal((await at(TASK_TYPE.REMINDER_10H)) - job.applicationStartAt.getTime(), 5 * HOUR);
     assert.equal((await at(TASK_TYPE.REMINDER_20H)) - job.applicationStartAt.getTime(), 15 * HOUR);
+    assert.equal((await crm.get("/api/crm/controls")).body.applicationWindowHours, 30, "the form starts at the admin's hours");
+  });
+
+  test("a CRM can set the deadline in hours for one deal", async () => {
+    const submitted = await crm.post("/api/crm/deals/process").set(XHR).send({ dealId: "12345", expectedPoolCount: 5, windowHours: 12 });
+    assert.equal(submitted.status, 202);
+    await runDueTasks();
+    const job = await Job.findById(submitted.body.job.id);
+    assert.equal(job.windowHours, 12);
+    assert.ok(Math.abs(job.learningPortalDeadline.getTime() - nowMs() - 12 * HOUR) < 60 * 1000);
+
+    const refused = await crm.post("/api/crm/deals/process").set(XHR).send({ dealId: "12346", expectedPoolCount: 5, windowHours: 0 });
+    assert.equal(refused.status, 400);
   });
 
   test("HubSpot write-back and AI job text can be turned off", async () => {

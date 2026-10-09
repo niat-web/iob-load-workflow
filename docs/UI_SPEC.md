@@ -73,7 +73,8 @@ page stays readable at 125% Windows display scaling.
 | `/settings` | CRM, PSM, ADMIN | Account (name, email, role, HubSpot owner, access) and **Sign out**. Admins pick their own HubSpot owner here and get a **Users** section: add user (email, name, role, HubSpot owner) and a table to change role, owner and access inline |
 | `/psm` | PSM, ADMIN | PSM company-wise dashboard |
 | `/psm/jobs/:jobId/review` | PSM, ADMIN | Candidate review |
-| `/shared/profiles/:jobId` | shared | Editable profiles sheet for the company (no header, no sign-in) |
+| `/psm/jobs/:jobId/applicants` | PSM, ADMIN | Live list of students who have applied so far |
+| `/shared/profiles/:company/:jobId` | shared | The company's profiles table with status dropdowns (no header, no sign-in); `/shared/profiles/:jobId` also works |
 
 Unknown email after Google sign-in → show an **Access Denied** state. A signed-in user opening a
 page their role cannot access → Access Denied state (not a redirect loop).
@@ -92,9 +93,11 @@ page their role cannot access → Access Denied state (not a redirect loop).
 
    Left (~40%): 44px lavender tile with a purple link icon, a 22px bold title and a 14px muted subtitle.
    Right (~60%): a full-width 44px input with a link icon, then one
-   row of four 40px fields: **Expected Pool*** (number), **CRM Owner*** (HubSpot owner dropdown),
-   **Profiling POC** and **ISE** (owner dropdowns, optional). The three dropdowns preselect the signed-in
-   user's HubSpot owner. Then the
+   row of four columns: **Expected Pool*** (number), **CRM Owner*** (HubSpot owner dropdown, preselects
+   the signed-in user's owner), **Deadline (hours)*** (number, starts at the admin's application window
+   hours), and two small 12px blue text buttons stacked in the last column, **Profiling POC** and
+   **ISE**. Both are the CRM owner unless changed; each button opens a small box with the owner
+   dropdown (Save / Cancel). Their names are not shown on the page, only in the confirmation box. Then the
    FLOW toggle (selected option in the purple gradient) with the 124px gradient **Submit** (send icon)
    at the right end of that row. The flow choice defaults to Automatic. Step-by-step deals show "Step by step" under
    the Deal ID, a yellow "Waiting for Approval" status and a **Review** button that opens the approval
@@ -135,24 +138,44 @@ page their role cannot access → Access Denied state (not a redirect loop).
    `#` · Deal ID · Company · Job Role · Expected Count · Applied Count · Application Window ·
    AI Analysis Status · Priority Status · PSM Review Status · CRM Share Status · Updated At · Action
 
-   Chips come from the API. Action button by `action`: `OPEN_REVIEW` → primary "Open Review",
-   `CONTINUE_REVIEW` → "Continue Review", `VIEW_POOL` → secondary "View Pool", `NONE` → disabled
-   "Processing". All three navigate to `/psm/jobs/:jobId/review`.
-4. Refetch on window focus and after mutations (no constant polling). Server-side pagination.
+   Chips come from the API. Deals are listed from the moment their application window opens.
+   Applied Count shows "synced 3:30 PM" under the number (or "Sync failed" with the reason on
+   hover). Action button by `action`: `OPEN_REVIEW` → primary "Open Review", `CONTINUE_REVIEW` →
+   "Continue Review", `VIEW_POOL` → secondary "View Pool" (all three open `/psm/jobs/:jobId/review`),
+   `VIEW_APPLICANTS` → secondary "View Applicants" (opens `/psm/jobs/:jobId/applicants`), `NONE` →
+   disabled "Processing".
+4. Refetch on window focus and after mutations; every 60 seconds while any listed deal has its window
+   open. Server-side pagination.
 5. Empty state: "No candidate pools are ready for review."
+
+## PSM applicants (`/psm/jobs/:jobId/applicants`)
+
+"← Back", the title "Company · Role", a line with the applied count, when the window closes and when
+the applied pool was last synced (or that the window has closed and the review opens after the AI
+ranking), and an amber note when the last sync failed. Then search (name, user ID or email), a
+refresh button and a table: `#` · Student Name · User ID · Product · Campus · Batch · Email · Mobile ·
+Applied At · Resume (View). Newest applicants first. It refreshes every 60 seconds while the window is
+open.
 
 ## PSM review (`/psm/jobs/:jobId/review`)
 
-1. Same header. A small "← Back" text link is allowed above the summary.
+1. Same header. A small "← Back" text link, then the title "Company · Role". No summary strip.
 2. On mount call `POST /api/psm/jobs/:jobId/start-review` (idempotent).
-3. Compact summary strip (one row of label/value pairs, no big cards): Company, Job Role, Deal ID,
-   Expected Pool, Total Applied, Application Status, AI Analysis Status (chip).
-4. Filters row: search (name or student ID), AI priority, final priority, candidate status.
-5. Candidate table columns:
+3. Filters row: search (name or student ID), AI priority, final priority, candidate status, and a
+   **Columns** button at the right.
+4. Candidate table columns (always shown):
 
    `#` · AI Priority · Student Name · Student ID · Campus · Resume · AI Resume Score ·
    GRIT Skill Score · Assessment Score · Interview Score · Overall Score · AI Reason ·
    Final Priority · PSM Remarks · Candidate Status
+
+   **Columns** adds hidden-by-default columns after these, saved for the deal: Interested, Applied
+   Datetime, User Id, Job Id, Product, Gender, Name, Phone Number, Email, Current District, Current
+   State, Highest Education, Highest Education Institute Name, Masters Course Name, Masters
+   Department Name, Master Completion Year, Masters Percentage, Bachelors Course Name, Bachelors
+   Department Name, Bachelors Year Of Graduation, Bachelors Percentage, Intermediate Percentage,
+   Tenth Percentage, Resume Link.
+5. Cell rules:
 
    - Resume: "View" link (new tab) when `hasResume`, else `—`.
    - Null scores: `N/A`. Null GRIT: `N/A` with tooltip "GRIT Data Not Available".
@@ -175,13 +198,16 @@ page their role cannot access → Access Denied state (not a redirect loop).
 
    Buttons: **Cancel**, **Confirm & Submit**. On success show the public link.
 
-## Shared profiles (`/shared/profiles/:jobId`)
+## Shared profiles (`/shared/profiles/:company/:jobId`, also `/shared/profiles/:jobId`)
 
-No header, no sign-in. Shows Company Name, Job Role, Total Applied and Profiles, then a sheet with the
-columns the PSM picked plus any added columns, sorted by final priority. Click a cell to edit (Enter
-saves, Shift+Enter adds a line, Esc cancels). **Add row** and **Add column** sit above the sheet; added
-columns can be renamed or deleted from their header, added rows from the row's bin icon. A status line
-shows "Saving…" / "All changes saved". The page refreshes every 30 seconds so edits by others appear.
+No header, no sign-in, no summary: only the table, the same for every company, in the PSM's final
+priority order. Columns: `#` · Full Name · Mobile Number · Email Id · Bachelors Course Name ·
+Bachelors Department Name · Bachelors Year of Completion · Bachelors Percentage · Resume (View) ·
+Resume Shortlisting · TR Round 1 · TR Round 2 · HR Round · MR Round · Final Status. The student
+details are read only. The last six are pill dropdowns with a tinted header: Resume Shortlisting
+offers Selected (green), Rejected (orange), On Hold (grey); the rounds and Final Status offer Yet to
+Schedule (grey), Scheduled (purple), Selected (green), Rejected (orange), Hold (yellow), No Show
+(dark). A choice saves at once. The page refreshes every 30 seconds so choices by others appear.
 Friendly states for `404` ("This link is not valid") and `410` ("This link has expired").
 
 ## States every page handles

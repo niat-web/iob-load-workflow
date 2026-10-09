@@ -210,6 +210,18 @@ export function ApplicationsSection({ deal }: { deal: CrmDealDetail }) {
           { label: "Pool Target Reached", value: deal.poolTargetReached ? "Yes" : "No" },
           { label: "Application Opens", value: formatDateTime(deal.applicationStartAt) },
           { label: "Application Closes", value: formatDateTime(deal.applicationEndAt) },
+          {
+            label: "Applied Pool Last Synced",
+            wide: Boolean(deal.applicationSyncError),
+            value: deal.applicationSyncError ? (
+              <span className="block font-normal text-amber-700">
+                {formatDateTime(deal.lastApplicationSyncAt)} · the last sync failed and runs again at the next 30-minute
+                check: {deal.applicationSyncError}
+              </span>
+            ) : (
+              formatDateTime(deal.lastApplicationSyncAt)
+            ),
+          },
         ]}
       />
       {deal.applicationStartAt && (

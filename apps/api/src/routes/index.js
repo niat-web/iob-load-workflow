@@ -116,13 +116,11 @@ export function interviewRoutes() {
     validate({ params: interviews.jobParams, body: interviews.interviewersSchema }),
     a(interviews.updateInterviewers),
   );
-  router.post("/jobs/:jobId/rows", validate({ params: interviews.jobParams, body: interviews.rowSchema }), a(interviews.addRow));
   router.patch(
     "/jobs/:jobId/rows/:rowId",
     validate({ params: interviews.rowParams, body: interviews.cellSchema }),
     a(interviews.updateCell),
   );
-  router.delete("/jobs/:jobId/rows/:rowId", validate({ params: interviews.rowParams }), a(interviews.deleteRow));
   router.post(
     "/jobs/:jobId/rows/:rowId/meet",
     validate({ params: interviews.rowParams, body: interviews.meetSchema }),
@@ -158,8 +156,13 @@ export function psmRoutes() {
   );
   router.get("/jobs/:jobId/candidates/:studentId/resume", validate({ params: psm.candidateParams }), a(psm.candidateResume));
   router.post("/jobs/:jobId/submit", validate(jobParams), a(psm.submitPool));
-  router.get("/jobs/:jobId/shared-columns", validate(jobParams), a(psm.sharedColumns));
-  router.patch("/jobs/:jobId/shared-columns", validate({ ...jobParams, body: psm.sharedColumnsSchema }), a(psm.updateSharedColumns));
+  router.patch("/jobs/:jobId/columns", validate({ ...jobParams, body: psm.psmColumnsSchema }), a(psm.updatePsmColumns));
+  router.get("/jobs/:jobId/applicants", validate({ ...jobParams, query: psm.applicantListSchema }), a(psm.listApplicants));
+  router.get(
+    "/jobs/:jobId/applicants/:studentId/resume",
+    validate({ params: psm.applicantParams }),
+    a(psm.applicantResume),
+  );
   return router;
 }
 
@@ -183,20 +186,11 @@ export function sharedRoutes() {
   const router = Router();
   router.use(publicLimiter);
   router.get("/profiles/:jobId", validate({ params: shared.jobParams }), a(shared.sharedProfiles));
-  router.post("/profiles/:jobId/rows", validate({ params: shared.jobParams, body: shared.rowSchema }), a(shared.addRow));
   router.patch(
     "/profiles/:jobId/rows/:rowId",
     validate({ params: shared.rowParams, body: shared.cellSchema }),
     a(shared.updateCell),
   );
-  router.delete("/profiles/:jobId/rows/:rowId", validate({ params: shared.rowParams }), a(shared.deleteRow));
-  router.post("/profiles/:jobId/columns", validate({ params: shared.jobParams, body: shared.columnSchema }), a(shared.addColumn));
-  router.patch(
-    "/profiles/:jobId/columns/:key",
-    validate({ params: shared.columnParams, body: shared.columnSchema }),
-    a(shared.renameColumn),
-  );
-  router.delete("/profiles/:jobId/columns/:key", validate({ params: shared.columnParams }), a(shared.deleteColumn));
   router.get("/profiles/:jobId/resumes/:ref", validate({ params: shared.resumeParams }), a(shared.sharedResume));
   return router;
 }

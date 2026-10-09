@@ -1,13 +1,11 @@
-import { ArrowLeft, ExternalLink, Lock, Rows3, Trash2, TriangleAlert, Video } from "lucide-react";
+import { ArrowLeft, ExternalLink, Lock, TriangleAlert, Video } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router";
 import { errorMessage } from "../api/client";
 import {
   useAddInterviewColumn,
-  useAddInterviewRow,
   useCreateMeet,
   useDeleteInterviewColumn,
-  useDeleteInterviewRow,
   useInterviewSheet,
   useRenameInterviewColumn,
   useUpdateInterviewCell,
@@ -21,10 +19,10 @@ import { InterviewersCard } from "../components/interviews/InterviewersCard";
 import { MeetDialog } from "../components/interviews/MeetDialog";
 import { LoadingSkeleton } from "../components/LoadingSkeleton";
 import { SearchInput } from "../components/SearchInput";
-import { AddColumnForm, ColumnHeader, EditableCell } from "../components/sheet/SheetCells";
+import { AddColumnForm, ColumnHeader, EditableCell, OptionCell, TextCell } from "../components/sheet/SheetCells";
 import { SummaryStrip } from "../components/SummaryStrip";
 import { useToast } from "../components/toast-context";
-import { Button, IconButton, buttonClass } from "../components/ui/Button";
+import { Button, buttonClass } from "../components/ui/Button";
 import { cardClass, linkClass } from "../components/ui/styles";
 import type { InterviewColumn, InterviewRow, InterviewSheet, MeetRequest } from "../types/api";
 import { cn } from "../utils/cn";
@@ -56,8 +54,6 @@ function RecordingCell({ value }: { value: string }) {
 function Sheet({ jobId, sheet, crmEmail }: { jobId: string; sheet: InterviewSheet; crmEmail: string }) {
   const toast = useToast();
   const updateCell = useUpdateInterviewCell(jobId);
-  const addRow = useAddInterviewRow(jobId);
-  const deleteRow = useDeleteInterviewRow(jobId);
   const addColumn = useAddInterviewColumn(jobId);
   const renameColumn = useRenameInterviewColumn(jobId);
   const deleteColumn = useDeleteInterviewColumn(jobId);
@@ -65,7 +61,7 @@ function Sheet({ jobId, sheet, crmEmail }: { jobId: string; sheet: InterviewShee
   const [search, setSearch] = useState("");
   const [savingCell, setSavingCell] = useState<string | null>(null);
   const [meetRow, setMeetRow] = useState<InterviewRow | null>(null);
-  const [confirm, setConfirm] = useState<{ kind: "row"; row: InterviewRow } | { kind: "column"; column: InterviewColumn } | null>(null);
+  const [confirmColumn, setConfirmColumn] = useState<InterviewColumn | null>(null);
 
   const failed = (fallback: string) => (err: unknown) => toast.error(errorMessage(err, fallback));
   const term = search.trim().toLowerCase();
@@ -74,8 +70,7 @@ function Sheet({ jobId, sheet, crmEmail }: { jobId: string; sheet: InterviewShee
       term ? sheet.rows.filter((row) => Object.values(row.values).some((value) => value.toLowerCase().includes(term))) : sheet.rows,
     [sheet.rows, term],
   );
-  const busy =
-    updateCell.isPending || addRow.isPending || deleteRow.isPending || addColumn.isPending || renameColumn.isPending || deleteColumn.isPending;
+  const busy = updateCell.isPending || addColumn.isPending || renameColumn.isPending || deleteColumn.isPending;
   const canMeet = sheet.meetEnabled && !sheet.meetProblem;
 
   const saveCell = (row: InterviewRow, column: InterviewColumn, value: string) => {
@@ -106,7 +101,7 @@ function Sheet({ jobId, sheet, crmEmail }: { jobId: string; sheet: InterviewShee
 
   const cell = (row: InterviewRow, column: InterviewColumn, index: number) => {
     const value = row.values[column.key] ?? "";
-    if (column.key === "resume") {
+    if (column.type === "resume") {
       return row.resumeRef ? (
         <a href={sharedResumeUrl(sheet.learningPortalJobId, row.resumeRef)} target="_blank" rel="noopener noreferrer" className={cn(linkClass, "px-2 py-1.5")}>
           View
@@ -117,6 +112,18 @@ function Sheet({ jobId, sheet, crmEmail }: { jobId: string; sheet: InterviewShee
       );
     }
     if (column.key === "recording") return <RecordingCell value={value} />;
+    if (column.type === "select") {
+      return (
+        <OptionCell
+          value={value}
+          options={column.options}
+          label={`${column.label}, row ${index + 1}`}
+          saving={savingCell === `${row.id}:${column.key}`}
+          onSave={(next) => saveCell(row, column, next)}
+        />
+      );
+    }
+    if (!column.editable) return <TextCell value={value} />;
     const editable = (
       <EditableCell
         value={value}
@@ -140,13 +147,6 @@ function Sheet({ jobId, sheet, crmEmail }: { jobId: string; sheet: InterviewShee
     <>
       <div className="flex flex-wrap items-center gap-2">
         <SearchInput value={search} onChange={setSearch} delay={0} placeholder="Search profiles..." label="Search profiles" className="w-full sm:w-72" />
-        <Button
-          onClick={() => addRow.mutate(undefined, { onSuccess: () => toast.success("Row added at the bottom"), onError: failed("The row could not be added.") })}
-          loading={addRow.isPending}
-          icon={<Rows3 className="size-4" aria-hidden />}
-        >
-          Add row
-        </Button>
         <AddColumnForm pending={addColumn.isPending} onAdd={(label) => addColumn.mutate(label, { onError: failed("The column could not be added.") })} />
         <span role="status" className="ml-auto text-xs text-muted">
           {busy ? "Saving…" : `All changes saved${sheet.updatedAt ? ` · last change ${formatDateTime(sheet.updatedAt)}` : ""}`}
@@ -181,14 +181,11 @@ function Sheet({ jobId, sheet, crmEmail }: { jobId: string; sheet: InterviewShee
                     <ColumnHeader
                       column={column}
                       onRename={(label) => renameColumn.mutate({ key: column.key, label }, { onError: failed("The column could not be renamed.") })}
-                      onDelete={() => setConfirm({ kind: "column", column })}
+                      onDelete={() => setConfirmColumn(column)}
                     />
                   </span>
                 </th>
               ))}
-              <th scope="col" className="w-12 border-b border-l border-line">
-                <span className="sr-only">Row actions</span>
-              </th>
             </tr>
           </thead>
           <tbody>
@@ -216,19 +213,12 @@ function Sheet({ jobId, sheet, crmEmail }: { jobId: string; sheet: InterviewShee
                     {cell(row, column, index)}
                   </td>
                 ))}
-                <td className="border-b border-l border-line px-1 py-1 text-center">
-                  {row.source === "ADDED" && (
-                    <IconButton label={`Delete row ${index + 1}`} onClick={() => setConfirm({ kind: "row", row })} className="size-8 text-muted hover:text-red-600">
-                      <Trash2 className="size-4" aria-hidden />
-                    </IconButton>
-                  )}
-                </td>
               </tr>
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={sheet.columns.length + 3} className="px-4 py-10 text-center text-sm text-muted">
-                  {term ? "No profiles match your search." : "No profiles yet. Use Add row to add one."}
+                <td colSpan={sheet.columns.length + 2} className="px-4 py-10 text-center text-sm text-muted">
+                  {term ? "No profiles match your search." : "No profiles yet."}
                 </td>
               </tr>
             )}
@@ -236,8 +226,9 @@ function Sheet({ jobId, sheet, crmEmail }: { jobId: string; sheet: InterviewShee
         </table>
       </div>
       <p className="text-xs text-muted">
-        Columns with a lock are only on this page. Rows and the other columns are the same as on the company&apos;s shared
-        profiles page. Click a cell to edit it: Enter saves, Shift+Enter adds a line, Esc cancels.
+        Columns with a lock are only on this page. The other columns are the company&apos;s shared profiles page: the
+        student details come from the applied pool, and the status dropdowns are the same choices the company sees.
+        Click a cell in a lock column to edit it: Enter saves, Shift+Enter adds a line, Esc cancels.
       </p>
 
       {meetRow && (
@@ -253,24 +244,19 @@ function Sheet({ jobId, sheet, crmEmail }: { jobId: string; sheet: InterviewShee
       )}
 
       <ConfirmDialog
-        open={confirm !== null}
-        title={confirm?.kind === "column" ? `Delete the column "${confirm.column.label}"?` : "Delete this row?"}
-        message={
-          confirm?.kind === "column"
-            ? confirm.column.internal
-              ? "Everything in this column is deleted."
-              : "Everything in this column is deleted, also on the company's shared profiles page."
-            : "This row is deleted here and on the company's shared profiles page."
-        }
+        open={confirmColumn !== null}
+        title={confirmColumn ? `Delete the column "${confirmColumn.label}"?` : ""}
+        message="Everything in this column is deleted."
         confirmLabel="Delete"
         confirmVariant="danger"
-        pending={deleteRow.isPending || deleteColumn.isPending}
-        onCancel={() => setConfirm(null)}
+        pending={deleteColumn.isPending}
+        onCancel={() => setConfirmColumn(null)}
         onConfirm={() => {
-          if (!confirm) return;
-          const done = { onSettled: () => setConfirm(null), onError: failed("It could not be deleted.") };
-          if (confirm.kind === "row") deleteRow.mutate(confirm.row.id, done);
-          else deleteColumn.mutate(confirm.column.key, done);
+          if (!confirmColumn) return;
+          deleteColumn.mutate(confirmColumn.key, {
+            onSettled: () => setConfirmColumn(null),
+            onError: failed("It could not be deleted."),
+          });
         }}
       />
     </>

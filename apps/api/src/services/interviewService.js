@@ -1,15 +1,6 @@
 import mongoose from "mongoose";
 import { config, missingIntegrationSettings } from "../config/env.js";
-import {
-  CandidateAnalysis,
-  CompanySettings,
-  InterviewMeet,
-  Job,
-  JobApplication,
-  JobEligibleStudent,
-  PublicLink,
-  SharedSheet,
-} from "../models/index.js";
+import { CandidateAnalysis, CompanySettings, InterviewMeet, Job, PublicLink, SharedSheet } from "../models/index.js";
 import { now } from "../utils/clock.js";
 import { randomToken } from "../utils/crypto.js";
 import { AppError, IntegrationError, badRequest, conflict, notFound } from "../utils/errors.js";
@@ -19,13 +10,7 @@ import { connectedOrganizer, googleConnectionProblem, meetAuthMode } from "./goo
 import { integrations } from "./integrations.js";
 import { sharedProfilesUrl } from "./publicLinkService.js";
 import { getSettings } from "./settingsService.js";
-import {
-  deleteSharedColumn,
-  ensureSheet,
-  renameSharedColumn,
-  sharedSheetView,
-  updateSharedCell,
-} from "./sharedSheetService.js";
+import { ensureSheet, sharedSheetView, updateSharedCell } from "./sharedSheetService.js";
 
 export const INTERVIEW_COLUMNS = [
   { key: "studentEmail", label: "Student Email" },
@@ -36,7 +21,6 @@ export const INTERVIEW_COLUMNS = [
 
 const INTERVIEW_KEYS = new Set(INTERVIEW_COLUMNS.map((column) => column.key));
 const INTERNAL_KEY = /^i_[A-Za-z0-9_-]{6,20}$/;
-const SHARED_CUSTOM_KEY = /^c_[A-Za-z0-9_-]{6,20}$/;
 const MAX_INTERNAL_COLUMNS = 30;
 export const MAX_INTERVIEWERS = 20;
 const MAX_GUESTS = 50;
@@ -95,7 +79,10 @@ export async function interviewCompanies() {
       { _id: { $in: jobIds } },
       { companyName: 1, companyKey: 1, jobRole: 1, companyLogoUrl: 1, submittedBy: 1, crmOwnerEmail: 1 },
     ).lean(),
-    SharedSheet.aggregate([{ $match: { jobId: { $in: jobIds } } }, { $project: { jobId: 1, rows: { $size: "$rows" } } }]),
+    SharedSheet.aggregate([
+      { $match: { jobId: { $in: jobIds } } },
+      { $project: { jobId: 1, rows: { $size: { $filter: { input: "$rows", cond: { $eq: ["$$this.source", "PSM"] } } } } } },
+    ]),
     InterviewMeet.aggregate([
       { $match: { jobId: { $in: jobIds }, meetUrl: { $ne: null } } },
       { $group: { _id: "$jobId", count: { $sum: 1 } } },
@@ -128,7 +115,7 @@ export async function interviewCompanies() {
         jobRole: job.jobRole ?? "",
         companyLogoUrl: job.companyLogoUrl ?? null,
         crmEmail: job.submittedBy ?? job.crmOwnerEmail ?? null,
-        url: sharedProfilesUrl(link.learningPortalJobId),
+        url: sharedProfilesUrl(link.learningPortalJobId, job.companyName),
         linkStatus: linkState(link),
         createdAt: iso(link.createdAt),
         expiresAt: iso(link.expiresAt),
@@ -171,25 +158,6 @@ export async function saveInterviewers(job, emails, actor) {
   return next;
 }
 
-async function studentEmailsByRef(job, rows) {
-  const refs = rows.filter((row) => row.source === "PSM" && row.ref).map((row) => row.ref);
-  if (!refs.length) return new Map();
-  const candidates = await CandidateAnalysis.find(
-    { jobId: job._id, publicRef: { $in: refs } },
-    { publicRef: 1, studentId: 1 },
-  ).lean();
-  const studentIds = candidates.map((candidate) => candidate.studentId);
-  const [eligible, applications] = await Promise.all([
-    JobEligibleStudent.find({ jobId: job._id, studentId: { $in: studentIds } }, { studentId: 1, email: 1 }).lean(),
-    JobApplication.find({ jobId: job._id, studentId: { $in: studentIds } }, { studentId: 1, email: 1 }).lean(),
-  ]);
-  const byStudent = new Map();
-  for (const student of [...eligible, ...applications]) if (student.email) byStudent.set(student.studentId, student.email);
-  return new Map(
-    candidates.filter((candidate) => byStudent.has(candidate.studentId)).map((candidate) => [candidate.publicRef, byStudent.get(candidate.studentId)]),
-  );
-}
-
 function meetView(meet) {
   if (!meet?.meetUrl) return null;
   return {
@@ -225,19 +193,20 @@ export async function interviewSheet(job, link) {
     meetSetupProblem(),
     displayOrganizer(),
   ]);
-  const storedRows = sheet?.rows ?? [];
-  const emails = await studentEmailsByRef(job, storedRows);
-  const rowsById = new Map(storedRows.map((row) => [String(row._id), row]));
+  const rowsById = new Map((sheet?.rows ?? []).map((row) => [String(row._id), row]));
   const meetsByRow = new Map(meets.map((meet) => [meet.rowId, meet]));
+  const internalColumn = (column, custom) => ({
+    key: column.key,
+    label: column.label,
+    type: "text",
+    options: [],
+    custom,
+    editable: column.editable !== false,
+    internal: true,
+  });
   const internalColumns = [
-    ...INTERVIEW_COLUMNS.map((column) => ({
-      key: column.key,
-      label: column.label,
-      custom: false,
-      editable: column.editable !== false,
-      internal: true,
-    })),
-    ...(sheet?.internalColumns ?? []).map((column) => ({ key: column.key, label: column.label, custom: true, editable: true, internal: true })),
+    ...INTERVIEW_COLUMNS.map((column) => internalColumn(column, false)),
+    ...(sheet?.internalColumns ?? []).map((column) => internalColumn(column, true)),
   ];
 
   return {
@@ -246,9 +215,9 @@ export async function interviewSheet(job, link) {
     companyName: job.companyName ?? "",
     jobRole: job.jobRole ?? "",
     companyLogoUrl: job.companyLogoUrl ?? null,
-    url: sharedProfilesUrl(link.learningPortalJobId),
+    url: sharedProfilesUrl(link.learningPortalJobId, job.companyName),
     linkStatus: linkState(link),
-    totalApplied: shared.totalApplied,
+    totalApplied: job.appliedCount ?? 0,
     interviewerEmails,
     meetEnabled: settings.interviews.googleMeet,
     meetProblem,
@@ -257,10 +226,10 @@ export async function interviewSheet(job, link) {
     rows: shared.rows.map((row) => {
       const stored = rowsById.get(row.id);
       const internal = stored?.internal ?? {};
-      const defaults = { studentEmail: (stored?.ref && emails.get(stored.ref)) || "" };
+      const defaults = { studentEmail: row.values.email ?? "" };
       return {
         ...row,
-        studentName: asText(stored?.values?.studentName),
+        studentName: asText(row.values.fullName),
         values: {
           ...row.values,
           ...Object.fromEntries(
@@ -299,7 +268,6 @@ export async function addInterviewColumn(job, label) {
 }
 
 export async function renameInterviewColumn(job, key, label) {
-  if (SHARED_CUSTOM_KEY.test(key)) return renameSharedColumn(job, key, label);
   if (!INTERNAL_KEY.test(key)) throw badRequest("Only added columns can be renamed");
   const result = await SharedSheet.updateOne(
     { jobId: job._id, "internalColumns.key": key },
@@ -309,7 +277,6 @@ export async function renameInterviewColumn(job, key, label) {
 }
 
 export async function deleteInterviewColumn(job, key) {
-  if (SHARED_CUSTOM_KEY.test(key)) return deleteSharedColumn(job, key);
   if (!INTERNAL_KEY.test(key)) throw badRequest("Only added columns can be deleted");
   const result = await SharedSheet.updateOne(
     { jobId: job._id, "internalColumns.key": key },

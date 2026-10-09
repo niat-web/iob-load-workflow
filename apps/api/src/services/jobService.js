@@ -192,6 +192,8 @@ export function toCrmDetail(job, publicLinkUrl = null) {
     applicationStartAt: iso(job.applicationStartAt),
     applicationEndAt: iso(job.applicationEndAt),
     poolTargetReached: Boolean(job.poolTargetReached),
+    lastApplicationSyncAt: iso(job.lastApplicationSyncAt),
+    applicationSyncError: job.applicationSyncError ?? null,
     reminders: { r10h: reminderInfo(job.reminders?.r10h), r20h: reminderInfo(job.reminders?.r20h) },
     timeline: (job.statusHistory ?? []).map((entry) => ({
       status: entry.status,
@@ -217,6 +219,8 @@ export function toPsmRow(job) {
     psmStatus: chips.psmStatus,
     crmShareStatus: chips.crmShareStatus,
     action: chips.action,
+    lastSyncedAt: iso(job.lastApplicationSyncAt),
+    syncError: job.applicationSyncError ?? null,
     updatedAt: iso(job.updatedAt),
   };
 }
@@ -237,6 +241,7 @@ export function toPsmDetail(job, { candidateCount, publicLinkUrl }) {
     submittedAt: iso(job.reviewSubmittedAt),
     reviewedBy: job.reviewedBy ?? null,
     publicLinkUrl,
+    psmColumns: job.psmColumns ?? [],
   };
 }
 

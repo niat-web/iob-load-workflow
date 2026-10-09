@@ -2,10 +2,22 @@ import "./setup.js";
 import { after, before, beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { JOB_STATUS, NOTIFICATION_TYPE } from "../src/config/statuses.js";
-import { CandidateAnalysis, CandidatePriorityHistory, Job, NotificationLog, Preference } from "../src/models/index.js";
+import { CandidateAnalysis, CandidatePriorityHistory, Job, NotificationLog } from "../src/models/index.js";
 import { integrations } from "../src/services/integrations.js";
+import { companySlug } from "../src/utils/helpers.js";
 import { runDueTasks } from "../src/workers/workflowWorker.js";
-import { XHR, advance, api, loginAs, resetDb, runToPsmReview, startTestDb, stopTestDb } from "./helpers.js";
+import {
+  XHR,
+  advance,
+  advanceAndRun,
+  api,
+  loginAs,
+  openApplicationWindow,
+  resetDb,
+  runToPsmReview,
+  startTestDb,
+  stopTestDb,
+} from "./helpers.js";
 
 describe("PSM review, public link and CRM notification", () => {
   let crm;
@@ -86,7 +98,7 @@ describe("PSM review, public link and CRM notification", () => {
     const submit = await psm.post(`/api/psm/jobs/${job._id}/submit`).set(XHR);
     assert.equal(submit.status, 200);
     const link = submit.body.publicLinkUrl;
-    assert.equal(link, `http://localhost:5173/shared/profiles/${job.learningPortalJobId}`);
+    assert.equal(link, `http://localhost:5173/shared/profiles/${companySlug(job.companyName)}/${job.learningPortalJobId}`);
     assert.equal(submit.body.job.isSubmitted, true);
     assert.equal(submit.body.job.reviewedBy, "psm.user@example.com");
 
@@ -120,61 +132,75 @@ describe("PSM review, public link and CRM notification", () => {
     assert.equal(psmRow.crmShareStatus.label, "Shared to CRM");
   });
 
-  test("the shared profiles page uses the job ID, shows only the PSM's columns and can be edited like a sheet", async () => {
+  test("the shared profiles page has the same columns for every company and only the status dropdowns can change", async () => {
     const submit = await psm.post(`/api/psm/jobs/${job._id}/submit`).set(XHR);
-    const jobId = submit.body.publicLinkUrl.split("/").pop();
+    const url = submit.body.publicLinkUrl;
+    assert.ok(url.includes(`/shared/profiles/${companySlug(job.companyName)}/`), "the company name is in the link");
+    const jobId = url.split("/").pop();
     assert.equal(jobId, job.learningPortalJobId);
     const base = `/api/shared/profiles/${jobId}`;
 
     const sheet = (await api().get(base)).body;
-    assert.equal(sheet.companyName, job.companyName);
     assert.deepEqual(
-      sheet.rows.map((row) => row.values.finalPriority),
-      sheet.rows.map((_, index) => `P${index + 1}`),
+      sheet.columns.map((column) => column.label),
+      [
+        "Full Name",
+        "Mobile Number",
+        "Email Id",
+        "Bachelors Course Name",
+        "Bachelors Department Name",
+        "Bachelors Year of Completion",
+        "Bachelors Percentage",
+        "Resume",
+        "Resume Shortlisting",
+        "TR Round 1",
+        "TR Round 2",
+        "HR Round",
+        "MR Round",
+        "Final Status",
+      ],
     );
-    const keys = sheet.columns.map((column) => column.key);
-    assert.ok(keys.includes("resume") && !keys.includes("psmRemarks") && !keys.includes("campus"), "default columns");
+    assert.deepEqual(
+      sheet.columns.filter((column) => column.editable).map((column) => column.key),
+      ["resumeShortlisting", "trRound1", "trRound2", "hrRound", "mrRound", "finalStatus"],
+    );
+    assert.deepEqual(sheet.columns.find((column) => column.key === "resumeShortlisting").options, ["Selected", "Rejected", "On Hold"]);
+    assert.deepEqual(
+      sheet.columns.find((column) => column.key === "finalStatus").options,
+      ["Yet to Schedule", "Scheduled", "Selected", "Rejected", "Hold", "No Show"],
+    );
+    assert.ok(!("totalApplied" in sheet), "no summary on the page");
+
+    const ranked = await CandidateAnalysis.find({ jobId: job._id }).sort({ finalRank: 1 }).lean();
+    assert.deepEqual(
+      sheet.rows.map((row) => row.values.fullName),
+      ranked.map((candidate) => candidate.studentName),
+      "rows follow the PSM's final priority",
+    );
+    const first = sheet.rows[0];
+    assert.ok(first.values.email.endsWith("@students.example.com"));
+    assert.equal(first.values.bachelorsCourse, "B.Tech");
+    assert.ok(first.values.bachelorsPercentage);
     const serialized = JSON.stringify(sheet);
-    for (const hidden of ["studentId", "psmRemarks", "email", "mobile", "resumeUrl"]) {
-      assert.ok(!serialized.includes(`"${hidden}"`), `${hidden} is not exposed`);
+    for (const hidden of ["studentId", "psmRemarks", "resumeUrl", "overallScore", "finalPriority", ranked[0].studentId]) {
+      assert.ok(!serialized.includes(hidden), `${hidden} is not exposed`);
     }
 
-    const picked = await psm
-      .patch(`/api/psm/jobs/${job._id}/shared-columns`)
-      .set(XHR)
-      .send({ columns: ["finalPriority", "studentName", "psmRemarks", "overallScore"] });
-    assert.equal(picked.status, 200);
-    assert.deepEqual(picked.body.selected, ["finalPriority", "studentName", "overallScore", "psmRemarks"]);
-    assert.deepEqual((await Preference.findById("sharedProfileColumns").lean()).value, picked.body.selected, "used for the next companies");
-    const narrowed = (await api().get(base)).body;
-    assert.deepEqual(narrowed.columns.map((column) => column.key), picked.body.selected);
-    assert.ok(narrowed.rows.every((row) => row.resumeRef === null), "no resume links when the column is hidden");
-    await psm.patch(`/api/psm/jobs/${job._id}/shared-columns`).set(XHR).send({ columns: keys });
+    const edit = (key, value) => api().patch(`${base}/rows/${first.id}`).set(XHR).send({ key, value });
+    assert.equal((await edit("trRound1", "Scheduled")).status, 204);
+    assert.equal((await edit("resumeShortlisting", "Selected")).status, 204);
+    assert.equal((await edit("trRound1", "Maybe")).status, 400, "only the listed options");
+    assert.equal((await edit("resumeShortlisting", "Scheduled")).status, 400);
+    assert.equal((await edit("fullName", "Someone else")).status, 400, "student details cannot be changed");
+    assert.equal((await edit("resume", "x")).status, 400);
+    assert.equal((await api().post(`${base}/rows`).set(XHR).send({ values: {} })).status, 404, "rows cannot be added");
+    assert.equal((await api().post(`${base}/columns`).set(XHR).send({ label: "Slot" })).status, 404, "columns cannot be added");
 
-    const first = sheet.rows[0];
-    assert.equal((await api().patch(`${base}/rows/${first.id}`).set(XHR).send({ key: "candidateStatus", value: "Shortlisted" })).status, 204);
-    assert.equal((await api().patch(`${base}/rows/${first.id}`).set(XHR).send({ key: "resume", value: "x" })).status, 400);
-    assert.equal((await api().patch(`${base}/rows/${first.id}`).set(XHR).send({ key: "psmRemarks", value: "x" })).status, 400, "hidden columns cannot be edited");
-
-    const column = (await api().post(`${base}/columns`).set(XHR).send({ label: "Interview slot" })).body.column;
-    assert.match(column.key, /^c_/);
-    assert.equal((await api().patch(`${base}/rows/${first.id}`).set(XHR).send({ key: column.key, value: "Mon 10 AM" })).status, 204);
-    assert.equal((await api().patch(`${base}/columns/${column.key}`).set(XHR).send({ label: "Slot" })).status, 204);
-    const added = (await api().post(`${base}/rows`).set(XHR).send({ values: { studentName: "Walk-in candidate", [column.key]: "Tue" } })).body.row;
-    assert.equal(added.source, "ADDED");
-
-    let current = (await api().get(base)).body;
-    assert.equal(current.rows[0].values.candidateStatus, "Shortlisted");
-    assert.equal(current.rows[0].values[column.key], "Mon 10 AM");
-    assert.equal(current.columns.find((item) => item.key === column.key).label, "Slot");
-    assert.equal(current.rows.at(-1).values.studentName, "Walk-in candidate");
-
-    assert.equal((await api().delete(`${base}/rows/${first.id}`).set(XHR)).status, 409, "PSM rows stay");
-    assert.equal((await api().delete(`${base}/rows/${added.id}`).set(XHR)).status, 204);
-    assert.equal((await api().delete(`${base}/columns/${column.key}`).set(XHR)).status, 204);
-    current = (await api().get(base)).body;
-    assert.equal(current.rows.length, sheet.rows.length);
-    assert.ok(!current.columns.some((item) => item.key === column.key));
+    const current = (await api().get(base)).body;
+    assert.equal(current.rows[0].values.trRound1, "Scheduled");
+    assert.equal(current.rows[0].values.resumeShortlisting, "Selected");
+    assert.equal(current.rows[0].values.finalStatus, "");
+    assert.equal((await edit("trRound1", "")).status, 204, "a choice can be cleared");
 
     const withResume = current.rows.find((row) => row.resumeRef);
     assert.equal((await api().get(`${base}/resumes/${withResume.resumeRef}`)).status, 200);
@@ -184,5 +210,43 @@ describe("PSM review, public link and CRM notification", () => {
     const expired = await api().get(base);
     assert.equal(expired.status, 410);
     assert.equal(expired.body.error.code, "LINK_EXPIRED");
+  });
+
+  test("the review shows the applicant's details, and the PSM picks which extra columns show for this deal", async () => {
+    assert.deepEqual((await psm.get(`/api/psm/jobs/${job._id}`)).body.psmColumns, []);
+    const candidate = (await psm.get(`/api/psm/jobs/${job._id}/candidates`)).body.items[0];
+    assert.equal(candidate.details.userId, candidate.studentId);
+    assert.equal(candidate.details.jobId, job.learningPortalJobId);
+    assert.equal(candidate.details.bachelorsCourse, "B.Tech");
+    assert.ok(candidate.details.email.endsWith("@students.example.com"));
+    assert.ok(candidate.details.appliedAt);
+
+    const columns = (body) => psm.patch(`/api/psm/jobs/${job._id}/columns`).set(XHR).send(body);
+    assert.equal((await columns({ columns: ["email", "nope"] })).status, 400);
+    const saved = await columns({ columns: ["email", "appliedAt"] });
+    assert.equal(saved.status, 200);
+    assert.deepEqual(saved.body.psmColumns, ["appliedAt", "email"]);
+    assert.deepEqual((await psm.get(`/api/psm/jobs/${job._id}`)).body.psmColumns, ["appliedAt", "email"]);
+    assert.equal((await crm.patch(`/api/psm/jobs/${job._id}/columns`).set(XHR).send({ columns: [] })).status, 403);
+  });
+
+  test("a deal shows on Candidate Pools while its window is open, with the applied pool synced every 30 minutes", async () => {
+    const open = await openApplicationWindow(crm, "12346");
+    await advanceAndRun({ hours: 5 });
+
+    const row = (await psm.get("/api/psm/jobs")).body.items.find((item) => item.id === String(open._id));
+    assert.ok(row, "the open deal is listed");
+    assert.equal(row.applicationWindow.label, "Open");
+    assert.equal(row.action, "VIEW_APPLICANTS");
+    assert.ok(row.lastSyncedAt);
+    assert.equal(row.syncError, null);
+
+    const applicants = (await psm.get(`/api/psm/jobs/${open._id}/applicants`)).body;
+    assert.equal(applicants.windowOpen, true);
+    assert.equal(applicants.pagination.total, (await Job.findById(open._id)).appliedCount);
+    assert.ok(applicants.items.length > 0);
+    const withResume = applicants.items.find((item) => item.hasResume);
+    assert.equal((await psm.get(`/api/psm/jobs/${open._id}/applicants/${withResume.studentId}/resume`)).status, 200);
+    assert.equal((await crm.get(`/api/psm/jobs/${open._id}/applicants`)).status, 403);
   });
 });

@@ -24,6 +24,7 @@ const EligiblePoolPage = lazy(() => pageLoaders.eligiblePool().then((m) => ({ de
 const SettingsPage = lazy(() => pageLoaders.settings().then((m) => ({ default: m.SettingsPage })));
 const PSMJobsPage = lazy(() => pageLoaders.psmJobs().then((m) => ({ default: m.PSMJobsPage })));
 const PSMReviewPage = lazy(() => pageLoaders.psmReview().then((m) => ({ default: m.PSMReviewPage })));
+const PSMApplicantsPage = lazy(() => pageLoaders.psmApplicants().then((m) => ({ default: m.PSMApplicantsPage })));
 const PrivacyPage = lazy(() => pageLoaders.privacy().then((m) => ({ default: m.PrivacyPage })));
 const JobUpdateFormPage = lazy(() => pageLoaders.jobUpdate().then((m) => ({ default: m.JobUpdateFormPage })));
 const SharedProfilesPage = lazy(() => pageLoaders.sharedProfiles().then((m) => ({ default: m.SharedProfilesPage })));
@@ -71,6 +72,7 @@ const router = createBrowserRouter([
     errorElement: <RouteErrorPage />,
     children: [
       { path: "/shared/profiles/:jobId", element: standalone(<SharedProfilesPage />) },
+      { path: "/shared/profiles/:company/:jobId", element: standalone(<SharedProfilesPage />) },
       { path: "/job-update/:jobId/:token", element: standalone(<JobUpdateFormPage />) },
       { path: "/privacy", element: standalone(<PrivacyPage />) },
       {
@@ -90,6 +92,7 @@ const router = createBrowserRouter([
           { path: "/settings/:section", element: internal(ALL_ROLES, <SettingsPage />) },
           { path: "/psm", element: internal(PSM_ROLES, <PSMJobsPage />) },
           { path: "/psm/jobs/:jobId/review", element: internal(PSM_ROLES, <PSMReviewPage />) },
+          { path: "/psm/jobs/:jobId/applicants", element: internal(PSM_ROLES, <PSMApplicantsPage />) },
           { path: "*", element: <NotFoundPage /> },
         ],
       },

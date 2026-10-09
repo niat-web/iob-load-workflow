@@ -117,9 +117,13 @@ always returned in `redirectTo`). ADMIN may open both `/crm` and `/psm`.
 Body:
 
 ```json
-{ "dealId": "1234567890", "flowMode": "AUTOMATIC", "expectedPoolCount": 70,
+{ "dealId": "1234567890", "flowMode": "AUTOMATIC", "expectedPoolCount": 70, "windowHours": 21,
   "crmOwnerId": "1000001", "profilingPocId": "1000002", "iseId": "1000003" }
 ```
+
+`windowHours` (1 to 240, optional) is how many hours after the job is prepared it closes on the
+Learning Portal; without it the admin's `timing.applicationWindowHours` is used. The form sends it,
+starting at `GET /api/crm/controls` → `applicationWindowHours`.
 
 `flowMode` (`AUTOMATIC` or `STEP_BY_STEP`) must be one of the flows the admin lets CRMs choose
 (`GET /api/crm/controls` → `flow.options`), otherwise `400`. Without it, or when CRMs are shown no
@@ -143,13 +147,15 @@ through the deal webhook).
 `{ owners: HubspotOwner[], defaultOwnerId: string | null }`. The list comes from the HubSpot owner
 map (`HUBSPOT_OWNER_MAP_JSON` or the git-ignored `apps/api/src/data/hubspotOwnerMap.json`), sorted by name.
 `defaultOwnerId` is the signed-in user's HubSpot owner (linked on the account, or matched by email);
-the form preselects it for CRM owner, Profiling POC and ISE.
+the form preselects it for the CRM owner, and the Profiling POC and ISE follow the CRM owner unless
+changed.
 
 ### `GET /api/crm/controls`
 
-`{ flow: { options: FlowMode[], defaultMode, approvalSteps: [{ gate, label }] }, reminderEmails, aiCalls }`:
-the flows CRMs may pick (empty = no choice shown), the flow used when they do not pick, the steps a
-Step by step deal stops at, and whether the Boost page actions are on.
+`{ flow: { options: FlowMode[], defaultMode, approvalSteps: [{ gate, label }] }, reminderEmails, aiCalls,
+checkpoints, applicationWindowHours }`: the flows CRMs may pick (empty = no choice shown), the flow used
+when they do not pick, the steps a Step by step deal stops at, whether the Boost page actions are on,
+the admin's checkpoint switches, and the hours the form's Deadline field starts at.
 
 ### Deal reminder switches (`CRM` and `ADMIN`)
 
@@ -399,10 +405,11 @@ All three return `409 NOT_WAITING` when the deal is not waiting at that gate.
   `meetLink`, `meetTime`, `recording`, added `i_` columns), `interviewerEmails`, `meetEnabled`,
   `meetProblem` and per row `studentName` and `meet` (event details, guests, recording state).
 - `PATCH /jobs/:jobId/interviewers` `{ emails }` saves the company's interviewer emails (max 20).
-- `POST /jobs/:jobId/rows`, `PATCH /jobs/:jobId/rows/:rowId` `{ key, value }`, `DELETE /jobs/:jobId/rows/:rowId`:
-  same rules as the shared sheet; internal keys are stored only for this page (`recording` is read only).
+- `PATCH /jobs/:jobId/rows/:rowId` `{ key, value }`: the six shared status columns follow the shared
+  sheet's rules; internal keys are stored only for this page (`recording` is read only). Rows cannot be
+  added or deleted.
 - `POST /jobs/:jobId/columns` `{ label }` adds an internal column; `PATCH` / `DELETE /jobs/:jobId/columns/:key`
-  rename or delete internal (`i_`) or shared (`c_`) added columns.
+  rename or delete internal (`i_`) added columns.
 - `POST /jobs/:jobId/rows/:rowId/meet` `{ eventName, description, startAt (ISO), durationMinutes (15-480),
   timeZone, studentEmail, interviewerEmails[], otherEmails[], saveInterviewers }` → `{ meet, values }`.
   Creates the Calendar event with a Meet link and invites (or updates the row's existing event), then
@@ -429,10 +436,10 @@ Query: `search`, `company`, `psmStatus` (`READY | UNDER_REVIEW | COMPLETED`),
 `priorityStatus` (`PENDING | GENERATED`), `aiStatus` (`PENDING | IN_PROGRESS | COMPLETED | FAILED`),
 `page`, `limit`, `sort` (`updatedAt:desc` default).
 
-Only jobs whose application window has closed are listed.
+Jobs are listed from the moment their application window opens.
 
 ```ts
-type PsmAction = "OPEN_REVIEW" | "CONTINUE_REVIEW" | "VIEW_POOL" | "NONE";
+type PsmAction = "OPEN_REVIEW" | "CONTINUE_REVIEW" | "VIEW_POOL" | "VIEW_APPLICANTS" | "NONE";
 type PsmJobRow = {
   id: string;
   hubspotDealId: string;
@@ -445,10 +452,28 @@ type PsmJobRow = {
   priorityStatus: Chip;      // Pending (gray) / Priority Generated (purple)
   psmStatus: Chip;           // Not Ready (gray) / Ready for Review (blue) / Under Review (orange) / Completed (green)
   crmShareStatus: Chip;      // CRM Pending (gray) / Link Generated (purple) / Shared to CRM (green) / Failed (red)
-  action: PsmAction;         // NONE while AI analysis is still running
+  action: PsmAction;         // VIEW_APPLICANTS until the review is ready
+  lastSyncedAt: string | null;  // last applied pool refresh from BigQuery
+  syncError: string | null;     // why the last refresh failed, cleared by the next good one
   updatedAt: string;
 };
 ```
+
+### `GET /api/psm/jobs/:jobId/applicants`
+
+Query: `search` (name, user ID or email), `page`, `limit`. The students who have applied so far,
+newest first, from the applied pool refreshed every 30 minutes.
+
+```ts
+type PsmApplicantsResponse = Paginated<{
+  studentId: string; studentName: string; product: string | null; campus: string | null;
+  batch: string | null; email: string | null; mobile: string | null; appliedAt: string | null;
+  hasResume: boolean;
+}> & { appliedCount: number; windowOpen: boolean; applicationEndAt: string | null;
+       lastSyncedAt: string | null; syncError: string | null };
+```
+
+Resume: `GET /api/psm/jobs/:jobId/applicants/:studentId/resume`.
 
 ### `GET /api/psm/jobs/filters`
 
@@ -472,8 +497,18 @@ type PsmJobDetail = PsmJobRow & {
   submittedAt: string | null;
   reviewedBy: string | null;
   publicLinkUrl: string | null;
+  psmColumns: string[];           // extra review columns shown for this deal
 };
 ```
+
+### `PATCH /api/psm/jobs/:jobId/columns`
+
+Body `{ columns: string[] }` from `interest`, `appliedAt`, `userId`, `jobId`, `product`, `gender`,
+`name`, `phone`, `email`, `district`, `state`, `highestEducation`, `highestEducationInstitute`,
+`mastersCourse`, `mastersDepartment`, `mastersYear`, `mastersPercentage`, `bachelorsCourse`,
+`bachelorsDepartment`, `bachelorsYear`, `bachelorsPercentage`, `intermediatePercentage`,
+`tenthPercentage`, `resumeLink` → `{ psmColumns }`. Saved for this deal; it only changes the PSM
+review page.
 
 ### `POST /api/psm/jobs/:jobId/start-review`
 
@@ -508,6 +543,12 @@ type Candidate = {
   candidateStatus: CandidateStatus | null;
   psmRemarks: string;
   analysisStatus: "COMPLETED" | "FAILED" | "NO_RESUME" | "PENDING";
+  details: {                        // from the applied pool, for the extra columns
+    appliedAt, userId, jobId, product, gender, name, phone, email, district, state,
+    highestEducation, highestEducationInstitute, mastersCourse, mastersDepartment, mastersYear,
+    mastersPercentage, bachelorsCourse, bachelorsDepartment, bachelorsYear, bachelorsPercentage,
+    intermediatePercentage, tenthPercentage, resumeLink   // each string | null
+  };
 };
 ```
 
@@ -530,12 +571,8 @@ Body (any subset):
 ### `POST /api/psm/jobs/:jobId/submit`
 
 Freezes the review, generates the public link and triggers the CRM email.
-`200` → `{ "job": PsmJobDetail, "publicLinkUrl": "https://.../shared/profiles/<learningPortalJobId>" }`.
-
-### `GET` / `PATCH /api/psm/jobs/:jobId/shared-columns`
-
-`GET` → `{ columns: [{ key, label }], selected: string[] }`. `PATCH { columns: string[] }` saves the
-columns shown on the company page for this job and makes them the default for the next jobs.
+`200` → `{ "job": PsmJobDetail, "publicLinkUrl": "https://.../shared/profiles/<company_name>/<learningPortalJobId>" }`.
+`<company_name>` is the company name in lower case with underscores (for example `acme_robotics`).
 Submitting twice returns the same result (idempotent).
 
 ---
@@ -544,18 +581,19 @@ Submitting twice returns the same result (idempotent).
 
 ### Shared profiles (`/api/shared/profiles/:jobId`, no sign-in)
 
-`:jobId` is the Learning Portal job ID. Anyone with the link can read and edit.
+`:jobId` is the Learning Portal job ID (the web page also accepts `/shared/profiles/<company_name>/<jobId>`).
+Anyone with the link can read it and set the status dropdowns.
 
-- `GET` → `{ companyName, jobRole, jobId, totalApplied, columns: [{ key, label, custom, editable }],
-  rows: [{ id, source: "PSM" | "ADDED", resumeRef, values: Record<key, string> }], updatedAt }`. Only
-  the columns the PSM picked (plus added columns) are sent; student IDs, emails, mobiles and resume
-  storage URLs never are.
-- `PATCH /rows/:rowId` `{ key, value }` edits a cell (`204`). The resume column and hidden columns
-  cannot be edited (`400`).
-- `POST /rows` `{ values? }` adds a row (`201 { row }`); `DELETE /rows/:rowId` deletes a row added on the
-  page (`409` for shortlisted rows).
-- `POST /columns` `{ label }` adds a column (`201 { column }`); `PATCH /columns/:key` `{ label }` renames
-  it; `DELETE /columns/:key` deletes it and its values. Only added columns can be renamed or deleted.
+- `GET` → `{ companyName, jobRole, columns: [{ key, label, type: "text" | "resume" | "select", options,
+  custom, editable }], rows: [{ id, resumeRef, values: Record<key, string> }], updatedAt }`. The columns
+  are the same for every company: `fullName`, `mobile`, `email`, `bachelorsCourse`,
+  `bachelorsDepartment`, `bachelorsYear`, `bachelorsPercentage` (read only, from the applied pool),
+  `resume`, and the editable selects `resumeShortlisting` (Selected, Rejected, On Hold), `trRound1`,
+  `trRound2`, `hrRound`, `mrRound`, `finalStatus` (Yet to Schedule, Scheduled, Selected, Rejected,
+  Hold, No Show). Rows are the PSM's candidates in final priority order. Student IDs, scores, remarks
+  and resume storage URLs are never sent.
+- `PATCH /rows/:rowId` `{ key, value }` sets one of the six selects to one of its options, or `""` to
+  clear it (`204`). Any other key or value is `400`. Rows and columns cannot be added or removed.
 - `GET /resumes/:ref` streams a shortlisted profile's resume.
 - `404 NOT_FOUND` for unknown or deactivated links, `410 LINK_EXPIRED` after 30 days.
 

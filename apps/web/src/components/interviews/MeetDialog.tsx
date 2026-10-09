@@ -59,7 +59,7 @@ export function MeetDialog({ sheet, row, crmEmail, pending, error, onSubmit, onC
   const id = useId();
   const panelRef = useRef<HTMLDivElement>(null);
   const meet = row.meet;
-  const studentName = row.studentName || row.values.studentName || "";
+  const studentName = row.studentName || row.values.fullName || "";
   const [eventName, setEventName] = useState(
     meet?.eventName || `${sheet.companyName} interview${studentName ? ` – ${studentName}` : ""}`,
   );

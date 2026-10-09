@@ -1,12 +1,15 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 import type {
-  SharedColumnChoice,
   Candidate,
+  CandidateExtraColumn,
   CandidatePatch,
   CandidatePatchResponse,
   CandidatesQuery,
   Paginated,
+  PsmApplicantsQuery,
+  PsmApplicantsResponse,
+  PsmColumnsResponse,
   PsmJobDetail,
   PsmJobFilters,
   PsmJobResponse,
@@ -16,6 +19,8 @@ import type {
 } from "../types/api";
 import { api, apiUrl, seg } from "./client";
 
+const APPLICANTS_POLL_MS = 60_000;
+
 export const psmKeys = {
   all: ["psm"] as const,
   jobs: () => [...psmKeys.all, "jobs"] as const,
@@ -24,23 +29,33 @@ export const psmKeys = {
   job: (jobId: string) => [...psmKeys.all, "job", jobId] as const,
   candidates: (jobId: string) => [...psmKeys.job(jobId), "candidates"] as const,
   candidateList: (jobId: string, query: CandidatesQuery) => [...psmKeys.candidates(jobId), query] as const,
-  sharedColumns: (jobId: string) => [...psmKeys.job(jobId), "shared-columns"] as const,
+  applicants: (jobId: string, query: PsmApplicantsQuery) => [...psmKeys.job(jobId), "applicants", query] as const,
 };
 
-export function useSharedColumns(jobId: string) {
-  return useQuery({
-    queryKey: psmKeys.sharedColumns(jobId),
-    queryFn: ({ signal }) => api.get<SharedColumnChoice>(`/psm/jobs/${seg(jobId)}/shared-columns`, undefined, signal),
+export function useSavePsmColumns(jobId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (columns: CandidateExtraColumn[]) =>
+      api.patch<PsmColumnsResponse>(`/psm/jobs/${seg(jobId)}/columns`, { columns }),
+    onSuccess: ({ psmColumns }) => {
+      queryClient.setQueryData<PsmJobDetail>(psmKeys.job(jobId), (job) => (job ? { ...job, psmColumns } : job));
+    },
   });
 }
 
-export function useSaveSharedColumns(jobId: string) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (columns: string[]) =>
-      api.patch<SharedColumnChoice>(`/psm/jobs/${seg(jobId)}/shared-columns`, { columns }),
-    onSuccess: (result) => queryClient.setQueryData(psmKeys.sharedColumns(jobId), result),
+export function useApplicants(jobId: string, query: PsmApplicantsQuery) {
+  return useQuery({
+    queryKey: psmKeys.applicants(jobId, query),
+    queryFn: ({ signal }) =>
+      api.get<PsmApplicantsResponse>(`/psm/jobs/${seg(jobId)}/applicants`, { ...query }, signal),
+    placeholderData: keepPreviousData,
+    refetchInterval: (q) => (q.state.data?.windowOpen ? APPLICANTS_POLL_MS : false),
+    refetchOnWindowFocus: true,
   });
+}
+
+export function applicantResumeUrl(jobId: string, studentId: string): string {
+  return apiUrl(`/psm/jobs/${seg(jobId)}/applicants/${seg(studentId)}/resume`);
 }
 
 export function fetchPsmJobs(query: PsmJobsQuery, signal?: AbortSignal) {
@@ -81,6 +96,8 @@ export function usePsmJobs(query: PsmJobsQuery) {
     queryFn: ({ signal }) => fetchPsmJobs(query, signal),
     placeholderData: keepPreviousData,
     refetchOnWindowFocus: "always",
+    refetchInterval: (q) =>
+      q.state.data?.items.some((row) => row.applicationWindow.key === "OPEN") ? APPLICANTS_POLL_MS : false,
   });
 }
 

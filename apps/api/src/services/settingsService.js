@@ -163,5 +163,6 @@ export function crmControls(settings) {
     reminderEmails: settings.studentEmails.boostReminder,
     aiCalls: settings.aiCalls.enabled,
     checkpoints: settings.checkpoints,
+    applicationWindowHours: settings.timing.applicationWindowHours,
   };
 }

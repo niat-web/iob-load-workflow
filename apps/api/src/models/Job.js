@@ -114,11 +114,15 @@ const jobSchema = new mongoose.Schema(
     poolTargetReached: { type: Boolean, default: false },
     poolTargetReachedAt: { type: Date, default: null },
 
+    windowHours: { type: Number, default: null },
     applicationStartAt: { type: Date, default: null },
     applicationEndAt: { type: Date, default: null },
     learningPortalDeadline: { type: Date, default: null },
     pendingUpdate: { type: mongoose.Schema.Types.Mixed, default: null },
     lastApplicationSyncAt: { type: Date, default: null },
+    applicationSyncError: { type: String, default: null },
+    applicationSyncFailedAt: { type: Date, default: null },
+    psmColumns: { type: [String], default: undefined },
     reminders: {
       r10h: { type: reminderSchema, default: null },
       r20h: { type: reminderSchema, default: null },

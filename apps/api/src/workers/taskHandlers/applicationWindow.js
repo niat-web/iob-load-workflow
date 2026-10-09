@@ -25,6 +25,10 @@ async function applicationCountSync({ task, job }) {
     }
   } catch (error) {
     logger.warn({ err: error, jobId: String(job._id) }, "Applied pool sync failed; it runs again at the next interval");
+    await Job.updateOne(
+      { _id: job._id },
+      { $set: { applicationSyncError: String(error?.message ?? error).slice(0, 300), applicationSyncFailedAt: now() } },
+    );
   }
   await enqueueTask({
     jobId: job._id,
