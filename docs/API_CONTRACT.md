@@ -182,13 +182,35 @@ company setting are on.
 ### Admin users (`ADMIN` only)
 
 - `GET /api/admin/users` → `{ users: AdminUser[] }` where
-  `AdminUser = { email, name, role, isActive, hubspotOwner: HubspotOwner | null, lastLoginAt, createdAt }`.
-- `POST /api/admin/users` body `{ email, name?, role, hubspotOwnerId? }` → `201 { user }`. Without
+  `AdminUser = { email, name, role, products, isActive, hubspotOwner: HubspotOwner | null, lastLoginAt, createdAt }`.
+  `role` is `CRM`, `PSM`, `ADMIN` or `POOL_MANAGER`; `products` (`NIAT`, `Academy`) is only set for Pool Managers.
+- `POST /api/admin/users` body `{ email, name?, role, hubspotOwnerId?, products? }` → `201 { user }`. A
+  `POOL_MANAGER` needs at least one product (`400` otherwise). Without
   `hubspotOwnerId` the owner is matched by email; without `name` the owner name is used.
   `409 USER_EXISTS`, `400` for an unknown owner or an email outside `ALLOWED_EMAIL_DOMAINS`.
-- `PATCH /api/admin/users/:email` body `{ name?, role?, isActive?, hubspotOwnerId?: string | null }` →
+- `PATCH /api/admin/users/:email` body `{ name?, role?, isActive?, hubspotOwnerId?: string | null, products? }` →
   `{ user }`. An admin cannot remove their own admin role or deactivate themselves
   (`409 SELF_LOCKOUT`). Every add and change is audited (`USER_ADDED`, `USER_UPDATED`).
+
+### Eligible Pool (`ADMIN` and `POOL_MANAGER`)
+
+`GET /api/admin/eligible-pool`, `GET /summary`, `POST /`, `PATCH /:studentId`, `DELETE /:studentId`.
+For a Pool Manager every call only covers students of their products: other students are not listed,
+`PATCH` / `DELETE` answer `404` for them, and a product outside theirs is `403`. A new student gets
+their product when they have only one. The summary adds `allowedProducts` and has no sync details.
+`POST /sync` (BigQuery) is `ADMIN` only. Every add, edit (with old → new values) and delete is audited.
+
+### Audit log (`ADMIN` only)
+
+- `GET /api/admin/audit-logs?search&actor&action&from&to&page&limit` → paginated
+  `{ id, at, actor: { email, name, role, roleLabel }, action, label, text, entityType, entityId,
+  deal: { jobId, hubspotDealId, companyName, jobRole, learningPortalJobId, deleted } | null, metadata, ip }`,
+  newest first. `actor` and `action` take one or more values joined with `|` (`system` for steps the
+  app ran on its own); `from` / `to` are `YYYY-MM-DD` days (IST); `search` matches deal ID, company,
+  role, Learning Portal job ID, student, email and action. `text` is one plain line, for example
+  "Job access given to 1,240 students for job d33c4ece (12 refused by the portal)".
+- `GET /api/admin/audit-logs/filters` → `{ actors: [{ value, label }], actions: [{ value, label }] }`.
+- Records are kept forever and cannot be changed or deleted through the API.
 
 ### `GET /api/crm/deals`
 

@@ -94,6 +94,7 @@ export async function resolveUser({ email, name, picture }) {
 
 export function homeFor(role) {
   if (role === "PSM") return "/psm";
+  if (role === "POOL_MANAGER") return "/admin/eligible-pool";
   if (role === "ADMIN") return config.auth.adminHome;
   return "/crm";
 }
@@ -103,6 +104,7 @@ export function serializeUser(user) {
     email: user.email,
     name: user.name || user.email.split("@")[0],
     role: user.role,
+    products: user.role === "POOL_MANAGER" ? (user.products ?? []) : [],
     picture: user.picture ?? null,
     hubspotOwner: hubspotOwnerForUser(user),
   };

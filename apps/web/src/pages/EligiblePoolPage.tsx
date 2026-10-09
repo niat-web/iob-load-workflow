@@ -3,6 +3,7 @@ import { FilterX, GraduationCap, Pencil, SearchX, Trash2, UserPlus } from "lucid
 import { useMemo, useState } from "react";
 import { errorMessage } from "../api/client";
 import { useDeletePoolStudent, useEligiblePool, useEligiblePoolSummary } from "../api/admin";
+import { useAuth } from "../auth/AuthContext";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { DataTable, type TableSort } from "../components/DataTable";
 import { EmptyState } from "../components/EmptyState";
@@ -14,7 +15,7 @@ import { StatusBadge } from "../components/StatusBadge";
 import { useToast } from "../components/toast-context";
 import { Button, IconButton } from "../components/ui/Button";
 import { useClampPage, useUrlFilters } from "../hooks/useUrlFilters";
-import { ELIGIBILITY_STATUSES, type EligiblePoolQuery, type EligiblePoolStudent } from "../types/api";
+import { EDITABLE_PRODUCTS, ELIGIBILITY_STATUSES, type EligiblePoolQuery, type EligiblePoolStudent } from "../types/api";
 import { formatNumber } from "../utils/format";
 import { productTone, statusTone } from "../utils/poolTones";
 import { DEFAULT_PAGE_SIZE, splitFilterValues } from "../utils/pagination";
@@ -127,6 +128,10 @@ export function EligiblePoolPage() {
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const toast = useToast();
   const summary = useEligiblePoolSummary();
+  const { state } = useAuth();
+  const currentUser = state.status === "authenticated" ? state.user : null;
+  const poolManager = currentUser?.role === "POOL_MANAGER";
+  const allowedProducts = summary.data?.allowedProducts ?? (poolManager ? (currentUser?.products ?? []) : EDITABLE_PRODUCTS);
   const remove = useDeletePoolStudent();
   const { reset: resetRemove } = remove;
   const [editor, setEditor] = useState<{ student: EligiblePoolStudent | null } | null>(null);
@@ -268,7 +273,11 @@ export function EligiblePoolPage() {
             <EmptyState
               icon={<GraduationCap strokeWidth={1.6} aria-hidden />}
               message="The eligible pool is empty."
-              description="Add students here, or sync them from BigQuery under Settings → Config."
+              description={
+                poolManager
+                  ? `Add ${allowedProducts.join(" and ")} students here with Add student.`
+                  : "Add students here, or sync them from BigQuery under Settings → Config."
+              }
             />
           )
         }
@@ -287,7 +296,12 @@ export function EligiblePoolPage() {
         }
       />
 
-      <PoolStudentDialog open={editor !== null} student={editor?.student ?? null} onClose={() => setEditor(null)} />
+      <PoolStudentDialog
+        open={editor !== null}
+        student={editor?.student ?? null}
+        products={allowedProducts}
+        onClose={() => setEditor(null)}
+      />
       <ConfirmDialog
         open={deleting !== null}
         title="Delete this student?"

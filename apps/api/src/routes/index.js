@@ -185,24 +185,34 @@ export function sharedRoutes() {
   return router;
 }
 
+function eligiblePoolRoutes() {
+  const router = Router();
+  router.use(requireRole("POOL_MANAGER"));
+  router.get("/", validate({ query: admin.poolQuerySchema }), a(admin.eligiblePool));
+  router.get("/summary", a(admin.eligiblePoolSummary));
+  router.post("/sync", requireRole("ADMIN"), a(admin.syncEligiblePool));
+  router.post("/", validate({ body: admin.poolStudentCreateSchema }), a(admin.addPoolStudent));
+  router.patch(
+    "/:studentId",
+    validate({ params: admin.poolStudentParams, body: admin.poolStudentUpdateSchema }),
+    a(admin.editPoolStudent),
+  );
+  router.delete("/:studentId", validate({ params: admin.poolStudentParams }), a(admin.removePoolStudent));
+  return router;
+}
+
 export function adminRoutes() {
   const router = Router();
-  router.use(requireAuth, requireRole("ADMIN"));
+  router.use(requireAuth);
+  router.use("/eligible-pool", eligiblePoolRoutes());
+  router.use(requireRole("ADMIN"));
   router.get("/settings", a(admin.appSettings));
+  router.get("/audit-logs", validate({ query: admin.auditQuerySchema }), a(admin.auditLogs));
+  router.get("/audit-logs/filters", a(admin.auditLogFilterOptions));
   router.patch("/settings", validate({ body: admin.settingsPatchSchema }), a(admin.saveAppSettings));
   router.get("/users", a(admin.listUsers));
   router.post("/users", validate({ body: admin.createUserSchema }), a(admin.createUser));
   router.patch("/users/:email", validate({ params: admin.userParams, body: admin.updateUserSchema }), a(admin.updateUser));
-  router.get("/eligible-pool", validate({ query: admin.poolQuerySchema }), a(admin.eligiblePool));
-  router.get("/eligible-pool/summary", a(admin.eligiblePoolSummary));
-  router.post("/eligible-pool/sync", a(admin.syncEligiblePool));
-  router.post("/eligible-pool", validate({ body: admin.poolStudentCreateSchema }), a(admin.addPoolStudent));
-  router.patch(
-    "/eligible-pool/:studentId",
-    validate({ params: admin.poolStudentParams, body: admin.poolStudentUpdateSchema }),
-    a(admin.editPoolStudent),
-  );
-  router.delete("/eligible-pool/:studentId", validate({ params: admin.poolStudentParams }), a(admin.removePoolStudent));
   router.get("/bigquery/datasets", a(admin.bigQueryDatasets));
   router.get("/bigquery/datasets/:dataset/tables", validate({ params: admin.datasetParams }), a(admin.bigQueryTables));
   router.get(

@@ -7,6 +7,7 @@ import { applySubmittedInputs, mapDeal, missingRequiredFields } from "../../serv
 import { latestSnapshot, saveSnapshot } from "../../services/dealSnapshotService.js";
 import { companyLogoFor, usableLogo } from "../../services/companyLogoService.js";
 import { findEligibleStudents } from "../../services/eligibilityService.js";
+import { productGroupsForPlans } from "../../services/eligiblePoolService.js";
 import { getSettings } from "../../services/settingsService.js";
 import { integrations } from "../../services/integrations.js";
 import { companyJdCount, transitionJob } from "../../services/jobService.js";
@@ -64,6 +65,18 @@ async function fetchDeal({ job }) {
   await saveSnapshot(job, mapped, bundle.deal.properties, "INITIAL", { company: bundle.company, owner: bundle.owner });
   await Job.updateOne({ _id: job._id }, { $set: { ...pick(mapped), companyKey } });
   await transitionJob(job._id, S.DEAL_FETCHED, { from: S.FETCHING_DEAL });
+  await audit({
+    action: AUDIT.DEAL_FETCHED,
+    entityId: job._id,
+    metadata: {
+      hubspotDealId: job.hubspotDealId,
+      companyName: mapped.companyName ?? null,
+      jobRole: mapped.jobRole ?? null,
+      fields: Object.keys(bundle.deal.properties ?? {}).length,
+      jdCount,
+      logo: Boolean(companyLogoUrl),
+    },
+  });
   await proceed(job, GATE.DEAL_DETAILS, TASK_TYPE.CREATE_JOB);
 }
 
@@ -163,6 +176,11 @@ async function identifyEligible({ job, heartbeat }) {
   await transitionJob(job._id, S.ELIGIBLE_STUDENTS_IDENTIFIED, {
     from: S.ELIGIBILITY_PROCESSING,
     set: { eligibleCount },
+  });
+  await audit({
+    action: AUDIT.ELIGIBLE_IDENTIFIED,
+    entityId: job._id,
+    metadata: { eligibleCount, products: productGroupsForPlans(current.enrollPlans ?? []).join(",") },
   });
   await proceed(job, GATE.ELIGIBLE_STUDENTS, TASK_TYPE.GRANT_ACCESS);
 }
@@ -285,6 +303,12 @@ async function sendInitialNotifications({ job, heartbeat }) {
 
   await audit({ action: AUDIT.INITIAL_EMAIL_SENT, entityId: job._id, metadata: totals });
   await transitionJob(job._id, S.APPLICATIONS_OPEN, { from: S.INITIAL_NOTIFICATION_SENDING });
+  const opened = await Job.findById(job._id, { applicationEndAt: 1 }).lean();
+  await audit({
+    action: AUDIT.APPLICATIONS_OPENED,
+    entityId: job._id,
+    metadata: { closesAt: opened?.applicationEndAt ? new Date(opened.applicationEndAt).toISOString() : null },
+  });
 }
 
 export const dealProcessingHandlers = {

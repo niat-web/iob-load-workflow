@@ -8,6 +8,7 @@ import {
   EDITABLE_PRODUCTS,
   ELIGIBILITY_STATUSES,
   type EligiblePoolStudent,
+  type PoolProduct,
   type PoolStudentInput,
 } from "../../types/api";
 import { productTone, statusTone } from "../../utils/poolTones";
@@ -84,20 +85,33 @@ function Field({
 interface PoolStudentDialogProps {
   open: boolean;
   student: EligiblePoolStudent | null;
+  products?: readonly PoolProduct[];
   onClose: () => void;
 }
 
-export function PoolStudentDialog({ open, student, onClose }: PoolStudentDialogProps) {
+export function PoolStudentDialog({ open, student, products = EDITABLE_PRODUCTS, onClose }: PoolStudentDialogProps) {
   if (!open) return null;
-  return <PoolStudentForm key={student?.studentId ?? "new"} student={student} onClose={onClose} />;
+  return <PoolStudentForm key={student?.studentId ?? "new"} student={student} products={products} onClose={onClose} />;
 }
 
-function PoolStudentForm({ student, onClose }: { student: EligiblePoolStudent | null; onClose: () => void }) {
+function PoolStudentForm({
+  student,
+  products,
+  onClose,
+}: {
+  student: EligiblePoolStudent | null;
+  products: readonly PoolProduct[];
+  onClose: () => void;
+}) {
   const id = useId();
   const editing = student !== null;
   const panelRef = useRef<HTMLDivElement>(null);
   const firstRef = useRef<HTMLInputElement>(null);
-  const [values, setValues] = useState<FormValues>(() => initialValues(student));
+  const [values, setValues] = useState<FormValues>(() => {
+    const initial = initialValues(student);
+    if (!student && products.length === 1 && products[0]) initial.productGroup = products[0];
+    return initial;
+  });
   const [error, setError] = useState<string | null>(null);
   const create = useCreatePoolStudent();
   const update = useUpdatePoolStudent();
@@ -197,7 +211,7 @@ function PoolStudentForm({ student, onClose }: { student: EligiblePoolStudent | 
               <BadgeSelect
                 id={fieldId("productGroup")}
                 value={values.productGroup}
-                options={EDITABLE_PRODUCTS}
+                options={products}
                 toneFor={productTone}
                 onChange={(value) => set("productGroup")({ target: { value } })}
               />

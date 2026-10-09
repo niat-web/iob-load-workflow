@@ -77,7 +77,12 @@ export function DataTable<T>({
           <div className="h-full w-1/3 animate-indeterminate bg-primary/60" />
         </div>
       )}
-      <div className={cn("overscroll-contain", scrolls ? "min-h-0 flex-1 overflow-auto" : "shrink-0 overflow-hidden")}>
+      <div
+        className={cn(
+          "overscroll-contain",
+          scrolls ? "min-h-0 flex-1 overflow-auto" : "shrink-0 overflow-x-auto overflow-y-hidden",
+        )}
+      >
         <table
           className="w-full min-w-max border-separate border-spacing-0 text-left text-sm [&>tbody>tr:last-child>td]:border-b-0"
           aria-busy={showSkeleton || undefined}

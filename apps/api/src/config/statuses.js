@@ -330,4 +330,5 @@ export const NOTIFICATION_TYPE = Object.freeze({
 });
 
 export const CANDIDATE_STATUS = ["RECOMMENDED", "CONSIDER", "NOT_RECOMMENDED"];
-export const ROLES = ["CRM", "PSM", "ADMIN"];
+export const ROLES = ["CRM", "PSM", "ADMIN", "POOL_MANAGER"];
+export const POOL_PRODUCTS = ["NIAT", "Academy"];

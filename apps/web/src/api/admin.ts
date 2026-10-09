@@ -3,6 +3,9 @@ import type {
   AdminUser,
   AppSettings,
   AppSettingsRecord,
+  AuditLogEntry,
+  AuditLogFilterOptions,
+  AuditLogQuery,
   BigQueryDatasets,
   BigQueryRows,
   BigQueryTables,
@@ -11,6 +14,7 @@ import type {
   EligiblePoolSummary,
   EligiblePoolSync,
   Paginated,
+  PoolProduct,
   PoolStudentInput,
   Role,
 } from "../types/api";
@@ -23,6 +27,9 @@ export const adminKeys = {
   poolList: (query: EligiblePoolQuery) => [...adminKeys.pool(), "list", query] as const,
   poolSummary: () => [...adminKeys.pool(), "summary"] as const,
   settings: () => ["admin", "settings"] as const,
+  audit: () => ["admin", "audit"] as const,
+  auditList: (query: AuditLogQuery) => [...adminKeys.audit(), "list", query] as const,
+  auditFilters: () => [...adminKeys.audit(), "filters"] as const,
   bigquery: () => ["admin", "bigquery"] as const,
   bigqueryTables: (dataset: string) => [...adminKeys.bigquery(), "tables", dataset] as const,
   bigqueryRows: (dataset: string, table: string, page: number, limit: number) =>
@@ -34,6 +41,7 @@ export interface CreateUserInput {
   name?: string;
   role: Role;
   hubspotOwnerId?: string;
+  products?: PoolProduct[];
 }
 
 export interface UpdateUserInput {
@@ -42,6 +50,24 @@ export interface UpdateUserInput {
   role?: Role;
   isActive?: boolean;
   hubspotOwnerId?: string | null;
+  products?: PoolProduct[];
+}
+
+export function useAuditLogs(query: AuditLogQuery) {
+  return useQuery({
+    queryKey: adminKeys.auditList(query),
+    queryFn: ({ signal }) => api.get<Paginated<AuditLogEntry>>("/admin/audit-logs", { ...query }, signal),
+    placeholderData: keepPreviousData,
+    refetchInterval: 30_000,
+  });
+}
+
+export function useAuditLogFilters() {
+  return useQuery({
+    queryKey: adminKeys.auditFilters(),
+    queryFn: ({ signal }) => api.get<AuditLogFilterOptions>("/admin/audit-logs/filters", undefined, signal),
+    staleTime: 60_000,
+  });
 }
 
 export function useAdminUsers() {
@@ -86,7 +112,7 @@ export function useEligiblePoolSummary() {
   return useQuery({
     queryKey: adminKeys.poolSummary(),
     queryFn: ({ signal }) => api.get<EligiblePoolSummary>("/admin/eligible-pool/summary", undefined, signal),
-    refetchInterval: (query) => (query.state.data?.sync.status === "RUNNING" ? 3000 : false),
+    refetchInterval: (query) => (query.state.data?.sync?.status === "RUNNING" ? 3000 : false),
   });
 }
 

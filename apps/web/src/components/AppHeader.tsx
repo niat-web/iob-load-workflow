@@ -5,6 +5,7 @@ import { UserEmailMenu } from "./UserEmailMenu";
 import { LogoMark } from "./LogoMark";
 
 function brandFor(user: User, pathname: string) {
+  if (user.role === "POOL_MANAGER") return { title: "Eligible Pool", subtitle: "Pool Manager" };
   const psm = pathname.startsWith("/psm") || (user.role === "PSM" && !pathname.startsWith("/crm"));
   return psm ? { title: "PSM", subtitle: "Candidate Review" } : { title: "CRM", subtitle: "Deal Tracker" };
 }

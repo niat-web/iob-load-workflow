@@ -21,8 +21,8 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/crm/companies", label: "Companies", icon: Building2, roles: ["CRM", "ADMIN"] },
   { to: "/crm/interviews", label: "Interviews", icon: Video, roles: ["CRM", "ADMIN"] },
   { to: "/psm", label: "Candidate Pools", icon: UsersRound, roles: ["PSM", "ADMIN"] },
-  { to: "/admin/eligible-pool", label: "Eligible Pool", icon: GraduationCap, roles: ["ADMIN"] },
-  { to: "/settings", label: "Settings", icon: Settings, roles: ["CRM", "PSM", "ADMIN"] },
+  { to: "/admin/eligible-pool", label: "Eligible Pool", icon: GraduationCap, roles: ["ADMIN", "POOL_MANAGER"] },
+  { to: "/settings", label: "Settings", icon: Settings, roles: ["CRM", "PSM", "ADMIN", "POOL_MANAGER"] },
 ];
 
 export function navItemsFor(role: Role) {

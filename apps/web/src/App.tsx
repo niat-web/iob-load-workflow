@@ -5,7 +5,7 @@ import { createQueryClient } from "./api/queryClient";
 import { AuthProvider } from "./auth/AuthProvider";
 import { RequireRole } from "./auth/RequireRole";
 import { RoleRedirect } from "./auth/RoleRedirect";
-import { ADMIN_ROLES, ALL_ROLES, CRM_ROLES, PSM_ROLES } from "./auth/roles";
+import { ALL_ROLES, CRM_ROLES, POOL_ROLES, PSM_ROLES } from "./auth/roles";
 import { LoadingSkeleton, PageLoader } from "./components/LoadingSkeleton";
 import { ToastProvider } from "./components/Toast";
 import { cardClass } from "./components/ui/styles";
@@ -84,7 +84,7 @@ const router = createBrowserRouter([
           { path: "/crm/deals/:jobId/boost", element: internal(CRM_ROLES, <BoostPage />) },
           { path: "/crm/interviews", element: internal(CRM_ROLES, <InterviewsPage />) },
           { path: "/crm/interviews/:jobId", element: internal(CRM_ROLES, <InterviewSheetPage />) },
-          { path: "/admin/eligible-pool", element: internal(ADMIN_ROLES, <EligiblePoolPage />) },
+          { path: "/admin/eligible-pool", element: internal(POOL_ROLES, <EligiblePoolPage />) },
           { path: "/settings", element: internal(ALL_ROLES, <SettingsPage />) },
           { path: "/settings/:section", element: internal(ALL_ROLES, <SettingsPage />) },
           { path: "/psm", element: internal(PSM_ROLES, <PSMJobsPage />) },

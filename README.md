@@ -224,7 +224,9 @@ curl -X POST http://localhost:5173/api/dev/mock-hubspot/<dealId> \
 ### Adding users
 
 Admins manage users in the app: **Settings → Users** adds an account (email, role, HubSpot owner) and
-changes role, HubSpot owner or access. Admins also link their own HubSpot owner under **Settings →
+changes role, HubSpot owner or access. The **Pool Manager** role only sees the Eligible Pool page, for
+the products (NIAT, Academy) the admin gives them; add Pool Managers in the app, not the CLI. Every
+action is listed under **Settings → Audit Log** (admins only). Admins also link their own HubSpot owner under **Settings →
 Account**. The same can be done with the CLI (uses `MONGODB_URI`):
 
 ```bash

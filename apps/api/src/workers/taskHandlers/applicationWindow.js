@@ -16,7 +16,12 @@ import { enqueueNext } from "./shared.js";
 async function applicationCountSync({ task, job }) {
   if (!WINDOW_STATUSES.includes(job.status)) return;
   try {
-    await syncApplicants(job);
+    const previous = job.appliedCount ?? 0;
+    const result = await syncApplicants(job);
+    const appliedCount = result?.job?.appliedCount ?? previous;
+    if (appliedCount !== previous) {
+      await audit({ action: AUDIT.APPLIED_POOL_SYNCED, entityId: job._id, metadata: { previous, appliedCount } });
+    }
   } catch (error) {
     logger.warn({ err: error, jobId: String(job._id) }, "Applied pool sync failed; it runs again at the next interval");
   }

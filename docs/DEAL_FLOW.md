@@ -42,6 +42,23 @@ company switch shows as off and locked.
 On the PSM review page, **Company page columns** sets which columns the company sees on the shared
 profiles page. The last saved choice is used for every company after it.
 
+### Pool Managers: Eligible Pool only
+
+A **Pool Manager** is added by an admin in **Settings → Users** with one or both products (NIAT,
+Academy). They only see the **Eligible Pool** page (and their own profile) and only the students of
+their products. They can add, edit and delete those students by hand; they cannot sync from BigQuery,
+see the applied pool, deals, companies, interviews or settings. Every change they make is in the
+audit log with the old and new values.
+
+### Admin: Audit Log (Settings → Audit Log)
+
+One plain line for everything that happens, newest first and kept forever: sign-ins, deal submitted,
+deal fetched, organisation reused or created, job loaded to Beta / Prod, eligible students found, job
+access given (with how many were refused), job emails, window opened, applied pool changes,
+checkpoints, AI calls, HubSpot changes, window closed, AI analysis, ranking, PSM review, shared link,
+CRM emails, approvals, failures and retries, settings, users, Eligible Pool changes and Meets. Filter
+by person, action, date or search a deal ID, company or student; click a line for its details.
+
 ### CRMs and admins: Interviews page
 
 - **Connect Google** (once for everyone): the Google account that creates every Meet. Any CRM or

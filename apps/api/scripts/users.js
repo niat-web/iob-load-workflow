@@ -40,6 +40,7 @@ async function main() {
   }
   if (command !== "list" && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email ?? "")) usage("a valid email is required");
   if (["add", "role"].includes(command) && !ROLES.includes(role)) usage(`role must be one of ${ROLES.join(", ")}`);
+  if (role === "POOL_MANAGER") usage("Add Pool Managers in Settings → Users, where you choose their products");
   if (ownerArg !== undefined && !findHubspotOwner(ownerArg)) usage(`HubSpot owner ${ownerArg} is not in the owner list (see: owners)`);
   if (command === "owner" && !findHubspotOwner(rawRole)) usage(`HubSpot owner ${rawRole ?? ""} is not in the owner list (see: owners)`);
 

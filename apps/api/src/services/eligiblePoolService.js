@@ -1,7 +1,8 @@
 import { config } from "../config/env.js";
+import { POOL_PRODUCTS } from "../config/statuses.js";
 import { EligiblePoolStudent, EligiblePoolSync } from "../models/index.js";
 import { now } from "../utils/clock.js";
-import { conflict, notFound } from "../utils/errors.js";
+import { badRequest, conflict, forbidden, notFound } from "../utils/errors.js";
 import { escapeRegex } from "../utils/helpers.js";
 import { logger } from "../utils/logger.js";
 import { AUDIT, audit } from "./auditService.js";
@@ -9,7 +10,7 @@ import { createBigQueryRepository } from "./bigQueryRepository.js";
 
 const SYNC_ID = "eligible-pool";
 const STALE_SYNC_MS = 2 * 60 * 60 * 1000;
-export const PRODUCT_GROUPS = ["NIAT", "Academy"];
+export const PRODUCT_GROUPS = POOL_PRODUCTS;
 export const EDITABLE_PRODUCTS = PRODUCT_GROUPS;
 export const POOL_SORT_FIELDS = [
   "studentId",
@@ -170,10 +171,25 @@ function sortStage(sort) {
   return field === "studentId" ? { studentId: dir } : { [key]: dir, studentId: 1 };
 }
 
-export async function listPool({ search, product, status, campus, sort, page, limit }) {
+export function poolScope(user) {
+  if (user?.role === "ADMIN") return null;
+  return (user?.products ?? []).filter((product) => PRODUCT_GROUPS.includes(product));
+}
+
+function scopedProducts(requested, scope) {
+  const wanted = [].concat(requested ?? []).filter(Boolean);
+  if (!scope) return wanted;
+  return wanted.length ? wanted.filter((product) => scope.includes(product)) : scope;
+}
+
+export async function listPool({ search, product, status, campus, sort, page, limit }, scope = null) {
   const filter = {};
   const many = (value) => [].concat(value ?? []).filter(Boolean);
-  if (many(product).length) filter.productGroup = { $in: many(product) };
+  const products = scopedProducts(product, scope);
+  if (scope && !products.length) {
+    return { items: [], pagination: { page, limit, total: 0, totalPages: 1 } };
+  }
+  if (products.length) filter.productGroup = { $in: products };
   if (many(status).length) filter.eligibilityStatus = { $in: many(status) };
   if (many(campus).length) filter.campus = { $in: many(campus) };
   const term = search?.trim();
@@ -198,18 +214,19 @@ export async function listPool({ search, product, status, campus, sort, page, li
   };
 }
 
-export async function poolSummary() {
+export async function poolSummary(scope = null) {
+  const visible = scope ? { productGroup: { $in: scope } } : {};
   const [total, byProduct, sync, byStatus, byCampus] = await Promise.all([
-    EligiblePoolStudent.estimatedDocumentCount(),
-    EligiblePoolStudent.aggregate([{ $group: { _id: "$productGroup", count: { $sum: 1 } } }]),
+    scope ? EligiblePoolStudent.countDocuments(visible) : EligiblePoolStudent.estimatedDocumentCount(),
+    EligiblePoolStudent.aggregate([{ $match: visible }, { $group: { _id: "$productGroup", count: { $sum: 1 } } }]),
     EligiblePoolSync.findById(SYNC_ID).lean(),
     EligiblePoolStudent.aggregate([
-      { $match: { eligibilityStatus: { $nin: [null, ""] } } },
+      { $match: { ...visible, eligibilityStatus: { $nin: [null, ""] } } },
       { $group: { _id: "$eligibilityStatus", count: { $sum: 1 } } },
       { $sort: { _id: 1 } },
     ]),
     EligiblePoolStudent.aggregate([
-      { $match: { campus: { $nin: [null, ""] } } },
+      { $match: { ...visible, campus: { $nin: [null, ""] } } },
       { $group: { _id: "$campus", count: { $sum: 1 } } },
       { $sort: { _id: 1 } },
     ]),
@@ -223,8 +240,9 @@ export async function poolSummary() {
     })),
     statuses: byStatus.map((row) => ({ status: row._id, count: row.count })),
     campuses: byCampus.map((row) => ({ campus: row._id, count: row.count })),
-    sync: toSyncInfo(sync),
-    syncConfigured: poolSyncConfigured(),
+    sync: scope ? null : toSyncInfo(sync),
+    syncConfigured: scope ? false : poolSyncConfigured(),
+    allowedProducts: scope ?? PRODUCT_GROUPS,
   };
 }
 
@@ -244,41 +262,75 @@ function editableFields(input) {
   return fields;
 }
 
-export async function createPoolStudent(input, actor) {
+function productForScope(product, scope) {
+  if (!scope) return product;
+  const chosen = product || (scope.length === 1 ? scope[0] : null);
+  if (!chosen) throw badRequest("Choose the product for this student");
+  if (!scope.includes(chosen)) throw forbidden(`You can only manage ${scope.join(" and ")} students`);
+  return chosen;
+}
+
+export async function createPoolStudent(input, actor, scope = null) {
   const studentId = input.studentId.trim();
+  const fields = editableFields(input);
+  if (scope) fields.productGroup = productForScope(fields.productGroup, scope);
   if (await EligiblePoolStudent.exists({ studentId })) {
     throw conflict(`Student ${studentId} is already in the eligible pool`, "STUDENT_EXISTS");
   }
   const created = await EligiblePoolStudent.create({
-    ...editableFields(input),
+    ...fields,
     studentId,
     syncedAt: now(),
     manual: true,
     updatedBy: actor?.email ?? null,
   });
-  await audit({ actor, action: AUDIT.POOL_STUDENT_ADDED, entityType: "EligiblePoolStudent", entityId: studentId });
+  await audit({
+    actor,
+    action: AUDIT.POOL_STUDENT_ADDED,
+    entityType: "EligiblePoolStudent",
+    entityId: studentId,
+    metadata: { studentName: created.studentName ?? "", product: created.productGroup ?? null },
+  });
   return toPublic(created.toObject());
 }
 
-export async function updatePoolStudent(studentId, changes, actor) {
+const scopedFilter = (studentId, scope) => (scope ? { studentId, productGroup: { $in: scope } } : { studentId });
+
+export async function updatePoolStudent(studentId, changes, actor, scope = null) {
+  const fields = editableFields(changes);
+  if (scope && "productGroup" in fields) fields.productGroup = productForScope(fields.productGroup, scope);
+  const before = await EligiblePoolStudent.findOne(scopedFilter(studentId, scope)).lean();
+  if (!before) throw notFound(`Student ${studentId} is not in the eligible pool`);
   const updated = await EligiblePoolStudent.findOneAndUpdate(
-    { studentId },
-    { $set: { ...editableFields(changes), manual: true, updatedBy: actor?.email ?? null } },
+    scopedFilter(studentId, scope),
+    { $set: { ...fields, manual: true, updatedBy: actor?.email ?? null } },
     { returnDocument: "after", runValidators: true },
   ).lean();
   if (!updated) throw notFound(`Student ${studentId} is not in the eligible pool`);
+  const changed = Object.keys(fields).filter((key) => String(before[key] ?? "") !== String(updated[key] ?? ""));
   await audit({
     actor,
     action: AUDIT.POOL_STUDENT_UPDATED,
     entityType: "EligiblePoolStudent",
     entityId: studentId,
-    metadata: { fields: Object.keys(changes).join(",") },
+    metadata: {
+      studentName: updated.studentName ?? "",
+      product: updated.productGroup ?? null,
+      fields: changed.join(","),
+      changes: Object.fromEntries(changed.map((key) => [key, { from: before[key] ?? null, to: updated[key] ?? null }])),
+    },
   });
   return toPublic(updated);
 }
 
-export async function deletePoolStudent(studentId, actor) {
-  const { deletedCount } = await EligiblePoolStudent.deleteOne({ studentId });
-  if (!deletedCount) throw notFound(`Student ${studentId} is not in the eligible pool`);
-  await audit({ actor, action: AUDIT.POOL_STUDENT_DELETED, entityType: "EligiblePoolStudent", entityId: studentId });
+export async function deletePoolStudent(studentId, actor, scope = null) {
+  const existing = await EligiblePoolStudent.findOneAndDelete(scopedFilter(studentId, scope)).lean();
+  if (!existing) throw notFound(`Student ${studentId} is not in the eligible pool`);
+  await audit({
+    actor,
+    action: AUDIT.POOL_STUDENT_DELETED,
+    entityType: "EligiblePoolStudent",
+    entityId: studentId,
+    metadata: { studentName: existing.studentName ?? "", product: existing.productGroup ?? null },
+  });
 }

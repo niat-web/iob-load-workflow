@@ -1,8 +1,9 @@
 import { z } from "zod";
 import { config } from "../config/env.js";
-import { FLOW_MODE, ROLES } from "../config/statuses.js";
+import { FLOW_MODE, POOL_PRODUCTS, ROLES } from "../config/statuses.js";
 import { User } from "../models/index.js";
 import { releaseWaitingDeals } from "../services/approvalService.js";
+import { auditLogFilters, listAuditLogs } from "../services/auditLogService.js";
 import { AUDIT, audit } from "../services/auditService.js";
 import { listDatasets, listTables, readTableRows } from "../services/bigQueryBrowser.js";
 import {
@@ -13,6 +14,7 @@ import {
   createPoolStudent,
   deletePoolStudent,
   listPool,
+  poolScope,
   poolSummary,
   startPoolSync,
   updatePoolStudent,
@@ -29,12 +31,19 @@ const hubspotOwnerId = z
 
 const email = z.string().trim().toLowerCase().email("Enter a valid email address").max(200);
 
-export const createUserSchema = z.object({
-  email,
-  name: z.string().trim().max(120).optional(),
-  role: z.enum(ROLES),
-  hubspotOwnerId: hubspotOwnerId.optional(),
-});
+const products = z.array(z.enum(POOL_PRODUCTS, "Choose NIAT or Academy")).max(POOL_PRODUCTS.length);
+const POOL_MANAGER = "POOL_MANAGER";
+const needsProduct = "Choose at least one product (NIAT or Academy) for a Pool Manager";
+
+export const createUserSchema = z
+  .object({
+    email,
+    name: z.string().trim().max(120).optional(),
+    role: z.enum(ROLES),
+    hubspotOwnerId: hubspotOwnerId.optional(),
+    products: products.optional(),
+  })
+  .refine((body) => body.role !== POOL_MANAGER || (body.products?.length ?? 0) > 0, { message: needsProduct, path: ["products"] });
 
 export const updateUserSchema = z
   .object({
@@ -42,8 +51,11 @@ export const updateUserSchema = z
     role: z.enum(ROLES).optional(),
     isActive: z.boolean().optional(),
     hubspotOwnerId: hubspotOwnerId.nullable().optional(),
+    products: products.optional(),
   })
   .refine((body) => Object.keys(body).length > 0, "Nothing to update");
+
+const productsFor = (role, list) => (role === POOL_MANAGER ? [...new Set(list ?? [])] : []);
 
 export const userParams = z.object({ email });
 
@@ -52,6 +64,7 @@ function toAdminUser(user) {
     email: user.email,
     name: user.name ?? "",
     role: user.role,
+    products: user.products ?? [],
     isActive: Boolean(user.isActive),
     hubspotOwner: hubspotOwnerForUser(user),
     lastLoginAt: user.lastLoginAt ? new Date(user.lastLoginAt).toISOString() : null,
@@ -77,13 +90,21 @@ export async function createUser(req, res) {
   checkDomain(address);
   if (await User.exists({ email: address })) throw conflict(`${address} already has an account. Edit it in the list instead.`, "USER_EXISTS");
   const owner = ownerId ? findHubspotOwner(ownerId) : hubspotOwnerForEmail(address);
-  const user = await User.create({ email: address, name: name || owner?.name || "", role, isActive: true, ...ownerFields(owner) });
+  const userProducts = productsFor(role, req.valid.body.products);
+  const user = await User.create({
+    email: address,
+    name: name || owner?.name || "",
+    role,
+    products: userProducts,
+    isActive: true,
+    ...ownerFields(owner),
+  });
   await audit({
     actor: req.user,
     action: AUDIT.USER_ADDED,
     entityType: "User",
     entityId: address,
-    metadata: { role, hubspotOwnerId: owner?.id ?? null },
+    metadata: { role, products: userProducts, hubspotOwnerId: owner?.id ?? null },
     ip: req.ip,
   });
   res.status(201).json({ user: toAdminUser(user.toObject()) });
@@ -92,7 +113,8 @@ export async function createUser(req, res) {
 export async function updateUser(req, res) {
   const { email: address } = req.valid.params;
   const changes = req.valid.body;
-  if (!(await User.exists({ email: address }))) throw notFound("User not found");
+  const existing = await User.findOne({ email: address }).lean();
+  if (!existing) throw notFound("User not found");
   if (address === req.user.email) {
     if (changes.role && changes.role !== "ADMIN") throw conflict("You cannot remove your own admin role", "SELF_LOCKOUT");
     if (changes.isActive === false) throw conflict("You cannot deactivate your own account", "SELF_LOCKOUT");
@@ -102,6 +124,10 @@ export async function updateUser(req, res) {
   if (changes.name !== undefined) set.name = changes.name;
   if (changes.role) set.role = changes.role;
   if (changes.isActive !== undefined) set.isActive = changes.isActive;
+  const finalRole = changes.role ?? existing.role;
+  const finalProducts = productsFor(finalRole, changes.products ?? existing.products);
+  if (finalRole === POOL_MANAGER && !finalProducts.length) throw badRequest(needsProduct);
+  if (changes.role || changes.products) set.products = finalProducts;
   if (changes.hubspotOwnerId !== undefined) {
     Object.assign(set, ownerFields(changes.hubspotOwnerId ? findHubspotOwner(changes.hubspotOwnerId) : null));
   }
@@ -131,11 +157,11 @@ export const poolQuerySchema = z.object({
 });
 
 export async function eligiblePool(req, res) {
-  res.json(await listPool(req.valid.query));
+  res.json(await listPool(req.valid.query, poolScope(req.user)));
 }
 
 export async function eligiblePoolSummary(req, res) {
-  res.json(await poolSummary());
+  res.json(await poolSummary(poolScope(req.user)));
 }
 
 export async function syncEligiblePool(req, res) {
@@ -221,16 +247,36 @@ export const poolStudentUpdateSchema = z
 export const poolStudentParams = z.object({ studentId: studentIdField });
 
 export async function addPoolStudent(req, res) {
-  res.status(201).json({ student: await createPoolStudent(req.valid.body, req.user) });
+  res.status(201).json({ student: await createPoolStudent(req.valid.body, req.user, poolScope(req.user)) });
 }
 
 export async function editPoolStudent(req, res) {
-  res.json({ student: await updatePoolStudent(req.valid.params.studentId, req.valid.body, req.user) });
+  res.json({ student: await updatePoolStudent(req.valid.params.studentId, req.valid.body, req.user, poolScope(req.user)) });
 }
 
 export async function removePoolStudent(req, res) {
-  await deletePoolStudent(req.valid.params.studentId, req.user);
+  await deletePoolStudent(req.valid.params.studentId, req.user, poolScope(req.user));
   res.status(204).end();
+}
+
+const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use a YYYY-MM-DD date");
+
+export const auditQuerySchema = z.object({
+  search: z.string().trim().max(200).optional(),
+  actor: listOf(z.string().trim().max(200)),
+  action: listOf(z.string().trim().max(80)),
+  from: day.optional(),
+  to: day.optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+});
+
+export async function auditLogs(req, res) {
+  res.json(await listAuditLogs(req.valid.query));
+}
+
+export async function auditLogFilterOptions(req, res) {
+  res.json(await auditLogFilters());
 }
 
 const flag = z.boolean();

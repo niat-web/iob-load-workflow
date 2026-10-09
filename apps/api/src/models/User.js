@@ -1,11 +1,12 @@
 import mongoose from "mongoose";
-import { ROLES } from "../config/statuses.js";
+import { POOL_PRODUCTS, ROLES } from "../config/statuses.js";
 
 const userSchema = new mongoose.Schema(
   {
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     name: { type: String, default: "" },
     role: { type: String, enum: ROLES, required: true },
+    products: { type: [{ type: String, enum: POOL_PRODUCTS }], default: [] },
     isActive: { type: Boolean, default: true },
     picture: { type: String, default: null },
     hubspotOwnerId: { type: String, default: null },

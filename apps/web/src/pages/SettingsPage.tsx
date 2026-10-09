@@ -1,5 +1,16 @@
 import type { ColumnDef } from "@tanstack/react-table";
-import { ChevronDown, Database, LogOut, SlidersHorizontal, UserPlus, UserRound, UsersRound, X, type LucideIcon } from "lucide-react";
+import {
+  ChevronDown,
+  Database,
+  History,
+  LogOut,
+  SlidersHorizontal,
+  UserPlus,
+  UserRound,
+  UsersRound,
+  X,
+  type LucideIcon,
+} from "lucide-react";
 import { useCallback, useId, useMemo, useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import { Navigate, NavLink, useNavigate, useParams } from "react-router";
@@ -7,29 +18,86 @@ import { useAdminUsers, useCreateUser, useUpdateUser, type UpdateUserInput } fro
 import { errorMessage } from "../api/client";
 import { useHubspotOwners } from "../api/crm";
 import { useAuth } from "../auth/AuthContext";
-import { homePathFor } from "../auth/roles";
 import { DataTable } from "../components/DataTable";
 import { DetailList } from "../components/DetailList";
 import { EmptyState } from "../components/EmptyState";
 import { HubspotOwnerSelect } from "../components/HubspotOwnerSelect";
 import { StatusBadge } from "../components/StatusBadge";
 import { useToast } from "../components/toast-context";
+import { AuditLogSection } from "../components/settings/AuditLogSection";
 import { BigQueryBrowser } from "../components/settings/BigQueryBrowser";
 import { ConfigSection } from "../components/settings/ConfigSection";
 import { Button, IconButton } from "../components/ui/Button";
 import { cardClass, cellFieldClass, toolbarFieldClass } from "../components/ui/styles";
 import { useModalBehavior } from "../hooks/useModalBehavior";
-import type { AdminUser, HubspotOwner, Role, User } from "../types/api";
+import { EDITABLE_PRODUCTS, type AdminUser, type HubspotOwner, type PoolProduct, type Role, type User } from "../types/api";
 import { cn } from "../utils/cn";
 import { formatDateTime, initials } from "../utils/format";
 
-const ROLES: Role[] = ["CRM", "PSM", "ADMIN"];
+const ROLES: Role[] = ["CRM", "PSM", "ADMIN", "POOL_MANAGER"];
 
 const ROLE_DETAILS: Record<Role, { label: string; access: string }> = {
   CRM: { label: "CRM", access: "Submit HubSpot deals and follow them through to the public candidate link." },
   PSM: { label: "PSM", access: "Review AI-ranked candidates and submit the final candidate pool." },
   ADMIN: { label: "Admin", access: "Full access to the CRM and PSM screens, and manages users." },
+  POOL_MANAGER: {
+    label: "Pool Manager",
+    access: "Adds, edits and deletes Eligible Pool students for their products only. No other pages.",
+  },
 };
+
+const HOME_LABELS: Record<Role, string> = {
+  CRM: "Dashboard",
+  ADMIN: "Dashboard",
+  PSM: "Candidate Pools",
+  POOL_MANAGER: "Eligible Pool",
+};
+
+function ProductPicker({
+  value,
+  onChange,
+  disabled,
+  label,
+  compact,
+}: {
+  value: readonly PoolProduct[];
+  onChange: (products: PoolProduct[]) => void;
+  disabled?: boolean;
+  label: string;
+  compact?: boolean;
+}) {
+  const toggle = (product: PoolProduct) => {
+    const next = value.includes(product) ? value.filter((item) => item !== product) : [...value, product];
+    if (next.length) onChange(EDITABLE_PRODUCTS.filter((item) => next.includes(item)));
+  };
+  return (
+    <div role="group" aria-label={label} className="flex flex-wrap gap-2">
+      {EDITABLE_PRODUCTS.map((product) => {
+        const checked = value.includes(product);
+        return (
+          <label
+            key={product}
+            className={cn(
+              "inline-flex cursor-pointer items-center gap-2 rounded-lg border px-3 text-sm font-medium",
+              compact ? "h-8" : "h-10",
+              checked ? "border-primary bg-primary-soft text-primary" : "border-line text-ink hover:bg-slate-50",
+              disabled && "cursor-not-allowed opacity-60",
+            )}
+          >
+            <input
+              type="checkbox"
+              checked={checked}
+              disabled={disabled || (checked && value.length === 1)}
+              onChange={() => toggle(product)}
+              className="size-4 accent-primary"
+            />
+            {product}
+          </label>
+        );
+      })}
+    </div>
+  );
+}
 
 const labelClass = "mb-1.5 block text-[13px] font-semibold text-ink";
 
@@ -127,13 +195,16 @@ function AddUserDialog({ open, onClose, owners, ownersLoading }: AddUserDialogPr
   const [name, setName] = useState("");
   const [role, setRole] = useState<Role>("CRM");
   const [ownerId, setOwnerId] = useState("");
+  const [products, setProducts] = useState<PoolProduct[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const poolManager = role === "POOL_MANAGER";
 
   const reset = () => {
     setEmail("");
     setName("");
     setRole("CRM");
     setOwnerId("");
+    setProducts([]);
     setError(null);
   };
   const close = () => {
@@ -153,9 +224,19 @@ function AddUserDialog({ open, onClose, owners, ownersLoading }: AddUserDialogPr
       emailRef.current?.focus();
       return;
     }
+    if (poolManager && !products.length) {
+      setError("Choose the product(s) this Pool Manager manages.");
+      return;
+    }
     setError(null);
     create.mutate(
-      { email: address, name: name.trim() || undefined, role, hubspotOwnerId: ownerId || undefined },
+      {
+        email: address,
+        name: name.trim() || undefined,
+        role,
+        hubspotOwnerId: poolManager ? undefined : ownerId || undefined,
+        products: poolManager ? products : undefined,
+      },
       {
         onSuccess: ({ user }) => {
           toast.success(`${user.email} added${user.hubspotOwner ? ` · HubSpot owner ${user.hubspotOwner.name}` : ""}`);
@@ -229,18 +310,40 @@ function AddUserDialog({ open, onClose, owners, ownersLoading }: AddUserDialogPr
               </label>
               <RoleSelect id={`${id}-role`} value={role} onChange={setRole} />
             </div>
-            <div>
-              <label htmlFor={`${id}-owner`} className={labelClass}>
-                HubSpot owner
-              </label>
-              <HubspotOwnerSelect
-                id={`${id}-owner`}
-                value={ownerId}
-                onChange={setOwnerId}
-                owners={owners}
-                placeholder={ownersLoading ? "Loading owners…" : "Match by email"}
-              />
-            </div>
+            {poolManager ? (
+              <div>
+                <span className={labelClass}>
+                  Products<span className="ml-0.5 text-red-500">*</span>
+                </span>
+                <ProductPicker
+                  label="Products this Pool Manager manages"
+                  value={products}
+                  onChange={(next) => {
+                    setProducts(next);
+                    if (error) setError(null);
+                  }}
+                />
+              </div>
+            ) : (
+              <div>
+                <label htmlFor={`${id}-owner`} className={labelClass}>
+                  HubSpot owner
+                </label>
+                <HubspotOwnerSelect
+                  id={`${id}-owner`}
+                  value={ownerId}
+                  onChange={setOwnerId}
+                  owners={owners}
+                  placeholder={ownersLoading ? "Loading owners…" : "Match by email"}
+                />
+              </div>
+            )}
+            {poolManager && (
+              <p className="text-xs text-muted sm:col-span-2">
+                A Pool Manager only sees the Eligible Pool page, and only the students of these products. They can add,
+                edit and delete them, but cannot sync from BigQuery.
+              </p>
+            )}
             {error && (
               <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700 sm:col-span-2">
                 {error}
@@ -289,21 +392,46 @@ function buildUserColumns({
       id: "role",
       header: "Role",
       cell: ({ row }) => (
-        <div className="w-32">
+        <div className="w-36">
           <RoleSelect
             compact
             label={`Role for ${row.original.email}`}
             value={row.original.role}
             disabled={row.original.email === currentEmail}
-            onChange={(role) => onChange({ email: row.original.email, role }, "role")}
+            onChange={(role) =>
+              role === "POOL_MANAGER"
+                ? onChange(
+                    { email: row.original.email, role, products: [...EDITABLE_PRODUCTS] },
+                    "role (Pool Manager for NIAT and Academy; change the products if needed)",
+                  )
+                : onChange({ email: row.original.email, role }, "role")
+            }
           />
         </div>
       ),
     },
     {
+      id: "products",
+      header: "Products",
+      cell: ({ row }) =>
+        row.original.role === "POOL_MANAGER" ? (
+          <ProductPicker
+            compact
+            label={`Products for ${row.original.email}`}
+            value={row.original.products}
+            onChange={(products) => onChange({ email: row.original.email, products }, "products")}
+          />
+        ) : (
+          <span className="text-muted/60">—</span>
+        ),
+    },
+    {
       id: "owner",
       header: "HubSpot Owner",
-      cell: ({ row }) => (
+      cell: ({ row }) =>
+        row.original.role === "POOL_MANAGER" ? (
+          <span className="text-muted/60">—</span>
+        ) : (
         <div className="flex items-center gap-2">
           <HubspotOwnerSelect
             compact
@@ -318,7 +446,7 @@ function buildUserColumns({
             <span className="text-xs text-muted tabular-nums">{row.original.hubspotOwner.id}</span>
           )}
         </div>
-      ),
+        ),
     },
     {
       id: "active",
@@ -416,6 +544,7 @@ const SETTINGS_TABS: SettingsTab[] = [
   { to: "/settings/users", label: "Users", icon: UsersRound, adminOnly: true },
   { to: "/settings/bigquery", label: "BigQuery", icon: Database, adminOnly: true },
   { to: "/settings/config", label: "Config", icon: SlidersHorizontal, adminOnly: true },
+  { to: "/settings/audit", label: "Audit Log", icon: History, adminOnly: true },
 ];
 
 function SettingsNav({ isAdmin }: { isAdmin: boolean }) {
@@ -450,7 +579,8 @@ export function SettingsPage() {
   const showUsers = section === "users" && isAdmin;
   const showBigQuery = section === "bigquery" && isAdmin;
   const showConfig = section === "config" && isAdmin;
-  if (section && !showUsers && !showBigQuery && !showConfig) return <Navigate to="/settings" replace />;
+  const showAudit = section === "audit" && isAdmin;
+  if (section && !showUsers && !showBigQuery && !showConfig && !showAudit) return <Navigate to="/settings" replace />;
 
   return (
     <div className="flex min-h-full flex-col gap-6">
@@ -463,6 +593,8 @@ export function SettingsPage() {
           <BigQueryBrowser />
         ) : showConfig ? (
           <ConfigSection />
+        ) : showAudit ? (
+          <AuditLogSection />
         ) : (
           <ProfileSection user={user} />
         )}
@@ -519,8 +651,10 @@ function ProfileSection({ user }: { user: User }) {
         className="mt-6 border-t pt-6"
         items={[
           { label: "Role", value: <StatusBadge label={role.label} tone="purple" /> },
-          { label: "Home page", value: homePathFor(user.role) === "/psm" ? "Candidate Pools" : "Dashboard" },
-          { label: "HubSpot owner", value: ownerValue, wide: true },
+          { label: "Home page", value: HOME_LABELS[user.role] },
+          user.role === "POOL_MANAGER"
+            ? { label: "Products", value: user.products.join(", ") || "None yet. Ask an admin.", wide: true }
+            : { label: "HubSpot owner", value: ownerValue, wide: true },
           { label: "Access", value: role.access, wide: true },
         ]}
       />

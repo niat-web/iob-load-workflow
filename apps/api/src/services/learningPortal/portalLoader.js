@@ -38,12 +38,23 @@ async function generateText(prompt) {
   }
 }
 
+async function auditOrganisation(job, action, organisation) {
+  if (!job?._id) return;
+  await audit({
+    action,
+    entityId: job._id,
+    metadata: { organisationId: organisation.organisationId, source: organisation.source ?? null, company: job.companyName ?? null },
+  });
+}
+
 export async function prepareOrganisation(job) {
   const portal = integrations.learningPortal;
   const normalizedName = normalizeCompanyName(job.companyName);
   let organisation = await LearningPortalOrganisation.findOne({ normalizedName });
 
-  if (!organisation) {
+  if (organisation) {
+    await auditOrganisation(job, AUDIT.ORG_REUSED, { ...organisation.toObject(), source: "APP" });
+  } else {
     const fromSheet = await findOrgInSheet(job.companyName);
     const known = fromSheet?.status === "exact" && fromSheet.organisationId;
     const record = known
@@ -67,6 +78,7 @@ export async function prepareOrganisation(job) {
       if (!isDuplicateKeyError(error)) throw error;
       organisation = await LearningPortalOrganisation.findOne({ normalizedName });
     }
+    await auditOrganisation(job, known ? AUDIT.ORG_REUSED : AUDIT.ORG_CREATED, organisation.toObject());
   }
   return organisation;
 }

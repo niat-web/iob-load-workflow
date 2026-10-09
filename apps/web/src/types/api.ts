@@ -49,7 +49,7 @@ export interface ApiErrorBody {
   };
 }
 
-export type Role = "CRM" | "PSM" | "ADMIN";
+export type Role = "CRM" | "PSM" | "ADMIN" | "POOL_MANAGER";
 
 export interface HubspotOwner {
   id: string;
@@ -66,6 +66,7 @@ export interface AdminUser {
   email: string;
   name: string;
   role: Role;
+  products: PoolProduct[];
   isActive: boolean;
   hubspotOwner: HubspotOwner | null;
   lastLoginAt: string | null;
@@ -76,6 +77,7 @@ export interface User {
   email: string;
   name: string;
   role: Role;
+  products: PoolProduct[];
   picture: string | null;
   hubspotOwner: HubspotOwner | null;
 }
@@ -608,8 +610,45 @@ export interface EligiblePoolSummary {
   products: { product: PoolProduct; count: number }[];
   statuses: { status: string; count: number }[];
   campuses: { campus: string; count: number }[];
-  sync: EligiblePoolSync;
+  sync: EligiblePoolSync | null;
   syncConfigured: boolean;
+  allowedProducts: PoolProduct[];
+}
+
+export interface AuditLogEntry {
+  id: string;
+  at: string;
+  actor: { email: string | null; name: string; role: string; roleLabel: string };
+  action: string;
+  label: string;
+  text: string;
+  entityType: string;
+  entityId: string;
+  deal: {
+    jobId: string;
+    hubspotDealId: string | null;
+    companyName: string | null;
+    jobRole: string | null;
+    learningPortalJobId: string | null;
+    deleted: boolean;
+  } | null;
+  metadata: Record<string, unknown>;
+  ip: string | null;
+}
+
+export interface AuditLogQuery {
+  search?: string;
+  actor?: string;
+  action?: string;
+  from?: string;
+  to?: string;
+  page: number;
+  limit: number;
+}
+
+export interface AuditLogFilterOptions {
+  actors: { value: string; label: string }[];
+  actions: { value: string; label: string }[];
 }
 
 export interface EligiblePoolQuery {
