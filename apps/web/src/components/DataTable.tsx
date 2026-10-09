@@ -155,7 +155,7 @@ export function DataTable<T>({
                 </tr>
               ))}
             {rows.map((row) => (
-              // oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions -- the same action is in each row's menu for keyboard users.
+              // oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions -- keyboard users open the same page from the link inside the row.
               <tr
                 key={row.id}
                 onClick={

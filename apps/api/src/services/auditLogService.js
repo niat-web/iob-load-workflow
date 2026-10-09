@@ -86,6 +86,7 @@ export const ACTION_LABELS = Object.freeze({
   [AUDIT.POOL_STUDENT_ADDED]: "Pool student added",
   [AUDIT.POOL_STUDENT_UPDATED]: "Pool student edited",
   [AUDIT.POOL_STUDENT_DELETED]: "Pool student deleted",
+  [AUDIT.POOL_STUDENTS_IMPORTED]: "Pool students added in bulk",
   [AUDIT.BIGQUERY_VIEWED]: "BigQuery table viewed",
   [AUDIT.SETTINGS_UPDATED]: "Settings changed",
   [AUDIT.COMPANY_CONTROLS_UPDATED]: "Company switches changed",
@@ -217,6 +218,10 @@ const DESCRIBERS = {
   [AUDIT.POOL_STUDENT_ADDED]: (meta, log) => `Added student ${studentText(log, meta)} to the Eligible Pool`,
   [AUDIT.POOL_STUDENT_UPDATED]: (meta, log) => `Edited student ${studentText(log, meta)}: ${poolChanges(meta)}`,
   [AUDIT.POOL_STUDENT_DELETED]: (meta, log) => `Deleted student ${studentText(log, meta)} from the Eligible Pool`,
+  [AUDIT.POOL_STUDENTS_IMPORTED]: (meta) =>
+    `${meta.source === "CSV" ? "Uploaded a CSV to" : "Pasted students into"} the Eligible Pool: ${plural(meta.added, "student")} added${
+      meta.updated ? `, ${number(meta.updated)} updated` : ""
+    }`,
   [AUDIT.BIGQUERY_VIEWED]: (meta, log) => `Viewed the BigQuery table ${log.entityId}`,
   [AUDIT.SETTINGS_UPDATED]: (meta) => `Changed settings: ${list(meta.changed).join(", ") || "no change"}`,
   [AUDIT.COMPANY_CONTROLS_UPDATED]: (meta) => {

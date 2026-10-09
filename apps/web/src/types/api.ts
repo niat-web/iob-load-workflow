@@ -646,6 +646,39 @@ export const EDITABLE_PRODUCTS = ["NIAT", "Academy"] as const;
 
 export type PoolProduct = "NIAT" | "Academy";
 
+export type PoolBulkField =
+  | "studentId"
+  | "niatId"
+  | "studentName"
+  | "mobile"
+  | "email"
+  | "productGroup"
+  | "campus"
+  | "batch"
+  | "eligibilityStatus"
+  | "remarks";
+
+export type PoolBulkRow = Record<PoolBulkField, string>;
+
+export interface PoolBulkInput {
+  students: PoolBulkRow[];
+  updateExisting: boolean;
+  source: "CSV" | "PASTE";
+}
+
+export interface PoolBulkProblem {
+  row: number;
+  studentId: string | null;
+  field: string;
+  message: string;
+}
+
+export interface PoolBulkResult {
+  added: number;
+  updated: number;
+  total: number;
+}
+
 export interface EligiblePoolStudent {
   studentId: string;
   niatId: string | null;

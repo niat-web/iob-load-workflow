@@ -194,7 +194,14 @@ company setting are on.
 
 ### Eligible Pool (`ADMIN` and `POOL_MANAGER`)
 
-`GET /api/admin/eligible-pool`, `GET /summary`, `POST /`, `PATCH /:studentId`, `DELETE /:studentId`.
+`GET /api/admin/eligible-pool`, `GET /summary`, `POST /`, `POST /bulk`, `PATCH /:studentId`, `DELETE /:studentId`.
+
+`POST /api/admin/eligible-pool/bulk` with `{ "students": [{ "studentId", "niatId", "studentName",
+"mobile", "email", "productGroup", "campus", "batch", "eligibilityStatus", "remarks" }],
+"updateExisting": false, "source": "CSV" | "PASTE" }` (1 to 5,000 rows, values as text, up to 5 MB).
+An empty `eligibilityStatus` means `Eligible` for new students. `200` → `{ "result": { "added",
+"updated", "total" } }`. When any row has a problem nothing is saved: `400 BULK_INVALID` with
+`details: [{ "row", "studentId", "field", "message" }]` (`row` counts from 1 in the order sent).
 For a Pool Manager every call only covers students of their products: other students are not listed,
 `PATCH` / `DELETE` answer `404` for them, and a product outside theirs is `403`. A new student gets
 their product when they have only one. The summary adds `allowedProducts` and has no sync details.

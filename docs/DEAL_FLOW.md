@@ -50,6 +50,29 @@ their products. They can add, edit and delete those students by hand; they canno
 see the applied pool, deals, companies, interviews or settings. Every change they make is in the
 audit log with the old and new values.
 
+### Admins and Pool Managers: adding Eligible Pool students
+
+**Add student** on the Eligible Pool page offers two ways:
+
+- **Add one student**: the form for a single student.
+- **Add in bulk**: a spreadsheet-style grid with the columns User ID, NIAT ID, Name, Mobile, Email,
+  Product, Campus, Batch, Eligibility Status and Remarks (the same as the CSV template).
+  - **Download CSV template**, fill it in Excel or Google Sheets, save it as CSV and **Upload CSV
+    file**: the rows appear in the grid to check before adding.
+  - Or copy the rows in Excel or Google Sheets, click a cell in the grid and press Ctrl+V. The header
+    row can be included; without it the columns are filled from the cell that was clicked.
+  - User ID, Name and Product (NIAT or Academy, any case) are required. **Eligibility Status is
+    Eligible when left empty**; other values are Placed, Mint, Do not Provided and Not Interested.
+  - Cells with a problem turn red and every problem is listed under the grid by row: missing name,
+    wrong product or status, bad email or mobile, the same user ID twice, a user ID already in the
+    pool. **Nothing is saved until every row is fine.**
+  - A user ID already in the pool is a problem unless **Update students already in the pool** is
+    ticked; then that student is updated, and empty cells never clear saved values.
+  - At most 5,000 students at a time. A Pool Manager can only add students of their products; an
+    empty product becomes their product when they have only one.
+  - Every bulk add is one Audit Log line, for example "Uploaded a CSV to the Eligible Pool: 120
+    students added".
+
 ### Admin: Audit Log (Settings → Audit Log)
 
 One plain line for everything that happens, newest first and kept forever: sign-ins, deal submitted,
@@ -416,10 +439,11 @@ Notes:
 
 ### The deal page
 
-Clicking a deal's row (or **View Details** in its menu) opens the deal on its own full page, with a
-**Back** button at the top left that returns to the list it came from. The top shows the company and
-role, the Deal ID and job ID, the status, and **Review & Approve**, **Retry Failed Step** and **Boost
-applications** when they apply. Tabs:
+The Deals table has no action column: clicking a deal's row (or its Deal ID) opens the deal on its
+own full page, with a **Back** button at the top left that returns to the list it came from. Every
+action is on that page. The top shows the company and role, the Deal ID and job ID, the status, and
+**Review & Approve**, **Retry Failed Step**, **Boost applications**, **Stop deal** and **Delete** when
+they apply (Stop and Delete ask to confirm first). Tabs:
 
 | Tab | What it shows |
 |---|---|

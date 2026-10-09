@@ -204,6 +204,7 @@ function eligiblePoolRoutes() {
   router.get("/summary", a(admin.eligiblePoolSummary));
   router.post("/sync", requireRole("ADMIN"), a(admin.syncEligiblePool));
   router.post("/", validate({ body: admin.poolStudentCreateSchema }), a(admin.addPoolStudent));
+  router.post("/bulk", validate({ body: admin.poolBulkSchema }), a(admin.importPoolStudentsBulk));
   router.patch(
     "/:studentId",
     validate({ params: admin.poolStudentParams, body: admin.poolStudentUpdateSchema }),

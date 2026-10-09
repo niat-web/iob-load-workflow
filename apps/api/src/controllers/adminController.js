@@ -7,12 +7,14 @@ import { auditLogFilters, listAuditLogs } from "../services/auditLogService.js";
 import { AUDIT, audit } from "../services/auditService.js";
 import { listDatasets, listTables, readTableRows } from "../services/bigQueryBrowser.js";
 import {
+  BULK_LIMIT,
   EDITABLE_PRODUCTS,
   ELIGIBILITY_STATUSES,
   POOL_SORT_FIELDS,
   PRODUCT_GROUPS,
   createPoolStudent,
   deletePoolStudent,
+  importPoolStudents,
   listPool,
   poolScope,
   poolSummary,
@@ -257,6 +259,63 @@ export async function editPoolStudent(req, res) {
 export async function removePoolStudent(req, res) {
   await deletePoolStudent(req.valid.params.studentId, req.user, poolScope(req.user));
   res.status(204).end();
+}
+
+const bulkCell = z
+  .union([z.string().max(1000), z.number()])
+  .nullable()
+  .optional()
+  .transform((value) => (value === null || value === undefined ? "" : String(value)));
+
+const bulkRowSchema = z
+  .object(Object.fromEntries(["studentId", ...Object.keys(poolStudentFields)].map((field) => [field, bulkCell])))
+  .strict();
+
+export const poolBulkSchema = z.object({
+  students: z
+    .array(bulkRowSchema)
+    .min(1, "Add at least one student")
+    .max(BULK_LIMIT, `Add at most ${BULK_LIMIT} students at a time`),
+  updateExisting: z.boolean().optional().default(false),
+  source: z.enum(["CSV", "PASTE"]).optional().default("PASTE"),
+});
+
+const matchCase = (values, value) => {
+  const text = value.trim();
+  return values.find((option) => option.toLowerCase() === text.toLowerCase()) ?? text;
+};
+
+export async function importPoolStudentsBulk(req, res) {
+  const { students, updateExisting, source } = req.valid.body;
+  const rows = [];
+  const problems = [];
+  students.forEach((raw, index) => {
+    const row = index + 1;
+    const studentId = raw.studentId.trim() || null;
+    const product = matchCase(EDITABLE_PRODUCTS, raw.productGroup);
+    const status = matchCase(ELIGIBILITY_STATUSES, raw.eligibilityStatus);
+    const rowProblems = [];
+    if (product && !EDITABLE_PRODUCTS.includes(product)) {
+      rowProblems.push({ field: "productGroup", message: `Product must be ${EDITABLE_PRODUCTS.join(" or ")}` });
+    }
+    if (status && !ELIGIBILITY_STATUSES.includes(status)) {
+      rowProblems.push({ field: "eligibilityStatus", message: `Eligibility status must be one of: ${ELIGIBILITY_STATUSES.join(", ")}` });
+    }
+    const parsed = poolStudentCreateSchema.safeParse({
+      ...raw,
+      productGroup: EDITABLE_PRODUCTS.includes(product) ? product : "",
+      eligibilityStatus: ELIGIBILITY_STATUSES.includes(status) ? status : "",
+    });
+    if (!parsed.success) {
+      for (const issue of parsed.error.issues) rowProblems.push({ field: String(issue.path[0] ?? ""), message: issue.message });
+    }
+    if (rowProblems.length) {
+      for (const problem of rowProblems) problems.push({ row, studentId, ...problem });
+      return;
+    }
+    rows.push({ row, data: parsed.data });
+  });
+  res.json({ result: await importPoolStudents(rows, { updateExisting, source }, req.user, poolScope(req.user), problems) });
 }
 
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use a YYYY-MM-DD date");

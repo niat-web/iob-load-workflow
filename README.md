@@ -96,8 +96,8 @@ flows CRMs see next to Submit: both (the CRM picks per deal), only one (every de
 
 - **Automatic**: every step above runs by itself.
 - **Step by step**: the deal stops before each step the admin turned on (any of the five below) and
-  shows **Waiting for Approval** in the CRM table. **Review** opens a panel showing what the step will do; **Approve and continue** runs it,
-  **Stop deal** ends the deal.
+  shows **Waiting for Approval** in the CRM table. On the deal's page (click its row), **Review & Approve** opens a panel showing
+  what the step will do; **Approve and continue** runs it, **Stop deal** ends the deal.
 
 | Stop | Shown to the reviewer | Runs after approval |
 |---|---|---|

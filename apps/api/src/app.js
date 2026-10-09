@@ -76,6 +76,7 @@ export function createApp() {
 
   app.use("/api/webhooks", webhookLimiter, express.raw({ type: "*/*", limit: "1mb" }), webhookRoutes());
 
+  app.use("/api/admin/eligible-pool/bulk", express.json({ limit: "5mb" }));
   app.use(express.json({ limit: "200kb" }));
   app.use(cookieParser());
   app.use("/api", apiLimiter, csrfGuard);

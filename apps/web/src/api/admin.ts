@@ -15,6 +15,8 @@ import type {
   EligiblePoolSync,
   Paginated,
   PoolProduct,
+  PoolBulkInput,
+  PoolBulkResult,
   PoolStudentInput,
   Role,
 } from "../types/api";
@@ -200,6 +202,12 @@ export function useCreatePoolStudent() {
 export function useUpdatePoolStudent() {
   return usePoolMutation(({ studentId, ...changes }: PoolStudentInput & { studentId: string }) =>
     api.patch<{ student: EligiblePoolStudent }>(`/admin/eligible-pool/${seg(studentId)}`, changes),
+  );
+}
+
+export function useImportPoolStudents() {
+  return usePoolMutation((input: PoolBulkInput) =>
+    api.post<{ result: PoolBulkResult }>("/admin/eligible-pool/bulk", input),
   );
 }
 

@@ -1,93 +1,28 @@
 import type { ColumnDef } from "@tanstack/react-table";
-import { ArrowUpRight, CircleStop, ClipboardCheck, Copy, Eye, RotateCcw, ScrollText, Trash2 } from "lucide-react";
+import { ArrowUpRight } from "lucide-react";
+import { Link } from "react-router";
 import type { CrmDealRow } from "../../types/api";
 import { formatDateTime, formatNumber } from "../../utils/format";
-import { ActionMenu, type ActionMenuItem } from "../ActionMenu";
 import { ProgressBar } from "../ProgressBar";
 import { StatusBadge } from "../StatusBadge";
 import { TruncatedText } from "../TruncatedText";
-import { Button } from "../ui/Button";
 import { linkClass } from "../ui/styles";
 
-export interface CrmColumnHandlers {
+export interface CrmColumnOptions {
   offset: number;
-  onViewDetails: (row: CrmDealRow) => void;
-  onRetry: (row: CrmDealRow) => void;
-  onCopyLink: (row: CrmDealRow) => void;
-  onViewLogs: (row: CrmDealRow) => void;
-  onReviewApproval: (row: CrmDealRow) => void;
-  onStop: (row: CrmDealRow) => void;
-  onDelete: (row: CrmDealRow) => void;
+  from: string;
 }
 
-const iconClass = "size-4";
-
-function actionItems(row: CrmDealRow, h: CrmColumnHandlers): ActionMenuItem[] {
-  const items: ActionMenuItem[] = [];
-  if (row.awaitingApproval) {
-    items.push({
-      key: "approve",
-      label: "Review & Approve",
-      icon: <ClipboardCheck className={iconClass} aria-hidden />,
-      onSelect: () => h.onReviewApproval(row),
-    });
-  }
-  items.push({
-    key: "details",
-    label: "View Details",
-    icon: <Eye className={iconClass} aria-hidden />,
-    onSelect: () => h.onViewDetails(row),
-  });
-  if (row.canRetry) {
-    items.push({
-      key: "retry",
-      label: "Retry Failed Step",
-      icon: <RotateCcw className={iconClass} aria-hidden />,
-      onSelect: () => h.onRetry(row),
-    });
-  }
-  if (row.publicLinkUrl) {
-    items.push({
-      key: "copy",
-      label: "Copy Public Link",
-      icon: <Copy className={iconClass} aria-hidden />,
-      onSelect: () => h.onCopyLink(row),
-    });
-  }
-  items.push({
-    key: "logs",
-    label: "View Logs",
-    icon: <ScrollText className={iconClass} aria-hidden />,
-    onSelect: () => h.onViewLogs(row),
-  });
-  if (row.canStop) {
-    items.push({
-      key: "stop",
-      label: "Stop",
-      icon: <CircleStop className={iconClass} aria-hidden />,
-      onSelect: () => h.onStop(row),
-    });
-  }
-  if (row.canDelete) {
-    items.push({
-      key: "delete",
-      label: "Delete",
-      icon: <Trash2 className={iconClass} aria-hidden />,
-      danger: true,
-      onSelect: () => h.onDelete(row),
-    });
-  }
-  return items;
-}
+export const dealPagePath = (row: CrmDealRow) => `/crm/deals/${encodeURIComponent(row.id)}`;
 
 const numeric = { headerClassName: "text-right", cellClassName: "text-right tabular-nums" };
 
-export function buildCrmColumns(h: CrmColumnHandlers): ColumnDef<CrmDealRow>[] {
+export function buildCrmColumns(options: CrmColumnOptions): ColumnDef<CrmDealRow>[] {
   return [
     {
       id: "index",
       header: "#",
-      cell: ({ row }) => <span className="text-muted tabular-nums">{h.offset + row.index + 1}</span>,
+      cell: ({ row }) => <span className="text-muted tabular-nums">{options.offset + row.index + 1}</span>,
       meta: { headerClassName: "w-12", cellClassName: "w-12" },
     },
     {
@@ -95,7 +30,13 @@ export function buildCrmColumns(h: CrmColumnHandlers): ColumnDef<CrmDealRow>[] {
       header: "Deal ID",
       cell: ({ row }) => (
         <span className="flex flex-col">
-          <span className="font-bold text-ink tabular-nums">{row.original.hubspotDealId}</span>
+          <Link
+            to={dealPagePath(row.original)}
+            state={{ from: options.from }}
+            className="focus-ring self-start rounded font-bold text-ink tabular-nums hover:text-primary"
+          >
+            {row.original.hubspotDealId}
+          </Link>
           {row.original.flowMode === "STEP_BY_STEP" && <span className="text-xs text-muted">Step by step</span>}
         </span>
       ),
@@ -159,21 +100,6 @@ export function buildCrmColumns(h: CrmColumnHandlers): ColumnDef<CrmDealRow>[] {
       id: "updatedAt",
       header: "Last Updated",
       cell: ({ row }) => <span className="text-muted tabular-nums">{formatDateTime(row.original.updatedAt)}</span>,
-    },
-    {
-      id: "actions",
-      header: "Action",
-      cell: ({ row }) => (
-        <span className="flex items-center justify-end gap-2">
-          {row.original.awaitingApproval && (
-            <Button size="sm" onClick={() => h.onReviewApproval(row.original)}>
-              Review
-            </Button>
-          )}
-          <ActionMenu label={`Actions for deal ${row.original.hubspotDealId}`} items={actionItems(row.original, h)} />
-        </span>
-      ),
-      meta: { headerClassName: "text-right", cellClassName: "text-right" },
     },
   ];
 }

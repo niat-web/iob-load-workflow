@@ -2,8 +2,8 @@ import { config } from "../config/env.js";
 import { POOL_PRODUCTS } from "../config/statuses.js";
 import { EligiblePoolStudent, EligiblePoolSync } from "../models/index.js";
 import { now } from "../utils/clock.js";
-import { badRequest, conflict, forbidden, notFound } from "../utils/errors.js";
-import { escapeRegex } from "../utils/helpers.js";
+import { badRequest, conflict, forbidden, isDuplicateKeyError, notFound } from "../utils/errors.js";
+import { chunk, escapeRegex } from "../utils/helpers.js";
 import { logger } from "../utils/logger.js";
 import { AUDIT, audit } from "./auditService.js";
 import { createBigQueryRepository } from "./bigQueryRepository.js";
@@ -342,4 +342,101 @@ export async function deletePoolStudent(studentId, actor, scope = null) {
     entityId: studentId,
     metadata: { studentName: existing.studentName ?? "", product: existing.productGroup ?? null },
   });
+}
+
+export const BULK_LIMIT = 5000;
+
+const filled = (value) => value !== null && value !== undefined && value !== "";
+
+export async function importPoolStudents(rows, { updateExisting = false, source = "PASTE" }, actor, scope = null, problems = []) {
+  const issues = [...problems];
+  const firstRow = new Map();
+  for (const { row, data } of rows) {
+    const earlier = firstRow.get(data.studentId);
+    if (earlier) issues.push({ row, studentId: data.studentId, field: "studentId", message: `Same user ID as row ${earlier}` });
+    else firstRow.set(data.studentId, row);
+    if (!data.productGroup && scope?.length === 1) data.productGroup = scope[0];
+    if (!data.productGroup) {
+      issues.push({ row, studentId: data.studentId, field: "productGroup", message: "Choose the product: NIAT or Academy" });
+    } else if (scope && !scope.includes(data.productGroup)) {
+      issues.push({ row, studentId: data.studentId, field: "productGroup", message: `You can only add ${scope.join(" and ")} students` });
+    }
+  }
+
+  const existing = new Map(
+    (await EligiblePoolStudent.find({ studentId: { $in: [...firstRow.keys()] } }, { studentId: 1, productGroup: 1 }).lean()).map(
+      (student) => [student.studentId, student],
+    ),
+  );
+  for (const { row, data } of rows) {
+    const found = existing.get(data.studentId);
+    if (!found) continue;
+    if (!updateExisting) {
+      issues.push({
+        row,
+        studentId: data.studentId,
+        field: "studentId",
+        message: 'Already in the Eligible Pool. Tick "Update students already in the pool" to update them.',
+      });
+    } else if (scope && !scope.includes(found.productGroup)) {
+      issues.push({
+        row,
+        studentId: data.studentId,
+        field: "studentId",
+        message: `Already in the pool as ${found.productGroup ?? "a student without a product"}, which you cannot manage`,
+      });
+    }
+  }
+
+  if (issues.length) {
+    issues.sort((a, b) => a.row - b.row);
+    const rowCount = new Set(issues.map((issue) => issue.row)).size;
+    throw badRequest(`${rowCount} ${rowCount === 1 ? "row needs" : "rows need"} fixing. Nothing was saved.`, issues, "BULK_INVALID");
+  }
+
+  const stamp = now();
+  const updatedBy = actor?.email ?? null;
+  let added = 0;
+  let updated = 0;
+  const products = {};
+  const operations = rows.map(({ data }) => {
+    const fields = editableFields(data);
+    products[fields.productGroup] = (products[fields.productGroup] ?? 0) + 1;
+    if (existing.has(data.studentId)) {
+      updated += 1;
+      const changes = Object.fromEntries(Object.entries(fields).filter(([, value]) => filled(value)));
+      return { updateOne: { filter: { studentId: data.studentId }, update: { $set: { ...changes, manual: true, updatedBy } } } };
+    }
+    added += 1;
+    return {
+      insertOne: {
+        document: {
+          ...fields,
+          eligibilityStatus: fields.eligibilityStatus || ELIGIBLE,
+          studentId: data.studentId,
+          syncedAt: stamp,
+          manual: true,
+          updatedBy,
+        },
+      },
+    };
+  });
+
+  try {
+    for (const batch of chunk(operations, 1000)) await EligiblePoolStudent.bulkWrite(batch, { ordered: false });
+  } catch (error) {
+    if (isDuplicateKeyError(error)) {
+      throw conflict("Some of these students were added by someone else at the same time. Check the pool and try again.", "STUDENT_EXISTS");
+    }
+    throw error;
+  }
+
+  await audit({
+    actor,
+    action: AUDIT.POOL_STUDENTS_IMPORTED,
+    entityType: "EligiblePool",
+    entityId: SYNC_ID,
+    metadata: { source, added, updated, products },
+  });
+  return { added, updated, total: operations.length };
 }

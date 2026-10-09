@@ -1,14 +1,16 @@
 import type { ColumnDef } from "@tanstack/react-table";
-import { FilterX, GraduationCap, Pencil, SearchX, Trash2, UserPlus } from "lucide-react";
+import { FileSpreadsheet, FilterX, GraduationCap, Pencil, SearchX, Trash2, UserPlus } from "lucide-react";
 import { useMemo, useState } from "react";
 import { errorMessage } from "../api/client";
 import { useDeletePoolStudent, useEligiblePool, useEligiblePoolSummary } from "../api/admin";
 import { useAuth } from "../auth/AuthContext";
+import { ActionMenu } from "../components/ActionMenu";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { DataTable, type TableSort } from "../components/DataTable";
 import { EmptyState } from "../components/EmptyState";
 import { FilterMenu } from "../components/FilterMenu";
 import { Pagination } from "../components/Pagination";
+import { PoolBulkDialog } from "../components/pool/PoolBulkDialog";
 import { PoolStudentDialog } from "../components/pool/PoolStudentDialog";
 import { SearchInput } from "../components/SearchInput";
 import { StatusBadge } from "../components/StatusBadge";
@@ -135,6 +137,7 @@ export function EligiblePoolPage() {
   const remove = useDeletePoolStudent();
   const { reset: resetRemove } = remove;
   const [editor, setEditor] = useState<{ student: EligiblePoolStudent | null } | null>(null);
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [deleting, setDeleting] = useState<EligiblePoolStudent | null>(null);
   const [sort, setSort] = useState<TableSort | null>(null);
 
@@ -235,13 +238,27 @@ export function EligiblePoolPage() {
         >
           Clear Filters
         </Button>
-        <Button
+        <ActionMenu
+          label="Add students"
           className="sm:ml-auto"
-          onClick={() => setEditor({ student: null })}
-          icon={<UserPlus className="size-4" aria-hidden />}
-        >
-          Add student
-        </Button>
+          trigger={{ text: "Add student", icon: <UserPlus className="size-4" aria-hidden /> }}
+          items={[
+            {
+              key: "manual",
+              label: "Add one student",
+              description: "Fill in the form for a single student.",
+              icon: <UserPlus className="size-4" aria-hidden />,
+              onSelect: () => setEditor({ student: null }),
+            },
+            {
+              key: "bulk",
+              label: "Add in bulk",
+              description: "Upload a CSV file, or paste rows from Excel or Google Sheets.",
+              icon: <FileSpreadsheet className="size-4" aria-hidden />,
+              onSelect: () => setBulkOpen(true),
+            },
+          ]}
+        />
       </div>
 
       <DataTable
@@ -302,6 +319,7 @@ export function EligiblePoolPage() {
         products={allowedProducts}
         onClose={() => setEditor(null)}
       />
+      <PoolBulkDialog open={bulkOpen} products={allowedProducts} onClose={() => setBulkOpen(false)} />
       <ConfirmDialog
         open={deleting !== null}
         title="Delete this student?"
