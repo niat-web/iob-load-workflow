@@ -80,7 +80,7 @@ export function DataTable<T>({
   const leafColumns = table.getVisibleLeafColumns();
 
   return (
-    <div className={cn(cardClass, "relative flex min-h-[320px] flex-1 flex-col overflow-hidden")}>
+    <div className={cn(cardClass, "relative flex min-h-[320px] flex-1 shrink-0 flex-col overflow-hidden")}>
       {isFetching && !showSkeleton && (
         <div className="absolute inset-x-0 top-0 z-20 h-0.5 overflow-hidden" aria-hidden>
           <div className="h-full w-1/3 animate-indeterminate bg-primary/60" />
@@ -88,7 +88,7 @@ export function DataTable<T>({
       )}
       {/* The empty and error states live inside the scroll region so the horizontal scrollbar
           always sits at the bottom of the table, never directly under the header row. */}
-      <div data-scroll-region="" className="flex min-h-0 flex-1 flex-col overflow-auto overscroll-contain">
+      <div className="flex flex-1 flex-col overflow-x-auto overflow-y-hidden">
         <table
           className="w-full min-w-max shrink-0 border-separate border-spacing-0 text-left text-sm [&>tbody>tr:last-child>td]:border-b-0"
           aria-busy={showSkeleton || undefined}
@@ -112,7 +112,7 @@ export function DataTable<T>({
                         active === "asc" ? "ascending" : active === "desc" ? "descending" : sortKey ? "none" : undefined
                       }
                       className={cn(
-                        "sticky top-0 z-10 h-13 border-b border-line bg-surface px-5 text-xs font-bold tracking-wider whitespace-nowrap text-muted uppercase",
+                        "h-13 border-b border-line bg-surface px-5 text-xs font-bold tracking-wider whitespace-nowrap text-muted uppercase",
                         header.column.columnDef.meta?.headerClassName,
                       )}
                     >

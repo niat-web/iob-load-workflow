@@ -27,6 +27,11 @@ const TASK_LABELS = {
   HUBSPOT_WRITE_BACK: "Write to HubSpot",
   POOL_TARGET_EMAIL: "Expected pool email",
 };
+const CHECKPOINT_SWITCH_LABELS = {
+  firstEmails: "the first checkpoint emails",
+  secondEmails: "the second checkpoint emails",
+  secondCalls: "the second checkpoint AI calls",
+};
 const POOL_FIELD_LABELS = {
   studentName: "name",
   niatId: "NIAT ID",
@@ -90,6 +95,7 @@ export const ACTION_LABELS = Object.freeze({
   [AUDIT.BIGQUERY_VIEWED]: "BigQuery table viewed",
   [AUDIT.SETTINGS_UPDATED]: "Settings changed",
   [AUDIT.COMPANY_CONTROLS_UPDATED]: "Company switches changed",
+  [AUDIT.DEAL_REMINDERS_UPDATED]: "Reminder switches changed",
   [AUDIT.INTERVIEW_MEET_SCHEDULED]: "Meet created",
   [AUDIT.INTERVIEW_MEET_UPDATED]: "Meet moved",
   [AUDIT.INTERVIEWERS_UPDATED]: "Interviewer emails saved",
@@ -228,6 +234,11 @@ const DESCRIBERS = {
     const switches = Object.entries(meta).filter(([key]) => key !== "company");
     return `Changed checkpoint switches for ${meta.company ?? "a company"}: ${switches.map(([key, value]) => `${key} ${value ? "on" : "off"}`).join(", ")}`;
   },
+  [AUDIT.DEAL_REMINDERS_UPDATED]: (meta) =>
+    `Turned ${Object.entries(meta)
+      .filter(([key]) => CHECKPOINT_SWITCH_LABELS[key])
+      .map(([key, value]) => `${CHECKPOINT_SWITCH_LABELS[key]} ${value ? "on" : "off"}`)
+      .join(", ")} for this deal`,
   [AUDIT.INTERVIEW_MEET_SCHEDULED]: (meta) =>
     `Created a Google Meet${meta.startAt ? ` for ${formatDateTime(meta.startAt)} IST` : ""} with ${plural(meta.guests, "guest")}, recording ${meta.recording === "ON" ? "on" : "not on"}`,
   [AUDIT.INTERVIEW_MEET_UPDATED]: (meta) =>

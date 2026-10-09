@@ -85,7 +85,7 @@ function TableRowsPanel({ dataset, table }: { dataset: string; table: BigQueryTa
           {formatNumber(columnsInfo.length)} columns{pagination ? ` · ${formatNumber(pagination.total)} rows` : ""}
         </span>
       </div>
-      <div className="flex h-[560px] min-h-0 flex-col">
+      <div className="flex flex-col">
         <DataTable
           caption={`Rows of ${dataset}.${table.id}`}
           data={items}

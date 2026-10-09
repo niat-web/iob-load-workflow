@@ -17,7 +17,6 @@ import { config } from "../config/env.js";
 import { Job } from "../models/index.js";
 import { now } from "../utils/clock.js";
 import { escapeRegex, normalizeCompanyName } from "../utils/helpers.js";
-import { companyCheckpointsFor } from "./companySettingsService.js";
 import { canDelete, canStop } from "./dealControlService.js";
 import { hubspotRecordUrl } from "./dealMapper.js";
 import { publicLinkUrlsForJobs } from "./publicLinkService.js";
@@ -106,7 +105,7 @@ export function toCrmRow(job, publicLinkUrl = null) {
 
 const iso = (date) => (date ? new Date(date).toISOString() : null);
 
-function reminderInfo(reminder) {
+export function reminderInfo(reminder) {
   if (!reminder?.status) return null;
   return {
     status: reminder.status,
@@ -287,8 +286,6 @@ export async function crmFilterOptions() {
   return { companies: companies.sort((a, b) => a.localeCompare(b)), statuses: CRM_STATUS_FILTERS };
 }
 
-const FINISHED_STATUSES = [S.CRM_NOTIFICATION_SENT, S.COMPLETED];
-
 export async function companyJdCount(job, companyName) {
   const companyKey = normalizeCompanyName(companyName) || null;
   if (!companyKey) return { companyKey, jdCount: 1, earlierDeals: 0 };
@@ -298,46 +295,6 @@ export async function companyJdCount(job, companyName) {
     hubspotDealId: { $ne: job.hubspotDealId },
   });
   return { companyKey, jdCount: earlierDeals + 1, earlierDeals };
-}
-
-export async function crmCompanySummary() {
-  const waiting = {
-    $and: [
-      { $ne: [{ $ifNull: ["$awaitingApproval.gate", null] }, null] },
-      { $not: [{ $in: ["$status", [S.FAILED, S.CANCELLED]] }] },
-    ],
-  };
-  const rows = await Job.aggregate([
-    { $match: { companyName: { $nin: [null, ""] } } },
-    {
-      $group: {
-        _id: "$companyName",
-        deals: { $sum: 1 },
-        waiting: { $sum: { $cond: [waiting, 1, 0] } },
-        completed: { $sum: { $cond: [{ $in: ["$status", FINISHED_STATUSES] }, 1, 0] } },
-        failed: { $sum: { $cond: [{ $eq: ["$status", S.FAILED] }, 1, 0] } },
-        stopped: { $sum: { $cond: [{ $eq: ["$status", S.CANCELLED] }, 1, 0] } },
-        lastUpdated: { $max: "$updatedAt" },
-      },
-    },
-    { $sort: { _id: 1 } },
-    { $limit: 2000 },
-  ]);
-  const checkpointsOf = await companyCheckpointsFor(rows.map((row) => normalizeCompanyName(row._id)));
-  return {
-    items: rows.map((row) => ({
-      name: row._id,
-      companyKey: normalizeCompanyName(row._id),
-      checkpoints: checkpointsOf(normalizeCompanyName(row._id)),
-      deals: row.deals,
-      inProgress: row.deals - row.waiting - row.completed - row.failed - row.stopped,
-      waiting: row.waiting,
-      completed: row.completed,
-      failed: row.failed,
-      stopped: row.stopped,
-      lastUpdated: row.lastUpdated ? new Date(row.lastUpdated).toISOString() : null,
-    })),
-  };
 }
 
 const psmBaseFilter = () => ({

@@ -7,7 +7,7 @@ import { getSettings } from "../../services/settingsService.js";
 import { syncApplicants } from "../../services/applicationService.js";
 import { AUDIT, audit } from "../../services/auditService.js";
 import { runResultsSyncTask, startAiCalls } from "../../services/boostService.js";
-import { companyCheckpoints } from "../../services/companySettingsService.js";
+import { dealCheckpoints } from "../../services/dealReminderService.js";
 import { transitionJob } from "../../services/jobService.js";
 import { enqueueTask } from "../../services/taskQueue.js";
 import { now } from "../../utils/clock.js";
@@ -68,10 +68,10 @@ async function recordReminder(jobId, key, info) {
 }
 
 async function checkpointSwitches(job) {
-  const [{ checkpoints: admin }, company] = await Promise.all([getSettings(), companyCheckpoints(job.companyKey)]);
+  const [{ checkpoints: admin }, deal] = await Promise.all([getSettings(), dealCheckpoints(job)]);
   return (key) => {
     if (!admin[key]) return "turned off by the admin in Settings";
-    if (!company[key]) return `turned off for ${job.companyName ?? "this company"}`;
+    if (!deal[key]) return "turned off for this deal";
     return null;
   };
 }

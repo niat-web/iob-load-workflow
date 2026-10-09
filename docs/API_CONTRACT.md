@@ -151,12 +151,22 @@ the form preselects it for CRM owner, Profiling POC and ISE.
 the flows CRMs may pick (empty = no choice shown), the flow used when they do not pick, the steps a
 Step by step deal stops at, and whether the Boost page actions are on.
 
-### `PATCH /api/crm/companies/controls`
+### Deal reminder switches (`CRM` and `ADMIN`)
 
-Body `{ companyName, checkpoints: { firstEmails?, secondEmails?, secondCalls? } }` (CRM or ADMIN). Turns a
-checkpoint action on or off for one company (all on by default). `GET /api/crm/companies` returns each
-company's `companyKey` and `checkpoints`. An action runs only when both the admin setting and the
-company setting are on.
+- `GET /api/crm/deals/:jobId/reminders` →
+  `{ product, windowStartAt, windowEndAt, checkpoints: [{ key: "r10h" | "r20h", label, hours, runsAt,
+  result: ReminderInfo | null, lockedReason, switches: [{ key, label, on, adminOffReason }] }] }`.
+  `product` is the only product reminded (`NIAT`). `runsAt` is the scheduled time once the window has
+  opened, otherwise `null` and `hours` is the planned delay. `result` is what the checkpoint did.
+  `lockedReason` is set when the switches can no longer change: the checkpoint has run or is running,
+  the window has closed, or the deal is stopped. `adminOffReason` is set when the admin turned that
+  action off in Settings (or turned AI calls off).
+- `PATCH /api/crm/deals/:jobId/reminders` with `{ checkpoints: { firstEmails?, secondEmails?, secondCalls? } }`
+  (at least one) → the same shape. `409 REMINDER_LOCKED` when that checkpoint can no longer change.
+  Every change is audited (`DEAL_REMINDER_SWITCHES_UPDATED`) and shows in the deal's logs.
+
+All switches are on by default. A deal with no switches of its own uses the switches its company had
+on the old Companies page. An action runs only when both the admin setting and the deal's switch are on.
 
 ### Job update interest form (public, no sign-in)
 
@@ -259,28 +269,6 @@ type CrmDealRow = {
 {
   "companies": ["TCS", "Zoho"],
   "statuses": [{ "value": "COMPLETED", "label": "Completed" }]
-}
-```
-
-### `GET /api/crm/companies`
-
-One row per company that has at least one fetched deal, sorted by name. `inProgress`, `waiting`,
-`completed`, `failed` and `stopped` always add up to `deals`.
-
-```json
-{
-  "items": [
-    {
-      "name": "Infosys",
-      "deals": 4,
-      "inProgress": 1,
-      "waiting": 1,
-      "completed": 1,
-      "failed": 0,
-      "stopped": 1,
-      "lastUpdated": "2026-10-05T06:12:00.000Z"
-    }
-  ]
 }
 ```
 

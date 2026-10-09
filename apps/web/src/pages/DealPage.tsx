@@ -1,5 +1,6 @@
 import {
   ArrowLeft,
+  BellRing,
   CircleStop,
   FileText,
   History,
@@ -27,10 +28,10 @@ import {
   LearningPortalSection,
   LinksSection,
   RecordSection,
-  RemindersSection,
   RequirementsSection,
   TimelineSection,
 } from "../components/crm/DealSections";
+import { DealRemindersTab } from "../components/crm/DealRemindersTab";
 import { DealStudentsTab } from "../components/crm/DealStudentsTab";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
@@ -51,6 +52,7 @@ interface DealTab {
 const TABS: DealTab[] = [
   { key: "", label: "Deal Details", icon: FileText },
   { key: "students", label: "Students & Access", icon: UsersRound },
+  { key: "reminders", label: "Reminders", icon: BellRing },
   { key: "workflow", label: "Workflow & Timeline", icon: ListChecks },
   { key: "logs", label: "Logs", icon: History },
 ];
@@ -127,9 +129,6 @@ function WorkflowTab({ deal }: { deal: CrmDealDetail }) {
         </Card>
         <Card>
           <LearningPortalSection deal={deal} />
-        </Card>
-        <Card>
-          <RemindersSection deal={deal} />
         </Card>
         <Card>
           <RecordSection deal={deal} />
@@ -291,6 +290,8 @@ export function DealPage() {
       <DealTabs deal={data} state={location.state} />
       {tab === "students" ? (
         <DealStudentsTab deal={data} />
+      ) : tab === "reminders" ? (
+        <DealRemindersTab deal={data} />
       ) : tab === "workflow" ? (
         <WorkflowTab deal={data} />
       ) : tab === "logs" ? (

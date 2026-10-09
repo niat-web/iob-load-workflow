@@ -16,7 +16,6 @@ import { RouteErrorPage } from "./pages/RouteErrorPage";
 const LoginPage = lazy(() => pageLoaders.login().then((m) => ({ default: m.LoginPage })));
 const CRMPage = lazy(() => pageLoaders.crm().then((m) => ({ default: m.CRMPage })));
 const CRMDealsPage = lazy(() => pageLoaders.crmDeals().then((m) => ({ default: m.CRMDealsPage })));
-const CRMCompaniesPage = lazy(() => pageLoaders.crmCompanies().then((m) => ({ default: m.CRMCompaniesPage })));
 const InterviewsPage = lazy(() => pageLoaders.interviews().then((m) => ({ default: m.InterviewsPage })));
 const InterviewSheetPage = lazy(() => pageLoaders.interviewSheet().then((m) => ({ default: m.InterviewSheetPage })));
 const BoostPage = lazy(() => pageLoaders.boost().then((m) => ({ default: m.BoostPage })));
@@ -81,7 +80,6 @@ const router = createBrowserRouter([
           { path: "/login", element: standalone(<LoginPage />) },
           { path: "/crm", element: internal(CRM_ROLES, <CRMPage />) },
           { path: "/crm/deals", element: internal(CRM_ROLES, <CRMDealsPage />) },
-          { path: "/crm/companies", element: internal(CRM_ROLES, <CRMCompaniesPage />) },
           { path: "/crm/deals/:jobId/boost", element: internal(CRM_ROLES, <BoostPage />) },
           { path: "/crm/deals/:jobId", element: internal(CRM_ROLES, <DealPage />) },
           { path: "/crm/deals/:jobId/:tab", element: internal(CRM_ROLES, <DealPage />) },

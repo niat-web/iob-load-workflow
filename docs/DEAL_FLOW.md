@@ -30,12 +30,22 @@ default.
 When a switch is off, that action is skipped, the reason is recorded on the deal, and the deal
 carries on. Nothing is sent. Call length and voice are set on the agent in NxtDial, not here.
 
-### CRMs and admins: Companies page
+### CRMs and admins: a deal's Reminders tab
 
-Each company row has three switches, on by default: **1st Reminder**, **2nd Reminder** and **2nd AI
-Calls**. A CRM or admin can turn any of them off for that one company. An action runs only when both
-the admin setting and the company setting are on; when the admin has turned one off for everyone, the
-company switch shows as off and locked.
+Each deal's page has a **Reminders** tab with one card per checkpoint:
+
+- **First checkpoint**: one switch, **Reminder emails**.
+- **Second checkpoint**: two switches, **Reminder emails** and **AI calls**.
+
+Each card shows when the checkpoint runs (the date and time once the window has opened), and after it
+runs, what it did: emails sent, AI calls started, or why it was skipped. The switches are on by default
+and only affect that one deal. An action runs only when both the admin setting and the deal's switch
+are on; when the admin has turned one off for everyone, the switch shows as off and locked. A
+checkpoint's switches lock once it has run, once the window has closed, or when the deal is stopped.
+Every change is in the deal's logs and the Audit Log.
+
+A deal that was running before the Companies page was removed keeps the switches its company had there
+until someone changes them on the deal.
 
 ### PSM: company page columns
 
@@ -255,8 +265,8 @@ details and approval panel, and used for the organisation in the Learning Portal
   access (and the portal's email), but only the NIAT students who have not applied are reminded. A
   deal with no NIAT students skips the checkpoint and records why.
 - Nothing is sent to the CRM and no AI calls are made.
-- Can be turned off by the admin (Checkpoints, for every company) or by a CRM or admin for one
-  company (Companies page).
+- Can be turned off by the admin (Checkpoints, for every deal) or by a CRM or admin for one deal
+  (the deal's **Reminders** tab).
 
 **C4. The Boost applications page (CRM, optional)**
 - Opened from the deal's details. Shows Expected Pool, Applied, Not Applied (NIAT) and AI call
@@ -291,8 +301,9 @@ details and approval panel, and used for the organisation in the Learning Portal
   - every few minutes the app reads back each call's status, duration, recording, summary and
     answers (Interested, Will Apply, reason, questions, call back), shown on the Boost page.
 - Nothing is sent to the CRM.
-- The reminder and the AI calls can each be turned off by the admin for every company or by a CRM or
-  admin for one company. AI calls also need the admin's AI calls switch on and NxtDial set up.
+- The reminder and the AI calls can each be turned off by the admin for every deal or by a CRM or
+  admin for one deal (its **Reminders** tab). AI calls also need the admin's AI calls switch on and
+  NxtDial set up.
 
 **C6. HubSpot changes during the window (checked every 30 minutes)**
 - Every 30 minutes, while the window is open, the app reads the deal from HubSpot again.
@@ -409,7 +420,7 @@ Notes:
 | A step fails (for example a missing HubSpot field, the portal is down, no eligible students) | The deal shows **Failed** with the step name and the reason. Temporary problems are retried automatically first | Fix the cause, then click **Retry** on the deal |
 | `REDIS_URL` is not set | The API runs, but the AI analysis step stops with a message | Add `REDIS_URL` to `apps/api/.env` and restart, then **Retry** |
 | NxtDial is not set up, or no student has a mobile | The second checkpoint records "AI calls not started" with the reason; the reminder emails still go | Set up NxtDial or add mobiles in the Eligible Pool |
-| An email or AI call is turned off (admin or company) | That action is skipped and the reason recorded on the deal | Turn it back on in Settings → Config or on the Companies page |
+| An email or AI call is turned off (admin or deal) | That action is skipped and the reason recorded on the deal | Turn it back on in Settings → Config or on the deal's Reminders tab, before the checkpoint runs |
 | The CRM wants to end a deal | **Stop deal** (while it is running or waiting) | Nothing more runs. The deal stays in the list as Stopped |
 | A deal was submitted by mistake | **Delete** (only when it is safe to delete) | The deal is removed |
 | The shared profiles link is older than 30 days | The page says the link has expired | Links last 30 days by default (`PUBLIC_LINK_EXPIRY_DAYS`); share the profiles before then |
@@ -449,7 +460,8 @@ they apply (Stop and Delete ask to confirm first). Tabs:
 |---|---|
 | Deal Details | Current step and progress (with the error if it failed), job meta, company profile, requirements, applications and links |
 | Students & Access | Every student on the deal with their user ID, name, product, campus, batch, email, mobile, job access (given with time, refused with the portal's reason, or waiting), applied, and when they were added. Search, filter by access and product, **Download CSV**, and **Add New Eligible Students** (C4b) |
-| Workflow & Timeline | Flow and approvals, Learning Portal loads and HubSpot job ID, the two checkpoints, the timeline and the record dates |
+| Reminders | The two checkpoints: when each runs, what it did, and the switches for this deal (section 1) |
+| Workflow & Timeline | Flow and approvals, Learning Portal loads and HubSpot job ID, the timeline and the record dates |
 | Logs | Every step, task, email, call and approval for the deal, newest first |
 
 ---

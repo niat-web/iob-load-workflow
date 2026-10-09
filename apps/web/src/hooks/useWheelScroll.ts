@@ -23,10 +23,8 @@ export function useWheelScroll(rootRef: RefObject<HTMLElement | null>, mainRef: 
       if (event.ctrlKey || Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
       if (scrollableAncestor(event.target, root)) return;
       const main = mainRef.current;
-      if (!main) return;
-      const region = canScroll(main) ? main : main.querySelector<HTMLElement>("[data-scroll-region]");
-      if (!region || !canScroll(region)) return;
-      region.scrollTop += event.deltaMode === 1 ? event.deltaY * LINE_HEIGHT : event.deltaY;
+      if (!main || !canScroll(main)) return;
+      main.scrollTop += event.deltaMode === 1 ? event.deltaY * LINE_HEIGHT : event.deltaY;
       event.preventDefault();
     };
     root.addEventListener("wheel", onWheel, { passive: false });

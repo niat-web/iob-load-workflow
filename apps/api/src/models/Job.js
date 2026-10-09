@@ -123,6 +123,7 @@ const jobSchema = new mongoose.Schema(
       r10h: { type: reminderSchema, default: null },
       r20h: { type: reminderSchema, default: null },
     },
+    checkpoints: { type: mongoose.Schema.Types.Mixed, default: null },
     boost: {
       emailRuns: { type: [boostEmailRunSchema], default: [] },
       callRuns: { type: [boostCallRunSchema], default: [] },

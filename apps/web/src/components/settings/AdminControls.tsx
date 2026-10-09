@@ -396,7 +396,7 @@ function ControlsForm({ record }: { record: AppSettingsRecord }) {
       <ControlCard
         icon={<BellRing className="size-[18px]" aria-hidden />}
         title="Checkpoints"
-        description="What happens at the first and second checkpoint for every company. CRMs can also turn these off for one company on the Companies page."
+        description="What happens at the first and second checkpoint for every deal. CRMs can also turn these off for one deal on its Reminders tab."
       >
         {switches("checkpoints", CHECKPOINTS)}
       </ControlCard>

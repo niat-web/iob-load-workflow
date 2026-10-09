@@ -29,7 +29,7 @@ import { formatDateTime, formatNumber } from "../utils/format";
 function Shell({ children }: { children: ReactNode }) {
   return (
     <div className="flex h-dvh flex-col bg-canvas">
-      <main className="mx-auto flex min-h-0 w-full max-w-[1600px] flex-1 flex-col gap-4 overflow-y-auto px-4 py-6 sm:px-6 sm:py-8">
+      <main className="relative mx-auto flex min-h-0 w-full max-w-[1600px] flex-1 flex-col gap-4 overflow-y-auto px-4 py-6 sm:px-6 sm:py-8">
         {children}
       </main>
     </div>
@@ -92,9 +92,9 @@ function Sheet({ jobId, data }: { jobId: string; data: SharedProfiles }) {
         </span>
       </div>
 
-      <div className={cn(cardClass, "min-h-0 flex-1 overflow-auto")}>
+      <div className={cn(cardClass, "min-h-[320px] shrink-0 overflow-x-auto overflow-y-hidden")}>
         <table className="w-full border-collapse text-sm">
-          <thead className="sticky top-0 z-10 bg-header">
+          <thead className="bg-header">
             <tr>
               <th scope="col" className="w-12 border-b border-line px-3 py-2.5 text-left text-xs font-bold tracking-wider text-muted uppercase">
                 #

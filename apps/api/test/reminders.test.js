@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { JOB_STATUS, NOTIFICATION_TYPE, TASK_TYPE } from "../src/config/statuses.js";
 import {
   AiCall,
+  CompanySettings,
   EligiblePoolStudent,
   Job,
   JobApplication,
@@ -24,6 +25,8 @@ const notAppliedWithEmail = (job, product = "NIAT") =>
     accessGrantedAt: { $ne: null },
     email: { $nin: [null, ""] },
   }).lean();
+const switchesOf = (overview) =>
+  Object.fromEntries(overview.checkpoints.flatMap((checkpoint) => checkpoint.switches.map((item) => [item.key, item.on])));
 const crmEmails = (job) =>
   NotificationLog.countDocuments({ jobId: job._id, email: "crm.user@example.com", type: { $nin: [NOTIFICATION_TYPE.POOL_TARGET_REACHED] } });
 
@@ -127,37 +130,54 @@ describe("10h / 20h checkpoints", () => {
     assert.equal(await JobEligibleStudent.countDocuments({ jobId: job._id, product: null }), 0);
   });
 
-  test("a CRM can turn the checkpoint emails and AI calls off for one company", async () => {
+  test("a CRM can turn the checkpoint emails and AI calls off for one deal", async () => {
     const job = await openApplicationWindow(crm, "12345");
-    const companies = (await crm.get("/api/crm/companies")).body.items;
-    assert.deepEqual(companies[0].checkpoints, { firstEmails: true, secondEmails: true, secondCalls: true }, "on by default");
+    const url = `/api/crm/deals/${job._id}/reminders`;
+    const shown = (await crm.get(url)).body;
+    assert.deepEqual(switchesOf(shown), { firstEmails: true, secondEmails: true, secondCalls: true }, "on by default");
+    assert.equal(shown.product, "NIAT");
+    assert.ok(shown.checkpoints.every((checkpoint) => checkpoint.runsAt && !checkpoint.lockedReason && !checkpoint.result));
 
-    const saved = await crm
-      .patch("/api/crm/companies/controls")
-      .set(XHR)
-      .send({ companyName: job.companyName, checkpoints: { firstEmails: false, secondCalls: false } });
+    const saved = await crm.patch(url).set(XHR).send({ checkpoints: { firstEmails: false, secondCalls: false } });
     assert.equal(saved.status, 200);
-    assert.deepEqual(saved.body.checkpoints, { firstEmails: false, secondEmails: true, secondCalls: false });
-    assert.deepEqual((await crm.get("/api/crm/companies")).body.items[0].checkpoints, saved.body.checkpoints);
+    assert.deepEqual(switchesOf(saved.body), { firstEmails: false, secondEmails: true, secondCalls: false });
+    assert.deepEqual((await Job.findById(job._id)).checkpoints, { firstEmails: false, secondEmails: true, secondCalls: false });
 
     await advanceAndRun({ hours: 10, minutes: 1 });
     let updated = await Job.findById(job._id);
     assert.equal(updated.reminders.r10h.status, "SKIPPED");
-    assert.match(updated.reminders.r10h.reason, new RegExp(`Reminder emails turned off for ${job.companyName}`));
+    assert.match(updated.reminders.r10h.reason, /Reminder emails turned off for this deal/);
     assert.equal((await reminderLogs(job, NOTIFICATION_TYPE.REMINDER_10H)).length, 0);
+    const locked = await crm.patch(url).set(XHR).send({ checkpoints: { firstEmails: true } });
+    assert.equal(locked.status, 409, "a checkpoint that has already run cannot change");
+    assert.match((await crm.get(url)).body.checkpoints[0].lockedReason, /already run/);
 
     await advanceAndRun({ hours: 10 });
     updated = await Job.findById(job._id);
     assert.ok(updated.reminders.r20h.emailCount > 0, "the second reminder is still on");
-    assert.match(updated.reminders.r20h.reason, new RegExp(`AI calls turned off for ${job.companyName}`));
+    assert.match(updated.reminders.r20h.reason, /AI calls turned off for this deal/);
     assert.equal(await AiCall.countDocuments({ jobId: job._id }), 0);
 
     const psm = await loginAs("psm.user@example.com", "PSM");
-    const refused = await psm
-      .patch("/api/crm/companies/controls")
-      .set(XHR)
-      .send({ companyName: job.companyName, checkpoints: { firstEmails: true } });
-    assert.equal(refused.status, 403);
+    assert.equal((await psm.patch(url).set(XHR).send({ checkpoints: { secondEmails: false } })).status, 403);
+  });
+
+  test("a deal keeps its company's earlier switches until the deal gets its own", async () => {
+    const job = await openApplicationWindow(crm, "12345");
+    await CompanySettings.create({ _id: job.companyKey, companyName: job.companyName, checkpoints: { firstEmails: false } });
+    const url = `/api/crm/deals/${job._id}/reminders`;
+    assert.deepEqual(switchesOf((await crm.get(url)).body), { firstEmails: false, secondEmails: true, secondCalls: true });
+
+    await advanceAndRun({ hours: 10, minutes: 1 });
+    assert.match((await Job.findById(job._id)).reminders.r10h.reason, /Reminder emails turned off for this deal/);
+  });
+
+  test("a stopped deal's reminder switches cannot change", async () => {
+    const job = await openApplicationWindow(crm, "12345");
+    await crm.post(`/api/crm/deals/${job._id}/stop`).set(XHR);
+    const url = `/api/crm/deals/${job._id}/reminders`;
+    assert.ok((await crm.get(url)).body.checkpoints.every((checkpoint) => checkpoint.lockedReason === "This deal is stopped"));
+    assert.equal((await crm.patch(url).set(XHR).send({ checkpoints: { secondEmails: false } })).status, 409);
   });
 
   test("the admin can turn the second-checkpoint AI calls off for every company", async () => {

@@ -9,7 +9,7 @@ candidate pool shared with the company. It replaces the manual CRM_Job_Loading t
 
 | Role | What they do | Screens |
 |---|---|---|
-| **CRM** | Adds HubSpot deals, approves steps (step-by-step mode), stops or deletes deals | Dashboard, Deals, Companies, Settings |
+| **CRM** | Adds HubSpot deals, approves steps (step-by-step mode), stops or deletes deals | Dashboard, Deals (each deal's page, including its Reminders tab), Interviews, Settings |
 | **PSM** | Reviews the AI-ranked candidates, adjusts priorities, submits the final pool | Candidate Pools, Candidate Review, Settings |
 | **ADMIN** | Everything above, plus managing users and their HubSpot owners | All screens + Settings → Users |
 

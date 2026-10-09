@@ -1,4 +1,4 @@
-import { BriefcaseBusiness, Building2, GraduationCap, House, Settings, UsersRound, Video, type LucideIcon } from "lucide-react";
+import { BriefcaseBusiness, GraduationCap, House, Settings, UsersRound, Video, type LucideIcon } from "lucide-react";
 import { useEffect, useRef, type ReactNode } from "react";
 import { NavLink } from "react-router";
 import { useWheelScroll } from "../hooks/useWheelScroll";
@@ -19,7 +19,6 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { to: "/crm", label: "Dashboard", icon: House, roles: ["CRM", "ADMIN"], end: true },
   { to: "/crm/deals", label: "Deals", icon: BriefcaseBusiness, roles: ["CRM", "ADMIN"] },
-  { to: "/crm/companies", label: "Companies", icon: Building2, roles: ["CRM", "ADMIN"] },
   { to: "/crm/interviews", label: "Interviews", icon: Video, roles: ["CRM", "ADMIN"] },
   { to: "/psm", label: "Candidate Pools", icon: UsersRound, roles: ["PSM", "ADMIN"] },
   { to: "/admin/eligible-pool", label: "Eligible Pool", icon: GraduationCap, roles: ["ADMIN", "POOL_MANAGER"] },
@@ -100,7 +99,10 @@ export function AppShell({ user, children }: { user: User; children: ReactNode }
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <AppHeader user={user} />
         <TopNav user={user} />
-        <main ref={mainRef} className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto p-4 sm:p-6">
+        <main
+          ref={mainRef}
+          className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto p-4 sm:p-6 [&>*]:flex-[1_0_auto]"
+        >
           {children}
         </main>
       </div>

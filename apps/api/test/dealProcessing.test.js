@@ -133,26 +133,9 @@ describe("CRM deal processing", () => {
     assert.notEqual((await Job.findById(id)).status, JOB_STATUS.SUBMITTED);
   });
 
-  test("the companies page counts each company's deals by state", async () => {
-    const first = (await submitDeal(crm, "12345")).body.job.id;
-    await submitDeal(crm, "12346");
-    await runDueTasks();
-    await crm.post(`/api/crm/deals/${first}/stop`).set(XHR);
-
-    const response = await crm.get("/api/crm/companies");
-    assert.equal(response.status, 200);
-    const { items } = response.body;
-    assert.equal(items.reduce((sum, item) => sum + item.deals, 0), 2);
-    for (const item of items) {
-      assert.ok(item.name);
-      assert.equal(item.inProgress + item.waiting + item.completed + item.failed + item.stopped, item.deals);
-      assert.ok(Date.parse(item.lastUpdated));
-    }
-    const stoppedCompany = (await Job.findById(first)).companyName;
-    assert.equal(items.find((item) => item.name === stoppedCompany).stopped, 1);
-
-    const psm = await loginAs("psm.user@example.com", "PSM");
-    assert.equal((await psm.get("/api/crm/companies")).status, 403);
+  test("the companies list is gone; checkpoint switches live on each deal", async () => {
+    assert.equal((await crm.get("/api/crm/companies")).status, 404);
+    assert.equal((await crm.patch("/api/crm/companies/controls").set(XHR).send({})).status, 404);
   });
 
   test("JD count is the number of earlier deals for the same company plus one", async () => {

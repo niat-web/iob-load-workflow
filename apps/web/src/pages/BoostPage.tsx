@@ -356,7 +356,7 @@ function BoostContent({ data, jobId }: { data: BoostOverview; jobId: string }) {
             {finished} of {total} calls finished. This page refreshes on its own every 15 seconds.
           </p>
         )}
-        <div className="flex h-[560px] min-h-0 flex-col">
+        <div className="flex flex-col">
           <DataTable
             caption="AI call results"
             data={items}

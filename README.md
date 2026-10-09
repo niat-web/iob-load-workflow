@@ -122,7 +122,7 @@ as soon as they are saved, and every change is in the audit log (`SETTINGS_UPDAT
 | Deal flow | Flows CRMs can choose (Automatic, Step by step, both or none), the flow used when the CRM does not choose, and which of the five steps need approval | — |
 | Emails to students | Job update emails (deal changed in HubSpot) | The portal job is still updated; no email |
 | | Reminder emails from the Boost page | The Boost page button is disabled |
-| Checkpoints | 1st checkpoint reminder emails · 2nd checkpoint reminder emails · 2nd checkpoint AI calls (also per company on the Companies page) | That action is skipped and the reason recorded |
+| Checkpoints | 1st checkpoint reminder emails · 2nd checkpoint reminder emails · 2nd checkpoint AI calls (also per deal on the deal's Reminders tab) | That action is skipped and the reason recorded |
 | Emails to CRMs | Expected pool reached | No email |
 | | Candidate pool ready (public link) | The deal completes; the PSM can share the link |
 | AI calls | AI calls from the Boost page (call length and voice are set on the agent in NxtDial) | The Boost page button is disabled |

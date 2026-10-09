@@ -357,7 +357,7 @@ export function DealStudentsTab({ deal }: { deal: CrmDealDetail }) {
           </IconButton>
         </div>
 
-        <div className="flex h-[560px] min-h-0 flex-col">
+        <div className="flex flex-col">
           <DataTable
             caption="Students on this deal"
             data={students.data?.items}

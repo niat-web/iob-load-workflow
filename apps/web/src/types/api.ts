@@ -128,19 +128,6 @@ export interface CheckpointSwitches {
   secondCalls: boolean;
 }
 
-export interface CompanySummary {
-  name: string;
-  companyKey: string;
-  checkpoints: CheckpointSwitches;
-  deals: number;
-  inProgress: number;
-  waiting: number;
-  completed: number;
-  failed: number;
-  stopped: number;
-  lastUpdated: string | null;
-}
-
 export interface CrmDealRow {
   id: string;
   hubspotDealId: string;
@@ -171,6 +158,30 @@ export interface ReminderInfo {
   emailCount: number;
   callCount: number;
   reason: string | null;
+}
+
+export interface ReminderSwitch {
+  key: keyof CheckpointSwitches;
+  label: string;
+  on: boolean;
+  adminOffReason: string | null;
+}
+
+export interface ReminderCheckpoint {
+  key: "r10h" | "r20h";
+  label: string;
+  hours: number;
+  runsAt: string | null;
+  result: ReminderInfo | null;
+  lockedReason: string | null;
+  switches: ReminderSwitch[];
+}
+
+export interface DealReminders {
+  product: string;
+  windowStartAt: string | null;
+  windowEndAt: string | null;
+  checkpoints: ReminderCheckpoint[];
 }
 
 export interface TimelineEntry {

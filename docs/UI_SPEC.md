@@ -36,12 +36,14 @@ green, blue, purple, orange, yellow, gray, red. Do not make the UI overly colour
 
 Toolbar controls (search, dropdowns, refresh) are 40px tall with 14px text. Tables follow the FacultyTrack table: white
 52px header row (12px bold uppercase, muted), 60px body rows with 20px cell padding, thin row lines,
-subtle row hover, sticky header, ellipsis action menus. The row's key value (Deal ID) is bold and the
+subtle row hover, ellipsis action menus. The row's key value (Deal ID) is bold and the
 company semibold; secondary text (job role) is slate. Status pills have a thin tinted border and a
 small icon (✓ completed, ✕ failed, clock waiting, dot in progress, dashed circle pending/stopped).
-Every table fills the rest of the page height (minimum 320px) and scrolls inside itself: the header
-row stays pinned, the horizontal scrollbar sits at the bottom of the table, and the page header and
-sidebar never scroll away. An empty table shows its message centred in the box with no scrollbar. Empty states show a pale
+Tables have no scrollbar of their own: a table grows to the full height of its rows (all rows of the
+current page, minimum 320px) and the page scrolls with one scrollbar. The header row scrolls away
+with the page, pagination sits right after the last row, a table wider than the screen shows a
+sideways scrollbar at its bottom, and the app header and sidebar never scroll away. An empty table
+shows its message centred in the box. Empty states show a pale
 round icon with three small purple accent lines, a dark title and a muted hint.
 
 ## Layout (all internal pages)
@@ -52,8 +54,8 @@ round icon with three small purple accent lines, a dark title and a muted hint.
   email, a chevron; the dropdown has **Logout**.
 - **Sidebar** (240px, white, right border, starts under the header): 44px items, 15px text, 20px outline icons;
   the active item has a `#F1EFFF` background and purple icon and text. A divider sits at the bottom.
-  Items by role: CRM → Dashboard, Deals, Companies, Settings; PSM → Candidate Pools, Settings;
-  ADMIN → all five.
+  Items by role: CRM → Dashboard, Deals, Interviews, Settings; PSM → Candidate Pools, Settings;
+  Pool Manager → Eligible Pool, Settings; ADMIN → all of them.
 - **Content**: 24px padding.
 
 Sizes follow the FacultyTrack (Nxtgroom) dashboard: compact controls and 14px body text, so the
@@ -67,7 +69,7 @@ page stays readable at 125% Windows display scaling.
 | `/login` | public | **Sign in with Google** button centred on the page (plus dev-login email box only when `devLoginEnabled`) |
 | `/crm` | CRM, ADMIN | Dashboard: "Add a HubSpot Deal" card + deals table |
 | `/crm/deals` | CRM, ADMIN | Deals table only (same filters, actions and drawers) |
-| `/crm/companies` | CRM, ADMIN | Companies with deal counts by state; **View deals** opens `/crm/deals?company=…` |
+| `/crm/deals/:jobId/:tab?` | CRM, ADMIN | One deal's page with tabs: Deal Details, Students & Access, Reminders (checkpoint switches for this deal), Workflow & Timeline, Logs |
 | `/settings` | CRM, PSM, ADMIN | Account (name, email, role, HubSpot owner, access) and **Sign out**. Admins pick their own HubSpot owner here and get a **Users** section: add user (email, name, role, HubSpot owner) and a table to change role, owner and access inline |
 | `/psm` | PSM, ADMIN | PSM company-wise dashboard |
 | `/psm/jobs/:jobId/review` | PSM, ADMIN | Candidate review |

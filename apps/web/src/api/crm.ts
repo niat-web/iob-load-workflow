@@ -5,10 +5,10 @@ import type {
   ApprovalResponse,
   BoostOverview,
   CheckpointSwitches,
-  CompanySummary,
   CrmControls,
   CrmDealDetail,
   DealActionResponse,
+  DealReminders,
   FlowMode,
   HubspotOwnersResponse,
   CrmDealFilters,
@@ -36,7 +36,7 @@ export const crmKeys = {
   boost: (jobId: string) => [...crmKeys.deals(), "boost", jobId] as const,
   newEligible: (jobId: string) => [...crmKeys.deals(), "new-eligible", jobId] as const,
   students: (jobId: string, query: DealStudentsQuery) => [...crmKeys.deals(), "students", jobId, query] as const,
-  companies: () => [...crmKeys.deals(), "companies"] as const,
+  reminders: (jobId: string) => [...crmKeys.deals(), "reminders", jobId] as const,
   owners: () => [...crmKeys.all, "hubspot-owners"] as const,
   controls: () => [...crmKeys.all, "controls"] as const,
   filters: () => [...crmKeys.all, "filters"] as const,
@@ -48,10 +48,6 @@ export function fetchCrmDeals(query: CrmDealsQuery, signal?: AbortSignal) {
 
 export function fetchCrmDealFilters(signal?: AbortSignal) {
   return api.get<CrmDealFilters>("/crm/deals/filters", undefined, signal);
-}
-
-export function fetchCrmCompanies(signal?: AbortSignal) {
-  return api.get<{ items: CompanySummary[] }>("/crm/companies", undefined, signal);
 }
 
 export function fetchHubspotOwners(signal?: AbortSignal) {
@@ -70,24 +66,6 @@ export function useCrmControls() {
   return useQuery({
     queryKey: crmKeys.controls(),
     queryFn: ({ signal }) => api.get<CrmControls>("/crm/controls", undefined, signal),
-  });
-}
-
-export function useCrmCompanies() {
-  return useQuery({
-    queryKey: crmKeys.companies(),
-    queryFn: ({ signal }) => fetchCrmCompanies(signal),
-  });
-}
-
-export function useUpdateCompanyControls() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (input: { companyName: string; checkpoints: Partial<CheckpointSwitches> }) =>
-      api.patch<{ companyKey: string; checkpoints: CheckpointSwitches }>("/crm/companies/controls", input),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: crmKeys.companies() });
-    },
   });
 }
 
@@ -241,6 +219,29 @@ export function useAddNewEligible(jobId: string) {
     },
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: crmKeys.deals() });
+    },
+  });
+}
+
+export function useDealReminders(jobId: string, poll: boolean) {
+  return useQuery({
+    queryKey: crmKeys.reminders(jobId),
+    queryFn: ({ signal }) => api.get<DealReminders>(`/crm/deals/${seg(jobId)}/reminders`, undefined, signal),
+    refetchInterval: poll ? POLL_INTERVAL_MS : false,
+  });
+}
+
+export function useUpdateDealReminders(jobId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (checkpoints: Partial<CheckpointSwitches>) =>
+      api.patch<DealReminders>(`/crm/deals/${seg(jobId)}/reminders`, { checkpoints }),
+    onSuccess: (data) => {
+      queryClient.setQueryData(crmKeys.reminders(jobId), data);
+      void queryClient.invalidateQueries({ queryKey: crmKeys.logs(jobId) });
+    },
+    onError: () => {
+      void queryClient.invalidateQueries({ queryKey: crmKeys.reminders(jobId) });
     },
   });
 }

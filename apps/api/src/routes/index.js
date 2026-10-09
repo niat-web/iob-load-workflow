@@ -63,8 +63,6 @@ export function crmRoutes() {
   router.post("/deals/process", validate({ body: crm.processDealSchema }), a(crm.processDeal));
   router.get("/deals", validate({ query: crm.listSchema }), a(crm.listDeals));
   router.get("/deals/filters", a(crm.dealFilters));
-  router.get("/companies", a(crm.listCompanies));
-  router.patch("/companies/controls", validate({ body: crm.companyControlsSchema }), a(crm.updateCompanyControls));
   router.get("/hubspot-owners", crm.hubspotOwners);
   router.get("/controls", a(crm.controls));
   router.get("/deals/:jobId", validate({ params: crm.jobIdParams }), a(crm.dealDetail));
@@ -81,6 +79,12 @@ export function crmRoutes() {
     "/deals/:jobId/students/export",
     validate({ params: crm.jobIdParams, query: crm.studentsExportSchema }),
     a(crm.dealStudentsExport),
+  );
+  router.get("/deals/:jobId/reminders", validate({ params: crm.jobIdParams }), a(crm.reminderDetail));
+  router.patch(
+    "/deals/:jobId/reminders",
+    validate({ params: crm.jobIdParams, body: crm.remindersSchema }),
+    a(crm.updateReminders),
   );
   router.get("/deals/:jobId/approval", validate({ params: crm.jobIdParams }), a(crm.approvalDetail));
   router.post("/deals/:jobId/approve", validate({ params: crm.jobIdParams, body: crm.approveSchema }), a(crm.approveStep));

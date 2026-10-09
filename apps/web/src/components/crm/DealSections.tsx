@@ -2,7 +2,7 @@ import { ArrowUpRight, Copy } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
-import type { CrmDealDetail, HubspotWriteBack, ReminderInfo, Tone } from "../../types/api";
+import type { CrmDealDetail, HubspotWriteBack, Tone } from "../../types/api";
 import { cn } from "../../utils/cn";
 import { DASH, formatDate, formatDateTime, formatNumber, orDash } from "../../utils/format";
 import { DetailList, DetailSection } from "../DetailList";
@@ -11,8 +11,6 @@ import { StatusBadge } from "../StatusBadge";
 import { IconButton } from "../ui/Button";
 import { cardClass, linkClass } from "../ui/styles";
 
-const REMINDER_TONES: Record<ReminderInfo["status"], Tone> = { SENT: "green", SKIPPED: "gray", FAILED: "red" };
-const REMINDER_LABELS: Record<ReminderInfo["status"], string> = { SENT: "Sent", SKIPPED: "Skipped", FAILED: "Failed" };
 const WRITE_BACK: Record<HubspotWriteBack, { label: string; tone: Tone }> = {
   PENDING: { label: "Pending", tone: "gray" },
   DONE: { label: "Job ID saved", tone: "green" },
@@ -323,36 +321,6 @@ export function LearningPortalSection({ deal }: { deal: CrmDealDetail }) {
           { label: "HubSpot Job ID", value: <StatusBadge label={writeBack.label} tone={writeBack.tone} /> },
         ]}
       />
-    </DetailSection>
-  );
-}
-
-function Reminder({ label, info }: { label: string; info: ReminderInfo | null }) {
-  return (
-    <div className="flex items-start justify-between gap-4 rounded-lg border px-3.5 py-3">
-      <div className="min-w-0">
-        <p className="text-sm font-semibold text-ink">{label}</p>
-        {info ? (
-          <p className="mt-0.5 text-xs text-muted">
-            {formatDateTime(info.at)} · {formatNumber(info.emailCount)} emails · {formatNumber(info.callCount)} calls
-            {info.reason ? ` · ${info.reason}` : ""}
-          </p>
-        ) : (
-          <p className="mt-0.5 text-xs text-muted">Not sent yet</p>
-        )}
-      </div>
-      {info && <StatusBadge label={REMINDER_LABELS[info.status]} tone={REMINDER_TONES[info.status]} />}
-    </div>
-  );
-}
-
-export function RemindersSection({ deal }: { deal: CrmDealDetail }) {
-  return (
-    <DetailSection title="Reminders">
-      <div className="space-y-2">
-        <Reminder label="10-hour reminder" info={deal.reminders.r10h} />
-        <Reminder label="20-hour reminder" info={deal.reminders.r20h} />
-      </div>
     </DetailSection>
   );
 }

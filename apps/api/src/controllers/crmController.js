@@ -27,8 +27,9 @@ import { latestSnapshot } from "../services/dealSnapshotService.js";
 import { findHubspotOwner, hubspotOwnerForUser, listHubspotOwners } from "../services/hubspotOwners.js";
 import { ALL_ENROLL_PLANS } from "../services/learningPortal/nkbPayload.js";
 import { buildPortalPayload } from "../services/learningPortal/portalLoader.js";
+import { CHECKPOINT_SWITCHES } from "../services/companySettingsService.js";
+import { dealReminders, updateDealCheckpoints } from "../services/dealReminderService.js";
 import {
-  crmCompanySummary,
   crmFilterOptions,
   listCrmJobs,
   restoreFailedJob,
@@ -36,7 +37,6 @@ import {
   toCrmRow,
 } from "../services/jobService.js";
 import { publicLinkUrlForJob } from "../services/publicLinkService.js";
-import { CHECKPOINT_SWITCHES, updateCompanyCheckpoints } from "../services/companySettingsService.js";
 import { crmControls, getSettings, resolveFlowMode } from "../services/settingsService.js";
 import {
   STUDENT_ACCESS_FILTERS,
@@ -181,23 +181,6 @@ export async function dealFilters(req, res) {
   res.json(await crmFilterOptions());
 }
 
-export const companyControlsSchema = z.object({
-  companyName: z.string().trim().min(1).max(200),
-  checkpoints: z
-    .object(Object.fromEntries(CHECKPOINT_SWITCHES.map((key) => [key, z.boolean()])))
-    .partial()
-    .strict(),
-});
-
-export async function updateCompanyControls(req, res) {
-  const { companyName, checkpoints } = req.valid.body;
-  res.json(await updateCompanyCheckpoints(companyName, checkpoints, req.user));
-}
-
-export async function listCompanies(req, res) {
-  res.json(await crmCompanySummary());
-}
-
 async function loadJob(jobId) {
   const job = await Job.findById(jobId);
   if (!job) throw notFound("Deal not found");
@@ -219,6 +202,23 @@ export async function newEligibleDetail(req, res) {
 export async function addNewEligible(req, res) {
   const result = await addNewEligibleStudents(await loadJob(req.valid.params.jobId), req.user);
   res.json({ result, deal: await crmDetail(await loadJob(req.valid.params.jobId)) });
+}
+
+export const remindersSchema = z.object({
+  checkpoints: z
+    .object(Object.fromEntries(CHECKPOINT_SWITCHES.map((key) => [key, z.boolean()])))
+    .partial()
+    .strict()
+    .refine((value) => Object.keys(value).length > 0, "Choose a switch to change"),
+});
+
+export async function reminderDetail(req, res) {
+  res.json(await dealReminders(await loadJob(req.valid.params.jobId)));
+}
+
+export async function updateReminders(req, res) {
+  const job = await loadJob(req.valid.params.jobId);
+  res.json(await updateDealCheckpoints(job, req.valid.body.checkpoints, req.user, req.ip));
 }
 
 const studentsFilterSchema = {
