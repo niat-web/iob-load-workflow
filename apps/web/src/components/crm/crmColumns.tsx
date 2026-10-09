@@ -2,8 +2,7 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { ArrowUpRight } from "lucide-react";
 import { Link } from "react-router";
 import type { CrmDealRow } from "../../types/api";
-import { formatDateTime, formatNumber } from "../../utils/format";
-import { ProgressBar } from "../ProgressBar";
+import { formatDate, formatDateTime, formatNumber, formatTime, isDateValue } from "../../utils/format";
 import { StatusBadge } from "../StatusBadge";
 import { TruncatedText } from "../TruncatedText";
 import { linkClass } from "../ui/styles";
@@ -16,6 +15,17 @@ export interface CrmColumnOptions {
 export const dealPagePath = (row: CrmDealRow) => `/crm/deals/${encodeURIComponent(row.id)}`;
 
 const numeric = { headerClassName: "text-right", cellClassName: "text-right tabular-nums" };
+
+function Deadline({ value }: { value: string | null }) {
+  if (!value) return <span className="text-muted">-</span>;
+  if (!isDateValue(value)) return <TruncatedText value={value} className="max-w-[160px] text-slate-600" />;
+  return (
+    <span className="flex flex-col whitespace-nowrap tabular-nums">
+      <span className="text-ink">{formatDate(value)}</span>
+      <span className="text-xs text-muted">{formatTime(value)}</span>
+    </span>
+  );
+}
 
 export function buildCrmColumns(options: CrmColumnOptions): ColumnDef<CrmDealRow>[] {
   return [
@@ -64,11 +74,9 @@ export function buildCrmColumns(options: CrmColumnOptions): ColumnDef<CrmDealRow
       meta: numeric,
     },
     {
-      id: "progress",
-      header: "Progress",
-      cell: ({ row }) => (
-        <ProgressBar value={row.original.progressPercent} label={`Progress for deal ${row.original.hubspotDealId}`} />
-      ),
+      id: "deadline",
+      header: "Deadline",
+      cell: ({ row }) => <Deadline value={row.original.deadline} />,
     },
     {
       id: "currentStep",

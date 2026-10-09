@@ -249,7 +249,7 @@ details and approval panel, and used for the organisation in the Learning Portal
   (name, email, mobile, resume), joined by user ID.
 - Each applicant is saved once per job in our database; later refreshes update the same record, so
   there are no duplicates. Students who applied are marked as applied.
-- The Applied and Progress columns update. Closed jobs are not refreshed again.
+- The Applied column updates. Closed jobs are not refreshed again.
 
 **C2. Expected pool reached**
 - If applications reach the Expected Pool, the CRM who submitted the deal gets one email

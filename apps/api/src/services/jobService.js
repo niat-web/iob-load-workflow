@@ -68,6 +68,12 @@ export function progressPercent(job) {
   return Math.min(100, Math.round((job.appliedCount / job.expectedPoolCount) * 100));
 }
 
+const iso = (date) => (date ? new Date(date).toISOString() : null);
+
+function dealDeadline(job) {
+  return iso(job.applicationEndAt ?? job.learningPortalDeadline) ?? job.applicationDeadline ?? null;
+}
+
 function waitingFor(job) {
   const gate = job.awaitingApproval?.gate;
   if (!gate || job.status === S.FAILED || job.status === S.CANCELLED) return null;
@@ -88,6 +94,7 @@ export function toCrmRow(job, publicLinkUrl = null) {
     expectedPoolCount: job.expectedPoolCount,
     appliedCount: job.appliedCount ?? 0,
     progressPercent: progressPercent(job),
+    deadline: dealDeadline(job),
     status: job.status,
     displayStatus,
     currentStep,
@@ -102,8 +109,6 @@ export function toCrmRow(job, publicLinkUrl = null) {
     updatedAt: job.updatedAt?.toISOString?.() ?? job.updatedAt,
   };
 }
-
-const iso = (date) => (date ? new Date(date).toISOString() : null);
 
 export function reminderInfo(reminder) {
   if (!reminder?.status) return null;
@@ -156,7 +161,6 @@ function dealFields(job) {
     enrollPlans: [...plans],
     eligibility: job.eligibility ?? null,
     compensationDescription: job.importantInstructions ?? null,
-    deadline: iso(job.applicationEndAt ?? job.learningPortalDeadline) ?? job.applicationDeadline ?? null,
   };
 }
 

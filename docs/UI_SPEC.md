@@ -106,10 +106,11 @@ page their role cannot access → Access Denied state (not a redirect loop).
    free width, then 190px "All Status" and "All Companies" dropdowns and a square refresh button.
 4. Table columns:
 
-   `#` · Deal ID · Company · Job Role · Expected Pool · Applied · Progress · Current Step · Status ·
-   Public Link · Last Updated · Action
+   `#` · Deal ID · Company · Job Role · Expected Pool · Applied · Deadline · Current Step · Status ·
+   Public Link · Last Updated
 
-   - Progress: small horizontal bar + percentage.
+   - Deadline: when the application window closes, date on the first line and time below it
+     (`Oct 10, 2026` / `9:22 AM`); `-` until the deal has one.
    - Status: chip from `displayStatus`.
    - Public Link: `-` until generated, then "View Link ↗" (opens new tab).
    - Last Updated: `Apr 24, 2026 10:14 AM`.

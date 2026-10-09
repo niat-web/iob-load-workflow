@@ -246,7 +246,8 @@ type CrmDealRow = {
   jobRole: string | null;
   expectedPoolCount: number | null;
   appliedCount: number;
-  progressPercent: number;       // 0..100, integer
+  progressPercent: number;       // applied ÷ expected pool, 0..100, integer
+  deadline: string | null;       // when the window closes (ISO), else the portal deadline, else HubSpot's text
   status: string;                // raw workflow status, e.g. "APPLICATIONS_OPEN"
   displayStatus: Chip;           // keys: PENDING, PROCESSING, IN_PROGRESS, AI_ANALYSIS,
                                  //       PSM_REVIEW, COMPLETED, FAILED

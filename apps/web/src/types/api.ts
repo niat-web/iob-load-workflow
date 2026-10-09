@@ -136,6 +136,7 @@ export interface CrmDealRow {
   expectedPoolCount: number | null;
   appliedCount: number;
   progressPercent: number;
+  deadline: string | null;
   status: string;
   displayStatus: Chip;
   currentStep: string;
@@ -294,7 +295,6 @@ export interface CrmDealDetail extends CrmDealRow {
   enrollPlans: string[];
   eligibility: string | null;
   compensationDescription: string | null;
-  deadline: string | null;
   approvals: ApprovalRecord[];
   cancelledBy: string | null;
   cancelledAt: string | null;

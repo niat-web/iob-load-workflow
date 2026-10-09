@@ -15,6 +15,12 @@ const dateFormatter = new Intl.DateTimeFormat("en-US", {
   year: "numeric",
 });
 
+const timeFormatter = new Intl.DateTimeFormat("en-US", {
+  hour: "numeric",
+  minute: "2-digit",
+  hour12: true,
+});
+
 const numberFormatter = new Intl.NumberFormat("en-US");
 
 const scoreFormatter = new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 });
@@ -37,6 +43,15 @@ export function formatDateTime(value: string | null | undefined): string {
 export function formatDate(value: string | null | undefined): string {
   const date = toDate(value);
   return date ? dateFormatter.format(date) : DASH;
+}
+
+export function formatTime(value: string | null | undefined): string {
+  const date = toDate(value);
+  return date ? timeFormatter.format(date) : DASH;
+}
+
+export function isDateValue(value: string | null | undefined): boolean {
+  return toDate(value) !== null;
 }
 
 export function formatScore(value: number | null | undefined): string {
