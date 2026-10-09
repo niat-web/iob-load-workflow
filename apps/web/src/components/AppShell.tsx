@@ -95,12 +95,12 @@ export function AppShell({ user, children }: { user: User; children: ReactNode }
   useWheelScroll(rootRef, mainRef);
 
   return (
-    <div ref={rootRef} className="flex h-dvh overflow-hidden bg-canvas">
+    <div ref={rootRef} className="relative flex h-dvh overflow-hidden bg-canvas">
       <SideNav user={user} />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <AppHeader user={user} />
         <TopNav user={user} />
-        <main ref={mainRef} className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto p-4 sm:p-6">
+        <main ref={mainRef} className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto p-4 sm:p-6">
           {children}
         </main>
       </div>
