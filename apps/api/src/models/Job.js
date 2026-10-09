@@ -110,6 +110,7 @@ const jobSchema = new mongoose.Schema(
     expectedPoolCount: { type: Number, default: null },
     appliedCount: { type: Number, default: 0 },
     eligibleCount: { type: Number, default: 0 },
+    eligibleTopUpLockAt: { type: Date, default: null },
     poolTargetReached: { type: Boolean, default: false },
     poolTargetReachedAt: { type: Date, default: null },
 

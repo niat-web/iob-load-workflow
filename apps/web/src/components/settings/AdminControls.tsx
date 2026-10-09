@@ -54,17 +54,12 @@ const APPROVAL_STEPS: { gate: ApprovalGate; label: string; description: string }
   },
   {
     gate: "START_WINDOW",
-    label: "Email students and start window",
-    description: "Check everything before students are emailed and the application window starts.",
+    label: "Start application window",
+    description: "Check everything before the application window starts.",
   },
 ];
 
 const STUDENT_EMAILS: SwitchSpec[] = [
-  {
-    key: "jobEmail",
-    label: "Job email when applications open",
-    description: "Sent to every eligible student when the application window starts.",
-  },
   {
     key: "jobUpdates",
     label: "Job update emails",

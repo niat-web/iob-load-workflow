@@ -292,7 +292,7 @@ export const settingsPatchSchema = z
       })
       .partial()
       .strict(),
-    studentEmails: switches(["jobEmail", "jobUpdates", "boostReminder"]),
+    studentEmails: switches(["jobUpdates", "boostReminder"]),
     checkpoints: switches(["firstEmails", "secondEmails", "secondCalls"]),
     crmEmails: switches(["poolReached", "candidatePool"]),
     aiCalls: switches(["enabled"]),

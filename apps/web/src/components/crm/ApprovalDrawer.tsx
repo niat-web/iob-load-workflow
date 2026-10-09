@@ -225,12 +225,6 @@ function StepPreview({ jobId, preview }: { jobId: string; preview: ApprovalPrevi
           <DetailList
             items={[
               { label: "Students with access", value: formatNumber(preview.window.granted) },
-              {
-                label: "Emails to send",
-                value: preview.window.studentEmailsOn
-                  ? formatNumber(preview.window.emails)
-                  : "None. Job emails to students are turned off in Settings",
-              },
               { label: "Refused by the portal", value: formatNumber(preview.window.rejected) },
               {
                 label: "Window length",

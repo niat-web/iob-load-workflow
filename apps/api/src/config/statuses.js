@@ -79,7 +79,7 @@ export const APPROVAL_GATE_LABELS = Object.freeze({
   LOAD_BETA: "Load into Beta",
   LOAD_PROD: "Load into Prod",
   ELIGIBLE_STUDENTS: "Give students access",
-  START_WINDOW: "Email students and start window",
+  START_WINDOW: "Start application window",
 });
 
 export const loadGateFor = (environment) => `LOAD_${environment.toUpperCase()}`;
@@ -105,7 +105,7 @@ const META = {
   [S.ELIGIBILITY_PROCESSING]: ["Finding Eligible Students", "PROCESSING"],
   [S.ELIGIBLE_STUDENTS_IDENTIFIED]: ["Eligible Students Identified", "PROCESSING"],
   [S.GRANTING_ACCESS]: ["Granting Access", "PROCESSING"],
-  [S.INITIAL_NOTIFICATION_SENDING]: ["Notifying Students", "PROCESSING"],
+  [S.INITIAL_NOTIFICATION_SENDING]: ["Starting Application Window", "PROCESSING"],
   [S.APPLICATIONS_OPEN]: ["Application Window", "IN_PROGRESS"],
   [S.REMINDER_10H_PROCESSING]: ["10h Reminder", "IN_PROGRESS"],
   [S.REMINDER_10H_SENT]: ["Application Window", "IN_PROGRESS"],
@@ -320,7 +320,6 @@ export const CRITICAL_TASKS = new Set([
 ]);
 
 export const NOTIFICATION_TYPE = Object.freeze({
-  INITIAL_JOB_EMAIL: "INITIAL_JOB_EMAIL",
   REMINDER_10H: "REMINDER_10H",
   REMINDER_20H: "REMINDER_20H",
   JOB_UPDATED: "JOB_UPDATED",
@@ -328,6 +327,8 @@ export const NOTIFICATION_TYPE = Object.freeze({
   POOL_TARGET_REACHED: "POOL_TARGET_REACHED",
   BOOST_REMINDER: "BOOST_REMINDER",
 });
+
+export const RETIRED_NOTIFICATION_TYPES = Object.freeze(["INITIAL_JOB_EMAIL"]);
 
 export const CANDIDATE_STATUS = ["RECOMMENDED", "CONSIDER", "NOT_RECOMMENDED"];
 export const ROLES = ["CRM", "PSM", "ADMIN", "POOL_MANAGER"];

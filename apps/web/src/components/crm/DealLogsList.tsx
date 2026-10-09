@@ -1,13 +1,13 @@
 import { RefreshCw } from "lucide-react";
 import { useCrmDealLogs } from "../../api/crm";
-import type { CrmDealRow, LogLevel } from "../../types/api";
+import type { LogLevel } from "../../types/api";
 import { cn } from "../../utils/cn";
 import { formatDateTime } from "../../utils/format";
-import { Drawer } from "../Drawer";
 import { EmptyState } from "../EmptyState";
 import { ErrorState } from "../ErrorState";
 import { LoadingSkeleton } from "../LoadingSkeleton";
-import { IconButton } from "../ui/Button";
+import { Button } from "../ui/Button";
+import { cardClass } from "../ui/styles";
 
 const LEVEL_STYLES: Record<LogLevel, { row: string; badge: string }> = {
   info: { row: "", badge: "bg-slate-100 text-slate-600" },
@@ -15,22 +15,15 @@ const LEVEL_STYLES: Record<LogLevel, { row: string; badge: string }> = {
   error: { row: "bg-red-50/60", badge: "bg-red-100 text-red-700" },
 };
 
-interface DealLogsDrawerProps {
-  job: CrmDealRow | null;
-  onClose: () => void;
-}
-
-export function DealLogsDrawer({ job, onClose }: DealLogsDrawerProps) {
-  const logs = useCrmDealLogs(job?.id ?? null);
+export function DealLogsList({ jobId }: { jobId: string }) {
+  const logs = useCrmDealLogs(jobId);
 
   const renderBody = () => {
     if (logs.isPending) return <LoadingSkeleton lines={12} label="Loading logs" />;
-    if (logs.isError) {
-      return <ErrorState error={logs.error} onRetry={() => void logs.refetch()} retrying={logs.isFetching} />;
-    }
+    if (logs.isError) return <ErrorState error={logs.error} onRetry={() => void logs.refetch()} retrying={logs.isFetching} />;
     if (logs.data.items.length === 0) return <EmptyState message="No logs have been recorded for this deal yet." />;
     return (
-      <ol className="-mx-5 divide-y border-y">
+      <ol className={cn(cardClass, "divide-y overflow-hidden")}>
         {logs.data.items.map((entry, i) => {
           const style = LEVEL_STYLES[entry.level] ?? LEVEL_STYLES.info;
           return (
@@ -49,22 +42,20 @@ export function DealLogsDrawer({ job, onClose }: DealLogsDrawerProps) {
   };
 
   return (
-    <Drawer
-      open={job !== null}
-      onClose={onClose}
-      title={job ? `Logs · Deal ${job.hubspotDealId}` : ""}
-      headerExtra={
-        <IconButton
-          label="Refresh logs"
-          className="ml-auto size-8 border-transparent shadow-none"
+    <section aria-label="Deal logs" className="flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm text-muted">Every step, task, email, call and approval for this deal, newest first.</p>
+        <Button
+          variant="secondary"
+          size="sm"
+          loading={logs.isFetching}
           onClick={() => void logs.refetch()}
-          disabled={logs.isFetching}
+          icon={<RefreshCw className="size-4" aria-hidden />}
         >
-          <RefreshCw className={cn("size-4", logs.isFetching && "animate-spin")} aria-hidden />
-        </IconButton>
-      }
-    >
+          Refresh
+        </Button>
+      </div>
       {renderBody()}
-    </Drawer>
+    </section>
   );
 }

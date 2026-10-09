@@ -11,7 +11,6 @@ export const TURNED_OFF = "Turned off by the admin in Settings";
 export const turnedOff = (what) => `${what} is turned off by the admin in Settings`;
 
 const EMAIL_SWITCHES = Object.freeze({
-  [NOTIFICATION_TYPE.INITIAL_JOB_EMAIL]: ["studentEmails", "jobEmail"],
   [NOTIFICATION_TYPE.JOB_UPDATED]: ["studentEmails", "jobUpdates"],
   [NOTIFICATION_TYPE.BOOST_REMINDER]: ["studentEmails", "boostReminder"],
   [NOTIFICATION_TYPE.REMINDER_10H]: ["checkpoints", "firstEmails"],
@@ -27,7 +26,7 @@ export function defaultSettings() {
       crmOptions: { [FLOW_MODE.AUTOMATIC]: true, [FLOW_MODE.STEP_BY_STEP]: true },
       approvals: Object.fromEntries(APPROVAL_STEPS.map((gate) => [gate, true])),
     },
-    studentEmails: { jobEmail: true, jobUpdates: true, boostReminder: true },
+    studentEmails: { jobUpdates: true, boostReminder: true },
     checkpoints: { firstEmails: true, secondEmails: true, secondCalls: true },
     crmEmails: { poolReached: true, candidatePool: true },
     aiCalls: { enabled: true },

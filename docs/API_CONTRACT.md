@@ -171,7 +171,7 @@ company setting are on.
 
 - `GET /api/admin/settings` → `{ settings, updatedBy, updatedAt }` where `settings` is
   `{ flow: { mode, crmOptions: { AUTOMATIC, STEP_BY_STEP }, approvals: { DEAL_DETAILS, LOAD_BETA, LOAD_PROD, ELIGIBLE_STUDENTS, START_WINDOW } },
-  studentEmails: { jobEmail, jobUpdates, boostReminder }, checkpoints: { firstEmails, secondEmails, secondCalls },
+  studentEmails: { jobUpdates, boostReminder }, checkpoints: { firstEmails, secondEmails, secondCalls },
   crmEmails: { poolReached, candidatePool },
   aiCalls: { enabled }, interviews: { googleMeet }, automation: { aiJobContent, aiResumeAnalysis, hubspotWriteBack },
   timing: { applicationWindowHours, reminderOneHours, reminderTwoHours, boostEmailCooldownMinutes } }`.
@@ -334,6 +334,36 @@ at most 200.
 
 Retries the failed workflow step. `200` → `{ "job": CrmDealRow }`. `409 NOT_RETRYABLE` if the job
 is not in a failed state.
+
+### `GET /api/crm/deals/:jobId/new-eligible`
+
+Searches the Eligible Pool with the deal's rules and returns the students who are not on the deal
+yet. `200` → `{ "allowed": true, "accessNow": true, "reason": null, "total": 2, "withEmail": 2,
+"withMobile": 1, "students": [{ "studentId", "studentName", "campus", "batch", "product", "hasEmail",
+"hasMobile" }] }` (at most 200 students listed; no contact details). `409 TOP_UP_NOT_ALLOWED` before
+the job is live in Prod, after the window has closed, or at other steps; `409 NO_ELIGIBLE_STUDENTS`
+when the deal's rules match nobody. The deal detail (`GET /api/crm/deals/:jobId`) carries the same
+`addEligible: { allowed, accessNow, reason }`.
+
+### `GET /api/crm/deals/:jobId/students`
+
+The students on the deal, newest first. Query: `search` (user ID, name, email, mobile, campus),
+`access` (`ACCESS | REFUSED | WAITING | APPLIED | NOT_APPLIED`, several joined with `|`), `product`
+(`NIAT | Academy`), `page`, `limit` (≤ 500). `200` → `{ "items": [{ "studentId", "studentName",
+"product", "campus", "batch", "email", "mobile", "eligibleAt", "accessGrantedAt",
+"accessRejectedReason", "applied", "appliedAt", "status": "ACCESS | REFUSED | WAITING" }],
+"pagination", "summary": { "total", "access", "refused", "waiting", "applied", "products": { "NIAT": 3 } } }`.
+
+### `GET /api/crm/deals/:jobId/students/export`
+
+The same list as a CSV file (`deal-<Deal ID>-students.csv`), with the same `search`, `access` and
+`product` filters and no paging. Times are in IST.
+
+### `POST /api/crm/deals/:jobId/new-eligible`
+
+Adds those students to the deal and, when `accessNow` is true, gives them access in Prod. `200` →
+`{ "result": { "added", "accessNow", "granted", "rejected", "eligibleCount" }, "deal": CrmDealDetail }`.
+`409 NO_NEW_STUDENTS` when there is nobody new, `409 TOP_UP_BUSY` while another add is running.
 
 ### `POST /api/crm/deals/:jobId/stop`
 

@@ -20,6 +20,7 @@ const CRMCompaniesPage = lazy(() => pageLoaders.crmCompanies().then((m) => ({ de
 const InterviewsPage = lazy(() => pageLoaders.interviews().then((m) => ({ default: m.InterviewsPage })));
 const InterviewSheetPage = lazy(() => pageLoaders.interviewSheet().then((m) => ({ default: m.InterviewSheetPage })));
 const BoostPage = lazy(() => pageLoaders.boost().then((m) => ({ default: m.BoostPage })));
+const DealPage = lazy(() => pageLoaders.deal().then((m) => ({ default: m.DealPage })));
 const EligiblePoolPage = lazy(() => pageLoaders.eligiblePool().then((m) => ({ default: m.EligiblePoolPage })));
 const SettingsPage = lazy(() => pageLoaders.settings().then((m) => ({ default: m.SettingsPage })));
 const PSMJobsPage = lazy(() => pageLoaders.psmJobs().then((m) => ({ default: m.PSMJobsPage })));
@@ -82,6 +83,8 @@ const router = createBrowserRouter([
           { path: "/crm/deals", element: internal(CRM_ROLES, <CRMDealsPage />) },
           { path: "/crm/companies", element: internal(CRM_ROLES, <CRMCompaniesPage />) },
           { path: "/crm/deals/:jobId/boost", element: internal(CRM_ROLES, <BoostPage />) },
+          { path: "/crm/deals/:jobId", element: internal(CRM_ROLES, <DealPage />) },
+          { path: "/crm/deals/:jobId/:tab", element: internal(CRM_ROLES, <DealPage />) },
           { path: "/crm/interviews", element: internal(CRM_ROLES, <InterviewsPage />) },
           { path: "/crm/interviews/:jobId", element: internal(CRM_ROLES, <InterviewSheetPage />) },
           { path: "/admin/eligible-pool", element: internal(POOL_ROLES, <EligiblePoolPage />) },

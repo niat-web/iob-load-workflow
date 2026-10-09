@@ -5,6 +5,7 @@ import {
   DISPLAY_STATUS,
   FLOW_MODE,
   JOB_STATUS as S,
+  POOL_PRODUCTS,
   TASK_TYPE,
   loadGateFor,
   stepLabel,
@@ -37,6 +38,14 @@ import {
 import { publicLinkUrlForJob } from "../services/publicLinkService.js";
 import { CHECKPOINT_SWITCHES, updateCompanyCheckpoints } from "../services/companySettingsService.js";
 import { crmControls, getSettings, resolveFlowMode } from "../services/settingsService.js";
+import {
+  STUDENT_ACCESS_FILTERS,
+  addNewEligibleStudents,
+  dealStudentsCsv,
+  listDealStudents,
+  newEligiblePreview,
+  topUpState,
+} from "../services/studentAccessService.js";
 import { enqueueTask } from "../services/taskQueue.js";
 import { now } from "../utils/clock.js";
 import { AppError, badRequest, conflict, isDuplicateKeyError, notFound } from "../utils/errors.js";
@@ -195,9 +204,48 @@ async function loadJob(jobId) {
   return job;
 }
 
+async function crmDetail(job) {
+  return { ...toCrmDetail(job, await publicLinkUrlForJob(job)), addEligible: topUpState(job) };
+}
+
 export async function dealDetail(req, res) {
+  res.json(await crmDetail(await loadJob(req.valid.params.jobId)));
+}
+
+export async function newEligibleDetail(req, res) {
+  res.json(await newEligiblePreview(await loadJob(req.valid.params.jobId)));
+}
+
+export async function addNewEligible(req, res) {
+  const result = await addNewEligibleStudents(await loadJob(req.valid.params.jobId), req.user);
+  res.json({ result, deal: await crmDetail(await loadJob(req.valid.params.jobId)) });
+}
+
+const studentsFilterSchema = {
+  search: z.string().trim().max(200).optional(),
+  access: listOf(z.enum(STUDENT_ACCESS_FILTERS)),
+  product: listOf(z.enum(POOL_PRODUCTS)),
+};
+
+export const studentsQuerySchema = z.object({
+  ...studentsFilterSchema,
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(500).default(50),
+});
+
+export const studentsExportSchema = z.object(studentsFilterSchema);
+
+export async function dealStudents(req, res) {
+  res.json(await listDealStudents(await loadJob(req.valid.params.jobId), req.valid.query));
+}
+
+export async function dealStudentsExport(req, res) {
   const job = await loadJob(req.valid.params.jobId);
-  res.json(toCrmDetail(job, await publicLinkUrlForJob(job)));
+  const csv = await dealStudentsCsv(job, req.valid.query);
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="deal-${job.hubspotDealId}-students.csv"`);
+  res.setHeader("Cache-Control", "no-store");
+  res.send(`﻿${csv}`);
 }
 
 export async function dealLogs(req, res) {

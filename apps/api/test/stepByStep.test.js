@@ -86,18 +86,18 @@ describe("step-by-step flow", () => {
     await runDueTasks();
     assert.equal(await waitingGate(id), "START_WINDOW");
     assert.equal(await JobEligibleStudent.countDocuments({ jobId: id, accessGrantedAt: { $ne: null } }), job.eligibleCount);
-    assert.equal(await NotificationLog.countDocuments({ jobId: id }), 0, "no email before the window is approved");
     assert.equal((await Job.findById(id)).applicationStartAt, null);
     const window = (await preview(id)).window;
     assert.equal(window.granted, job.eligibleCount);
-    assert.ok(window.emails > 0);
+    assert.equal("emails" in window, false, "our app sends no job email; the portal emails students on access");
 
     await approve(id, "START_WINDOW");
     await runDueTasks();
     const open = await Job.findById(id);
     assert.equal(open.status, JOB_STATUS.APPLICATIONS_OPEN);
     assert.equal(open.awaitingApproval, null);
-    assert.ok(await NotificationLog.countDocuments({ jobId: id, type: "INITIAL_JOB_EMAIL", status: "SENT" }));
+    assert.ok(open.applicationStartAt && open.applicationEndAt);
+    assert.equal(await NotificationLog.countDocuments({ jobId: id }), 0, "opening the window emails nobody");
 
     const detail = (await crm.get(`/api/crm/deals/${id}`)).body;
     assert.deepEqual(
@@ -142,7 +142,6 @@ describe("step-by-step flow", () => {
     assert.deepEqual(envsOf("upsertJob"), ["beta", "prod"], "the job is not re-sent when the window starts");
     const close = await WorkflowTask.findOne({ jobId: id, type: TASK_TYPE.APPLICATION_CLOSE_21H });
     assert.equal(close.scheduledFor.getTime(), deadline.getTime());
-    assert.ok(await NotificationLog.countDocuments({ jobId: id, type: "INITIAL_JOB_EMAIL", status: "SENT" }));
   });
 
   test("a window cannot open after the job's portal deadline has passed", async () => {
@@ -155,7 +154,7 @@ describe("step-by-step flow", () => {
     const failed = await Job.findById(id);
     assert.equal(failed.status, JOB_STATUS.FAILED);
     assert.match(failed.lastError, /closes on the Learning Portal at .* which has already passed/);
-    assert.equal(await NotificationLog.countDocuments({ jobId: id, type: "INITIAL_JOB_EMAIL" }), 0);
+    assert.equal(await WorkflowTask.countDocuments({ jobId: id, type: TASK_TYPE.REMINDER_10H }), 0, "nothing is scheduled");
     assert.deepEqual(envsOf("upsertJob"), ["beta", "prod"]);
   });
 

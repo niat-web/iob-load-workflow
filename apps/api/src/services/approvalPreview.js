@@ -14,9 +14,10 @@ const DESCRIPTIONS = {
     "Approving creates the organisation in Beta if it is new, loads this job into Beta and gives the Beta test accounts access.",
   [GATE.LOAD_PROD]:
     "Check the job on Beta first. Approving loads the same job, with the same job ID, into Prod and gives the Prod test accounts access.",
-  [GATE.ELIGIBLE_STUDENTS]: "Approving gives these students access to apply for the job.",
+  [GATE.ELIGIBLE_STUDENTS]:
+    "Approving gives these students access to apply for the job. The Learning Portal emails them about the job when they get access.",
   [GATE.START_WINDOW]:
-    "Approving emails every student who has access and starts the application window. The window closes at the job's deadline on the Learning Portal, set when the job was prepared, so time spent waiting here comes out of the window. The reminders and the closing then run automatically.",
+    "Approving starts the application window. The window closes at the job's deadline on the Learning Portal, set when the job was prepared, so time spent waiting here comes out of the window. The reminders and the closing then run automatically.",
 };
 
 const iso = (date) => (date ? new Date(date).toISOString() : null);
@@ -151,10 +152,9 @@ async function studentsPreview(job) {
 
 async function windowPreview(job, settings) {
   const filter = { jobId: job._id };
-  const [granted, rejected, emails] = await Promise.all([
+  const [granted, rejected] = await Promise.all([
     JobEligibleStudent.countDocuments({ ...filter, accessGrantedAt: { $ne: null } }),
     JobEligibleStudent.countDocuments({ ...filter, accessRejectedReason: { $ne: null } }),
-    JobEligibleStudent.countDocuments({ ...filter, accessGrantedAt: { $ne: null }, email: { $ne: null } }),
   ]);
   const { applicationWindowHours, reminderOneHours, reminderTwoHours } = settings.timing;
   const closesAt = job.learningPortalDeadline ?? hoursFromNow(applicationWindowHours, now());
@@ -162,8 +162,6 @@ async function windowPreview(job, settings) {
   return {
     granted,
     rejected,
-    emails,
-    studentEmailsOn: settings.studentEmails.jobEmail,
     windowHours: Math.max(0, Math.round(hoursLeft * 10) / 10),
     plannedWindowHours: applicationWindowHours,
     reminderHours: [reminderOneHours, reminderTwoHours],

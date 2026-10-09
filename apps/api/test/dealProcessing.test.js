@@ -3,7 +3,7 @@ import { after, before, beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { config } from "../src/config/env.js";
 import { reportMissingSettings } from "../src/config/startupReport.js";
-import { JOB_STATUS, NOTIFICATION_TYPE, TASK_TYPE } from "../src/config/statuses.js";
+import { JOB_STATUS, TASK_TYPE } from "../src/config/statuses.js";
 import { MockDealOverride } from "../src/services/hubspotClient.js";
 import { resetIntegrations } from "../src/services/integrations.js";
 import { Job, JobDealSnapshot, JobEligibleStudent, JobHubspotMapping, NotificationLog, WorkflowTask } from "../src/models/index.js";
@@ -47,7 +47,7 @@ describe("CRM deal processing", () => {
     assert.equal(list.body.pagination.total, 1);
   });
 
-  test("the background pipeline opens a 21-hour window and notifies eligible students", async () => {
+  test("the background pipeline opens a 21-hour window without emailing students itself", async () => {
     const job = await openApplicationWindow(crm, "12345");
     assert.ok(job.learningPortalJobId);
     assert.ok(job.learningPortalJobUrl);
@@ -58,8 +58,7 @@ describe("CRM deal processing", () => {
     const eligible = await JobEligibleStudent.countDocuments({ jobId: job._id });
     assert.equal(job.eligibleCount, eligible);
     assert.equal(await JobEligibleStudent.countDocuments({ jobId: job._id, accessGrantedAt: null }), 0);
-    const emails = await NotificationLog.countDocuments({ jobId: job._id, type: NOTIFICATION_TYPE.INITIAL_JOB_EMAIL, status: "SENT" });
-    assert.equal(emails, eligible);
+    assert.equal(await NotificationLog.countDocuments({ jobId: job._id }), 0, "the Learning Portal emails students on access");
 
     const reminder10 = await WorkflowTask.findOne({ jobId: job._id, type: TASK_TYPE.REMINDER_10H });
     const reminder20 = await WorkflowTask.findOne({ jobId: job._id, type: TASK_TYPE.REMINDER_20H });
@@ -276,7 +275,7 @@ describe("CRM deal processing", () => {
     assert.equal(retry.body.error.code, "NOT_RETRYABLE");
   });
 
-  test("re-running the notification step after a crash does not send duplicate emails", async () => {
+  test("re-running the window-start step after a crash sends nothing and leaves the window open", async () => {
     const job = await openApplicationWindow(crm, "12345");
     const before = await NotificationLog.countDocuments({ jobId: job._id });
 

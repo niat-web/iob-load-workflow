@@ -3,7 +3,6 @@ import { NOTIFICATION_TYPE, TASK_TYPE } from "../config/statuses.js";
 import { NotificationLog } from "../models/index.js";
 import {
   crmPoolReadyEmail,
-  initialJobEmail,
   jobUpdatedEmail,
   poolTargetReachedEmail,
   reminderEmail,
@@ -20,8 +19,6 @@ const T = NOTIFICATION_TYPE;
 
 function render(type, job, recipient, payload) {
   switch (type) {
-    case T.INITIAL_JOB_EMAIL:
-      return initialJobEmail(job, recipient);
     case T.REMINDER_10H:
     case T.REMINDER_20H:
       return reminderEmail(job, recipient, type);

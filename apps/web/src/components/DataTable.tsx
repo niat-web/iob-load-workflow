@@ -1,6 +1,6 @@
 import { flexRender, getCoreRowModel, useReactTable, type ColumnDef } from "@tanstack/react-table";
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
-import type { ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import { cn } from "../utils/cn";
 import { ErrorState } from "./ErrorState";
 import { Skeleton } from "./LoadingSkeleton";
@@ -19,8 +19,17 @@ interface DataTableProps<T> {
   footer?: ReactNode;
   skeletonRows?: number;
   rowClassName?: (row: T) => string | undefined;
+  onRowClick?: (row: T) => void;
   sort?: TableSort | null;
   onSortChange?: (sort: TableSort | null) => void;
+}
+
+const INTERACTIVE = "button, a, input, select, textarea, label, [role='menuitem'], [role='checkbox'], [role='switch']";
+
+function rowClickTarget(event: MouseEvent<HTMLTableRowElement>) {
+  const target = event.target instanceof Element ? event.target : null;
+  if (!target || !event.currentTarget.contains(target) || target.closest(INTERACTIVE)) return false;
+  return !window.getSelection()?.toString();
 }
 
 export interface TableSort {
@@ -49,6 +58,7 @@ export function DataTable<T>({
   footer,
   skeletonRows = 8,
   rowClassName,
+  onRowClick,
   sort,
   onSortChange,
 }: DataTableProps<T>) {
@@ -145,9 +155,21 @@ export function DataTable<T>({
                 </tr>
               ))}
             {rows.map((row) => (
+              // oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions -- the same action is in each row's menu for keyboard users.
               <tr
                 key={row.id}
-                className={cn("group transition-colors hover:bg-slate-50/70", rowClassName?.(row.original))}
+                onClick={
+                  onRowClick
+                    ? (event) => {
+                        if (rowClickTarget(event)) onRowClick(row.original);
+                      }
+                    : undefined
+                }
+                className={cn(
+                  "group transition-colors hover:bg-slate-50/70",
+                  onRowClick && "cursor-pointer",
+                  rowClassName?.(row.original),
+                )}
               >
                 {row.getVisibleCells().map((cell) => (
                   <td

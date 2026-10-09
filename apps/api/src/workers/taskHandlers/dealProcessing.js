@@ -1,5 +1,5 @@
 import { config } from "../../config/env.js";
-import { APPROVAL_GATE as GATE, JOB_STATUS as S, NOTIFICATION_TYPE, TASK_TYPE, loadGateFor } from "../../config/statuses.js";
+import { APPROVAL_GATE as GATE, JOB_STATUS as S, TASK_TYPE, loadGateFor } from "../../config/statuses.js";
 import { Job, JobEligibleStudent, JobHubspotMapping } from "../../models/index.js";
 import { waitForApproval } from "../../services/approvalService.js";
 import { AUDIT, audit } from "../../services/auditService.js";
@@ -11,6 +11,7 @@ import { productGroupsForPlans } from "../../services/eligiblePoolService.js";
 import { getSettings } from "../../services/settingsService.js";
 import { integrations } from "../../services/integrations.js";
 import { companyJdCount, transitionJob } from "../../services/jobService.js";
+import { grantStudentAccess, saveEligibleStudents } from "../../services/studentAccessService.js";
 import {
   buildPortalPayload,
   isLoadedInto,
@@ -19,11 +20,10 @@ import {
   nextOrderNumber,
   prepareOrganisation,
 } from "../../services/learningPortal/portalLoader.js";
-import { notificationKey, sendBulk } from "../../services/notificationService.js";
 import { enqueueTask } from "../../services/taskQueue.js";
 import { now } from "../../utils/clock.js";
 import { PermanentError } from "../../utils/errors.js";
-import { chunk, formatDateTime, hoursFromNow } from "../../utils/helpers.js";
+import { formatDateTime, hoursFromNow } from "../../utils/helpers.js";
 import { enqueueNext, isPast, proceed } from "./shared.js";
 
 const DEAL_FIELDS = [
@@ -145,30 +145,7 @@ async function identifyEligible({ job, heartbeat }) {
     throw new PermanentError("No eligible students were found for this deal's eligibility criteria");
   }
 
-  for (const batch of chunk(students, 1000)) {
-    await JobEligibleStudent.bulkWrite(
-      batch.map((student) => ({
-        updateOne: {
-          filter: { jobId: job._id, studentId: student.studentId },
-          update: {
-            $set: {
-              studentName: student.studentName ?? "",
-              email: student.email ?? null,
-              mobile: student.mobile ?? null,
-              campus: student.campus ?? null,
-              batch: student.batch ?? null,
-              product: student.product ?? null,
-              learningPortalJobId: current.learningPortalJobId ?? null,
-            },
-            $setOnInsert: { eligibleAt: now() },
-          },
-          upsert: true,
-        },
-      })),
-      { ordered: false },
-    );
-    await heartbeat();
-  }
+  await saveEligibleStudents(current, students, heartbeat);
 
   const eligibleCount = await JobEligibleStudent.countDocuments({ jobId: job._id });
   await transitionJob(job._id, S.ELIGIBLE_STUDENTS_IDENTIFIED, {
@@ -194,27 +171,11 @@ async function grantAccess({ job, heartbeat }) {
     { studentId: 1 },
   ).lean();
 
-  let granted = 0;
-  let rejected = 0;
-  for (const batch of chunk(pending.map((row) => row.studentId), 1000)) {
-    const result = await integrations.learningPortal.grantAccess(
-      config.learningPortal.accessEnv,
-      current.learningPortalJobId,
-      batch,
-    );
-    if (result.granted.length) {
-      await JobEligibleStudent.updateMany(
-        { jobId: job._id, studentId: { $in: result.granted } },
-        { $set: { accessGrantedAt: now() } },
-      );
-    }
-    for (const { studentId, reason } of result.rejected) {
-      await JobEligibleStudent.updateOne({ jobId: job._id, studentId }, { $set: { accessRejectedReason: reason } });
-    }
-    granted += result.granted.length;
-    rejected += result.rejected.length;
-    await heartbeat();
-  }
+  const { granted, rejected } = await grantStudentAccess(
+    current,
+    pending.map((row) => row.studentId),
+    heartbeat,
+  );
 
   const totalGranted = await JobEligibleStudent.countDocuments({ jobId: job._id, accessGrantedAt: { $ne: null } });
   if (!totalGranted) throw new PermanentError("The Learning Portal did not grant access to any eligible student");
@@ -240,7 +201,7 @@ export async function scheduleWindowTasks(job) {
   ]);
 }
 
-async function sendInitialNotifications({ job, heartbeat }) {
+async function startApplicationWindow({ job }) {
   if (isPast(job, S.INITIAL_NOTIFICATION_SENDING)) return;
   if (await waitForApproval(job, GATE.START_WINDOW)) return;
   await transitionJob(job._id, S.INITIAL_NOTIFICATION_SENDING, {
@@ -263,37 +224,11 @@ async function sendInitialNotifications({ job, heartbeat }) {
   );
 
   await scheduleWindowTasks(current);
-
-  const type = NOTIFICATION_TYPE.INITIAL_JOB_EMAIL;
-  const totals = { SENT: 0, SKIPPED: 0, FAILED: 0, RETRYING: 0, DUPLICATE: 0, OFF: 0 };
-  const cursor = JobEligibleStudent.find({ jobId: job._id, accessGrantedAt: { $ne: null } }).lean().cursor();
-  let batch = [];
-  const flush = async () => {
-    const counts = await sendBulk({
-      job: current,
-      type,
-      recipients: batch,
-      keyFor: (student) => notificationKey(job._id, type, student.studentId),
-      onSent: (student) =>
-        JobEligibleStudent.updateOne({ _id: student._id }, { $set: { initialEmailSentAt: now() } }),
-    });
-    for (const [key, value] of Object.entries(counts)) totals[key] += value;
-    batch = [];
-    await heartbeat();
-  };
-  for await (const student of cursor) {
-    batch.push(student);
-    if (batch.length >= 500) await flush();
-  }
-  if (batch.length) await flush();
-
-  await audit({ action: AUDIT.INITIAL_EMAIL_SENT, entityId: job._id, metadata: totals });
   await transitionJob(job._id, S.APPLICATIONS_OPEN, { from: S.INITIAL_NOTIFICATION_SENDING });
-  const opened = await Job.findById(job._id, { applicationEndAt: 1 }).lean();
   await audit({
     action: AUDIT.APPLICATIONS_OPENED,
     entityId: job._id,
-    metadata: { closesAt: opened?.applicationEndAt ? new Date(opened.applicationEndAt).toISOString() : null },
+    metadata: { closesAt: current.applicationEndAt.toISOString() },
   });
 }
 
@@ -302,5 +237,5 @@ export const dealProcessingHandlers = {
   [TASK_TYPE.CREATE_JOB]: { run: createJob },
   [TASK_TYPE.IDENTIFY_ELIGIBLE]: { run: identifyEligible },
   [TASK_TYPE.GRANT_ACCESS]: { run: grantAccess },
-  [TASK_TYPE.SEND_INITIAL_NOTIFICATIONS]: { run: sendInitialNotifications },
+  [TASK_TYPE.SEND_INITIAL_NOTIFICATIONS]: { run: startApplicationWindow },
 };

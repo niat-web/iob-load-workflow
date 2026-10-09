@@ -19,7 +19,7 @@ default.
 | Flows CRMs can choose | Both (the CRM picks Automatic or Step by step for each deal), only one, or none |
 | Flow used when the CRM does not choose | The flow every deal uses when no choice is shown, and the one selected first when both are shown |
 | Steps that need approval | Which of the five Step by step stops are used (see section 5) |
-| Emails to students | Job email when applications open · Job update emails · Reminder emails from the Boost page |
+| Emails to students | Job update emails · Reminder emails from the Boost page (the app sends no job email of its own: the Learning Portal emails students when they get access) |
 | Checkpoints | First checkpoint reminder emails · Second checkpoint reminder emails · Second checkpoint AI calls (all of them reach NIAT students only) |
 | Emails to CRMs | Expected pool reached · Candidate pool ready (the shared profiles link) |
 | AI calls | Master switch for every AI call: the automatic second-checkpoint calls and calls started from the Boost page |
@@ -54,7 +54,7 @@ audit log with the old and new values.
 
 One plain line for everything that happens, newest first and kept forever: sign-ins, deal submitted,
 deal fetched, organisation reused or created, job loaded to Beta / Prod, eligible students found, job
-access given (with how many were refused), job emails, window opened, applied pool changes,
+access given (with how many were refused), window opened, applied pool changes,
 checkpoints, AI calls, HubSpot changes, window closed, AI analysis, ranking, PSM review, shared link,
 CRM emails, approvals, failures and retries, settings, users, Eligible Pool changes and Meets. Filter
 by person, action, date or search a deal ID, company or student; click a line for its details.
@@ -184,6 +184,8 @@ details and approval panel, and used for the organisation in the Learning Portal
   Academy) and the Learning Portal job ID.
 - If nobody matches, the deal **fails** here with a clear message. Add students on the Eligible Pool
   page, then click **Retry**.
+- The list does not change by itself after this. Students added to the Eligible Pool later can be
+  added to the deal by hand (see C4b).
 - Status: **Eligible Students Identified**.
 
 **B2. Give students access**
@@ -191,19 +193,20 @@ details and approval panel, and used for the organisation in the Learning Portal
   job ID, 100 students per request.
 - The access time is saved for each student. IDs the portal refuses are saved with the reason and
   the rest still get access.
+- **The Learning Portal emails each student about the job when they get access.** The app sends no
+  job email of its own.
 - Status: **Granting Access**.
 
-**B3. Open the application window and email students**
+**B3. Open the application window**
 - The application window opens (default **21 hours**). The 10 h and 20 h checkpoints, the 30-minute
   checks and the close are scheduled.
 - The window always closes at the job's apply-by deadline on the Learning Portal, set when the job
   was prepared (A3). The job is never sent to the portal again, because the portal cannot update a
   job that already exists. So in Step by step, time spent waiting at the stops comes out of the
-  window: the "Email students and start window" stop shows the time left and the closing time. If
-  that deadline has already passed, the deal fails here with a clear message and no email is sent.
-- Every student with access and an email gets the **job email** with the apply link (if "Job email
-  when applications open" is on).
-- Status: **Application Window**.
+  window: the "Start application window" stop shows the time left and the closing time. If that
+  deadline has already passed, the deal fails here with a clear message and nothing is scheduled.
+- No email is sent at this step.
+- Status while it runs: **Starting Application Window**, then **Application Window**.
 
 ### Part C: The application window
 
@@ -226,7 +229,7 @@ details and approval panel, and used for the organisation in the Learning Portal
   It names the company, role and closing time; it has no apply link. Students who applied never get
   it, and nobody gets the same reminder twice.
 - **Academy students are never reminded.** When a deal covers both products, both keep their job
-  access and the opening job email, but only the NIAT students who have not applied are reminded. A
+  access (and the portal's email), but only the NIAT students who have not applied are reminded. A
   deal with no NIAT students skips the checkpoint and records why.
 - Nothing is sent to the CRM and no AI calls are made.
 - Can be turned off by the admin (Checkpoints, for every company) or by a CRM or admin for one
@@ -238,6 +241,20 @@ details and approval panel, and used for the organisation in the Learning Portal
 - The CRM can send a reminder email to the NIAT students who have not applied (again after the set
   gap) or start AI calls to them by hand, if the admin allows them. Academy students are not
   reminded or called from here either.
+
+**C4b. New eligible students (CRM or admin, optional)**
+- On the deal's page (click the deal's row in the Deals table), tab **Students & Access** →
+  **Check for new eligible students** searches the Eligible Pool again with the deal's own rules
+  (same products, marked Eligible, same pass-out year) and lists only the students who are not on
+  the deal yet: name, campus, batch, product and whether they have an email and a mobile.
+- **Give job access** adds them to the deal and gives them access in Prod straight away, the same way
+  as B2 (IDs the portal refuses are saved with the reason). The portal emails them, and they are
+  included in the checkpoints and AI calls that have not run yet and in the applied pool.
+- It works while the application window is open, and also while a Step by step deal waits at
+  "Give students access" (they are added to the list and get access with everyone else) or at
+  "Start application window" (they get access straight away).
+- It is not available before the job is live in Prod or after the window has closed.
+- Every use is in the Audit Log: "Added 8 new eligible students: job access given to 8".
 
 **C5. Second checkpoint (20 h)**
 - The applied pool is refreshed first.
@@ -338,7 +355,7 @@ the steps the admin turned on, shows **Waiting for Approval** in the Deals table
 | **2. Load into Beta** | A3 | Organisation (new or existing), job ID, apply link, course plans (can be changed here), eligibility text, disclaimer | The job is created in Beta, Beta test accounts get access |
 | **3. Load into Prod** | Beta load | The same details, plus where it is already loaded | The same job is created in Prod |
 | **4. Give students access** | B1 | Number of eligible students, how many have an email and a mobile | B2: students get access |
-| **5. Email students and start window** | B2 | Students with access, emails to send (or that the job email is turned off), window length, checkpoint times, closing time | B3: emails and the window; everything after that runs on its own |
+| **5. Start application window** | B2 | Students with access, how many the portal refused, window time left, checkpoint times, closing time | B3: the window; everything after that runs on its own |
 
 How it works for the person approving:
 
@@ -388,7 +405,7 @@ Notes:
 | Status | Meaning |
 |---|---|
 | Pending | Submitted, about to start |
-| Processing | Fetching the deal, loading the job, finding students, giving access, emailing |
+| Processing | Fetching the deal, loading the job, finding students, giving access, starting the window |
 | Waiting for Approval | Step by step: waiting at a stop |
 | In Progress | The application window is open, or the applicants are being collected |
 | AI Analysis | Resumes are being analysed and candidates ranked |
@@ -396,6 +413,20 @@ Notes:
 | Completed | The final pool was submitted and the shared profiles link was created |
 | Failed | A step failed; see the reason and retry |
 | Stopped | Ended by a CRM or admin |
+
+### The deal page
+
+Clicking a deal's row (or **View Details** in its menu) opens the deal on its own full page, with a
+**Back** button at the top left that returns to the list it came from. The top shows the company and
+role, the Deal ID and job ID, the status, and **Review & Approve**, **Retry Failed Step** and **Boost
+applications** when they apply. Tabs:
+
+| Tab | What it shows |
+|---|---|
+| Deal Details | Current step and progress (with the error if it failed), job meta, company profile, requirements, applications and links |
+| Students & Access | Every student on the deal with their user ID, name, product, campus, batch, email, mobile, job access (given with time, refused with the portal's reason, or waiting), applied, and when they were added. Search, filter by access and product, **Download CSV**, and **Add New Eligible Students** (C4b) |
+| Workflow & Timeline | Flow and approvals, Learning Portal loads and HubSpot job ID, the two checkpoints, the timeline and the record dates |
+| Logs | Every step, task, email, call and approval for the deal, newest first |
 
 ---
 

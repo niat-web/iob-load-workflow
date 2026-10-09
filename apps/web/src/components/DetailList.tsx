@@ -11,7 +11,7 @@ export function DetailList({ items, className }: { items: DetailItem[]; classNam
   return (
     <dl className={cn("grid grid-cols-1 gap-x-6 gap-y-3.5 sm:grid-cols-2", className)}>
       {items.map((item) => (
-        <div key={item.label} className={cn("min-w-0", item.wide && "sm:col-span-2")}>
+        <div key={item.label} className={cn("min-w-0", item.wide && "sm:col-span-full")}>
           <dt className="text-xs font-bold tracking-wider text-muted uppercase">{item.label}</dt>
           <dd className="mt-0.5 text-sm font-semibold break-words text-ink">{item.value}</dd>
         </div>

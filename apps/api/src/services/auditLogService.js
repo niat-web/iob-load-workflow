@@ -12,7 +12,7 @@ const TASK_LABELS = {
   CREATE_JOB: "Prepare and load job",
   IDENTIFY_ELIGIBLE: "Find eligible students",
   GRANT_ACCESS: "Give job access",
-  SEND_INITIAL_NOTIFICATIONS: "Job emails",
+  SEND_INITIAL_NOTIFICATIONS: "Start application window",
   APPLICATION_COUNT_SYNC: "Applied pool sync",
   REMINDER_10H: "First checkpoint",
   REMINDER_20H: "Second checkpoint",
@@ -49,6 +49,7 @@ export const ACTION_LABELS = Object.freeze({
   [AUDIT.HUBSPOT_JOB_ID_WRITTEN]: "Job ID written to HubSpot",
   [AUDIT.ELIGIBLE_IDENTIFIED]: "Eligible students found",
   [AUDIT.ACCESS_GRANTED]: "Job access given",
+  [AUDIT.ELIGIBLE_ADDED]: "New eligible students added",
   [AUDIT.INITIAL_EMAIL_SENT]: "Job emails sent",
   [AUDIT.APPLICATIONS_OPENED]: "Application window opened",
   [AUDIT.APPLIED_POOL_SYNCED]: "Applied pool updated",
@@ -149,6 +150,12 @@ const DESCRIBERS = {
     `Found ${plural(meta.eligibleCount, "eligible student")}${meta.products ? ` (${list(meta.products).join(", ")})` : ""}`,
   [AUDIT.ACCESS_GRANTED]: (meta, log, job) =>
     `Job access given to ${plural(meta.totalGranted ?? meta.granted, "student")} for job ${shortId(job?.learningPortalJobId)}${meta.rejected ? ` (${number(meta.rejected)} refused by the portal)` : ""}`,
+  [AUDIT.ELIGIBLE_ADDED]: (meta) =>
+    `Added ${plural(meta.added, "new eligible student")}${
+      meta.accessNow
+        ? `: job access given to ${number(meta.granted)}${meta.rejected ? `, ${number(meta.rejected)} refused by the portal` : ""}`
+        : ", who get access when job access is approved"
+    }`,
   [AUDIT.INITIAL_EMAIL_SENT]: (meta) => `Job email to students: ${emailCounts(meta)}`,
   [AUDIT.APPLICATIONS_OPENED]: (meta) =>
     `Application window opened${meta.closesAt ? `, closes ${formatDateTime(meta.closesAt)} IST` : ""}`,

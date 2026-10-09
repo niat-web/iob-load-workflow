@@ -16,7 +16,6 @@ const eligibleSchema = new mongoose.Schema(
     eligibleAt: { type: Date, required: true },
     accessGrantedAt: { type: Date, default: null },
     accessRejectedReason: { type: String, default: null },
-    initialEmailSentAt: { type: Date, default: null },
     learningPortalJobId: { type: String, default: null },
     applied: { type: Boolean, default: false },
     appliedAt: { type: Date, default: null },

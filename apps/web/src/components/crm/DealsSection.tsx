@@ -1,12 +1,11 @@
 import { FilterX, RefreshCw, SearchX } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router";
 import { errorMessage } from "../../api/client";
 import { useCrmDealFilters, useCrmDeals, useDeleteDeal, useRetryDeal, useStopDeal } from "../../api/crm";
 import { buildCrmColumns } from "./crmColumns";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { ApprovalDrawer } from "./ApprovalDrawer";
-import { DealDetailsDrawer } from "./DealDetailsDrawer";
-import { DealLogsDrawer } from "./DealLogsDrawer";
 import { DataTable } from "../DataTable";
 import { EmptyState } from "../EmptyState";
 import { FilterMenu } from "../FilterMenu";
@@ -22,7 +21,7 @@ import { DEFAULT_PAGE_SIZE, splitFilterValues } from "../../utils/pagination";
 
 export const CRM_FILTER_KEYS = ["q", "status", "company"] as const;
 
-type Panel = { kind: "details" | "logs" | "approval"; job: CrmDealRow } | null;
+type Panel = { kind: "approval"; job: CrmDealRow } | null;
 type Confirm = { kind: "stop" | "delete"; job: CrmDealRow } | null;
 
 function dealName(job: CrmDealRow) {
@@ -39,6 +38,8 @@ export function DealsSection({ emptyDescription, fixedPageSize }: DealsSectionPr
   const [chosenPageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const pageSize = fixedPageSize ?? chosenPageSize;
   const [panel, setPanel] = useState<Panel>(null);
+  const navigate = useNavigate();
+  const location = useLocation();
   const toast = useToast();
   const copy = useCopyToClipboard();
   const retry = useRetryDeal();
@@ -74,12 +75,19 @@ export function DealsSection({ emptyDescription, fixedPageSize }: DealsSectionPr
   );
 
   const offset = ((pagination?.page ?? page) - 1) * (pagination?.limit ?? pageSize);
+  const from = `${location.pathname}${location.search}`;
+  const openDeal = useCallback(
+    (job: CrmDealRow, tab = "") => {
+      void navigate(`/crm/deals/${encodeURIComponent(job.id)}${tab ? `/${tab}` : ""}`, { state: { from } });
+    },
+    [navigate, from],
+  );
   const columns = useMemo(
     () =>
       buildCrmColumns({
         offset,
-        onViewDetails: (job) => setPanel({ kind: "details", job }),
-        onViewLogs: (job) => setPanel({ kind: "logs", job }),
+        onViewDetails: (job) => openDeal(job),
+        onViewLogs: (job) => openDeal(job, "logs"),
         onReviewApproval: (job) => setPanel({ kind: "approval", job }),
         onStop: (job) => setConfirm({ kind: "stop", job }),
         onDelete: (job) => setConfirm({ kind: "delete", job }),
@@ -88,7 +96,7 @@ export function DealsSection({ emptyDescription, fixedPageSize }: DealsSectionPr
           if (job.publicLinkUrl) void copy(job.publicLinkUrl, "Public link copied");
         },
       }),
-    [offset, handleRetry, copy],
+    [offset, handleRetry, copy, openDeal],
   );
 
   const refresh = () => {
@@ -165,6 +173,7 @@ export function DealsSection({ emptyDescription, fixedPageSize }: DealsSectionPr
           data={deals.data?.items}
           columns={columns}
           getRowId={(row) => row.id}
+          onRowClick={(job) => openDeal(job)}
           isLoading={deals.isPending}
           isFetching={deals.isFetching}
           error={deals.error}
@@ -205,9 +214,7 @@ export function DealsSection({ emptyDescription, fixedPageSize }: DealsSectionPr
         />
       </section>
 
-      <DealDetailsDrawer job={panel?.kind === "details" ? panel.job : null} onClose={closePanel} />
-      <DealLogsDrawer job={panel?.kind === "logs" ? panel.job : null} onClose={closePanel} />
-      <ApprovalDrawer job={panel?.kind === "approval" ? panel.job : null} onClose={closePanel} />
+      <ApprovalDrawer job={panel?.job ?? null} onClose={closePanel} />
       <ConfirmDialog
         open={confirm !== null}
         title={confirm?.kind === "delete" ? "Delete this deal?" : "Stop this deal?"}

@@ -70,6 +70,18 @@ export function crmRoutes() {
   router.get("/deals/:jobId", validate({ params: crm.jobIdParams }), a(crm.dealDetail));
   router.get("/deals/:jobId/logs", validate({ params: crm.jobIdParams }), a(crm.dealLogs));
   router.post("/deals/:jobId/retry", validate({ params: crm.jobIdParams }), a(crm.retryDeal));
+  router.get("/deals/:jobId/new-eligible", validate({ params: crm.jobIdParams }), a(crm.newEligibleDetail));
+  router.post("/deals/:jobId/new-eligible", validate({ params: crm.jobIdParams }), a(crm.addNewEligible));
+  router.get(
+    "/deals/:jobId/students",
+    validate({ params: crm.jobIdParams, query: crm.studentsQuerySchema }),
+    a(crm.dealStudents),
+  );
+  router.get(
+    "/deals/:jobId/students/export",
+    validate({ params: crm.jobIdParams, query: crm.studentsExportSchema }),
+    a(crm.dealStudentsExport),
+  );
   router.get("/deals/:jobId/approval", validate({ params: crm.jobIdParams }), a(crm.approvalDetail));
   router.post("/deals/:jobId/approve", validate({ params: crm.jobIdParams, body: crm.approveSchema }), a(crm.approveStep));
   router.post(

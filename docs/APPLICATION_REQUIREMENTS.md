@@ -77,8 +77,8 @@ straight through.
 | 4 | Load job | Creates the organisation if needed and the job in **Beta**, then **Prod**, with `job_extra_details.crm / profiling_poc / ise` | Learning Portal API |
 | 5 | Write back | `POST {action:"update", dealId, properties:{job_id}}`, then `{crm, profiling_poc, ise}` owner IDs | n8n → HubSpot |
 | 6 | Eligible students | Students marked **Eligible** on the Eligible Pool page for the deal's products (NIAT, Academy, …) and pass-out year, with their email and mobile | MongoDB (Eligible Pool) |
-| 7 | Give access | Grants the job to eligible students in Prod | Learning Portal API |
-| 8 | Notify | Initial job email to every eligible student | AWS SES |
+| 7 | Give access | Grants the job to eligible students in Prod; the Learning Portal emails them about the job | Learning Portal API |
+| 8 | Start window | Opens the application window and schedules the checkpoints and the close (no email from the app) | App |
 | 9 | Window | 21 h. At 10 h and 20 h, if applications are below the expected pool, the CRM gets an email with a **Boost applications** link. There the CRM sends a reminder email or starts AI calls (agent built from the JD, `{name}` and `{jd}` per call, two-way, up to 2 minutes). Call status, answers and ratings come back automatically | SES, NxtDial |
 | 10 | Pool reached | When applications ≥ expected pool: reminders skipped, **one email to the CRM who added the deal** | SES |
 | 11 | Close + fetch | At 21 h the applied pool is read | BigQuery |
@@ -91,7 +91,7 @@ straight through.
 
 - **Automatic:** every step runs by itself.
 - **Step by step:** the deal waits for CRM approval before each of these steps: Deal details, Load Beta,
-  Load Prod, Give students access, Email students and start the window. Course plans can be edited at
+  Load Prod, Give students access, Start application window. Course plans can be edited at
   the first load approval.
 
 ### Deal controls

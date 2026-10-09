@@ -1,5 +1,6 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
+  AddEligibleResult,
   ApprovalGate,
   ApprovalResponse,
   BoostOverview,
@@ -14,11 +15,14 @@ import type {
   CrmDealRow,
   CrmDealsQuery,
   DealLogsResponse,
+  DealStudentsQuery,
+  DealStudentsResponse,
+  NewEligiblePreview,
   Paginated,
   ProcessDealResponse,
   RetryDealResponse,
 } from "../types/api";
-import { api, isApiError, seg } from "./client";
+import { api, apiUrl, isApiError, seg } from "./client";
 
 const POLL_INTERVAL_MS = 12_000;
 
@@ -30,6 +34,8 @@ export const crmKeys = {
   logs: (jobId: string) => [...crmKeys.deals(), "logs", jobId] as const,
   approval: (jobId: string) => [...crmKeys.deals(), "approval", jobId] as const,
   boost: (jobId: string) => [...crmKeys.deals(), "boost", jobId] as const,
+  newEligible: (jobId: string) => [...crmKeys.deals(), "new-eligible", jobId] as const,
+  students: (jobId: string, query: DealStudentsQuery) => [...crmKeys.deals(), "students", jobId, query] as const,
   companies: () => [...crmKeys.deals(), "companies"] as const,
   owners: () => [...crmKeys.all, "hubspot-owners"] as const,
   controls: () => [...crmKeys.all, "controls"] as const,
@@ -195,6 +201,44 @@ export function useRetryDeal() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: retryDeal,
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: crmKeys.deals() });
+    },
+  });
+}
+
+export function useDealStudents(jobId: string, query: DealStudentsQuery) {
+  return useQuery({
+    queryKey: crmKeys.students(jobId, query),
+    queryFn: ({ signal }) =>
+      api.get<DealStudentsResponse>(`/crm/deals/${seg(jobId)}/students`, { ...query }, signal),
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function dealStudentsExportUrl(jobId: string, filters: Omit<DealStudentsQuery, "page" | "limit">) {
+  return apiUrl(`/crm/deals/${seg(jobId)}/students/export`, { ...filters });
+}
+
+export function useNewEligiblePreview(jobId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: crmKeys.newEligible(jobId),
+    queryFn: ({ signal }) => api.get<NewEligiblePreview>(`/crm/deals/${seg(jobId)}/new-eligible`, undefined, signal),
+    enabled,
+    staleTime: 0,
+    retry: false,
+  });
+}
+
+export function useAddNewEligible(jobId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      api.post<{ result: AddEligibleResult; deal: CrmDealDetail }>(`/crm/deals/${seg(jobId)}/new-eligible`),
+    onSuccess: ({ deal }) => {
+      queryClient.setQueryData(crmKeys.deal(jobId), deal);
+      queryClient.removeQueries({ queryKey: crmKeys.newEligible(jobId) });
+    },
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: crmKeys.deals() });
     },

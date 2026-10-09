@@ -6,6 +6,7 @@ export const pageLoaders = {
   interviews: () => import("./InterviewsPage"),
   interviewSheet: () => import("./InterviewSheetPage"),
   boost: () => import("./BoostPage"),
+  deal: () => import("./DealPage"),
   eligiblePool: () => import("./EligiblePoolPage"),
   settings: () => import("./SettingsPage"),
   psmJobs: () => import("./PSMJobsPage"),
@@ -16,8 +17,8 @@ export const pageLoaders = {
 };
 
 const NAV_PRELOADERS: Record<string, () => Promise<unknown>> = {
-  "/crm": pageLoaders.crm,
-  "/crm/deals": pageLoaders.crmDeals,
+  "/crm": () => Promise.all([pageLoaders.crm(), pageLoaders.deal()]),
+  "/crm/deals": () => Promise.all([pageLoaders.crmDeals(), pageLoaders.deal()]),
   "/crm/companies": pageLoaders.crmCompanies,
   "/crm/interviews": () => Promise.all([pageLoaders.interviews(), pageLoaders.interviewSheet()]),
   "/psm": () => Promise.all([pageLoaders.psmJobs(), pageLoaders.psmReview()]),

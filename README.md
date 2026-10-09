@@ -105,7 +105,7 @@ flows CRMs see next to Submit: both (the CRM picks per deal), only one (every de
 | Load into Beta | Organisation (new / existing), job ID, apply link, course plans (editable), eligibility text, disclaimer | Org + job in Beta, Beta test accounts |
 | Load into Prod | The same, plus where it is already loaded | Same job ID into Prod |
 | Give students access | Eligible count, with email / phone | Access for the eligible students |
-| Email students and start window | Students with access, emails to send, window and reminder times | Emails, 21h window; reminders and closing run automatically |
+| Start application window | Students with access, window time left, reminder and closing times | The window (closes at the portal deadline); reminders and closing run automatically |
 
 Any CRM user or Admin can approve; every approval is recorded (who, when) in the deal details and
 logs. Course plans can only be changed before the first portal load, so beta and prod stay identical.
@@ -120,8 +120,7 @@ as soon as they are saved, and every change is in the audit log (`SETTINGS_UPDAT
 | Group | Control | When off |
 |---|---|---|
 | Deal flow | Flows CRMs can choose (Automatic, Step by step, both or none), the flow used when the CRM does not choose, and which of the five steps need approval | — |
-| Emails to students | Job email when applications open | The window still opens; no email |
-| | Job update emails (deal changed in HubSpot) | The portal job is still updated; no email |
+| Emails to students | Job update emails (deal changed in HubSpot) | The portal job is still updated; no email |
 | | Reminder emails from the Boost page | The Boost page button is disabled |
 | Checkpoints | 1st checkpoint reminder emails · 2nd checkpoint reminder emails · 2nd checkpoint AI calls (also per company on the Companies page) | That action is skipped and the reason recorded |
 | Emails to CRMs | Expected pool reached | No email |

@@ -38,7 +38,7 @@ describe("admin controls in Settings → Config", () => {
     assert.equal(settings.flow.mode, "AUTOMATIC");
     assert.deepEqual(settings.flow.crmOptions, { AUTOMATIC: true, STEP_BY_STEP: true });
     assert.deepEqual(Object.values(settings.flow.approvals), [true, true, true, true, true]);
-    assert.deepEqual(settings.studentEmails, { jobEmail: true, jobUpdates: true, boostReminder: true });
+    assert.deepEqual(settings.studentEmails, { jobUpdates: true, boostReminder: true });
     assert.deepEqual(settings.checkpoints, { firstEmails: true, secondEmails: true, secondCalls: true });
     assert.deepEqual(settings.crmEmails, { poolReached: true, candidatePool: true });
     assert.equal(settings.aiCalls.enabled, true);
@@ -83,14 +83,13 @@ describe("admin controls in Settings → Config", () => {
     );
   });
 
-  test("with student job emails off, the window opens without emailing students", async () => {
-    await save({ studentEmails: { jobEmail: false } });
+  test("the window opens without a job email: the Learning Portal emails students when they get access", async () => {
+    assert.equal((await save({ studentEmails: { jobEmail: false } })).status, 400, "the job email setting no longer exists");
     const job = await openApplicationWindow(crm, "12345");
-    assert.equal(await NotificationLog.countDocuments({ jobId: job._id, type: NOTIFICATION_TYPE.INITIAL_JOB_EMAIL }), 0);
+    assert.equal(await NotificationLog.countDocuments({ jobId: job._id }), 0);
     assert.equal(integrations.ses.sent.length, 0);
-    const log = await AuditLog.findOne({ action: "INITIAL_EMAIL_SENT", entityId: String(job._id) }).lean();
-    assert.equal(log.metadata.SENT, 0);
-    assert.ok(log.metadata.OFF > 0);
+    assert.equal(await AuditLog.countDocuments({ action: "INITIAL_EMAIL_SENT", entityId: String(job._id) }), 0);
+    assert.ok(await AuditLog.findOne({ action: "APPLICATIONS_OPENED", entityId: String(job._id) }).lean());
   });
 
   test("the Boost page buttons follow the student email and AI call switches", async () => {

@@ -30,11 +30,11 @@ describe("Audit log", () => {
       "JOB_LOADED_TO_PORTAL",
       "ELIGIBLE_STUDENTS_FOUND",
       "STUDENT_ACCESS_GRANTED",
-      "INITIAL_EMAIL_SENT",
       "APPLICATIONS_OPENED",
     ]) {
       assert.ok(actions.includes(action), `${action} is logged`);
     }
+    assert.ok(!actions.includes("INITIAL_EMAIL_SENT"), "no job email is sent any more");
     const times = items.map((item) => item.at);
     assert.deepEqual(times, [...times].sort().reverse(), "newest first");
 

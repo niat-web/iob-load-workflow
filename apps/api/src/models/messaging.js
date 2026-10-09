@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import { NOTIFICATION_TYPE } from "../config/statuses.js";
+import { NOTIFICATION_TYPE, RETIRED_NOTIFICATION_TYPES } from "../config/statuses.js";
 
 const { ObjectId, Mixed } = mongoose.Schema.Types;
 
@@ -8,7 +8,7 @@ const notificationLogSchema = new mongoose.Schema(
     jobId: { type: ObjectId, ref: "Job", required: true, index: true },
     studentId: { type: String, default: null },
     email: { type: String, required: true, lowercase: true },
-    type: { type: String, enum: Object.values(NOTIFICATION_TYPE), required: true },
+    type: { type: String, enum: [...Object.values(NOTIFICATION_TYPE), ...RETIRED_NOTIFICATION_TYPES], required: true },
     provider: { type: String, default: "SES" },
     providerMessageId: { type: String, default: null },
     status: { type: String, enum: ["PENDING", "SENT", "RETRYING", "FAILED", "SKIPPED"], default: "PENDING" },

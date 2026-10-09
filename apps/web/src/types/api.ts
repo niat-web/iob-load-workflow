@@ -196,7 +196,79 @@ export interface ApprovalRecord {
   at: string | null;
 }
 
+export interface AddEligibleState {
+  allowed: boolean;
+  accessNow: boolean;
+  reason: string | null;
+}
+
+export interface NewEligibleStudent {
+  studentId: string;
+  studentName: string;
+  campus: string | null;
+  batch: string | null;
+  product: string | null;
+  hasEmail: boolean;
+  hasMobile: boolean;
+}
+
+export interface NewEligiblePreview extends AddEligibleState {
+  total: number;
+  withEmail: number;
+  withMobile: number;
+  students: NewEligibleStudent[];
+}
+
+export type StudentAccessStatus = "ACCESS" | "REFUSED" | "WAITING";
+export type StudentAccessFilter = StudentAccessStatus | "APPLIED" | "NOT_APPLIED";
+
+export interface DealStudent {
+  studentId: string;
+  studentName: string;
+  product: string | null;
+  campus: string | null;
+  batch: string | null;
+  email: string | null;
+  mobile: string | null;
+  eligibleAt: string | null;
+  accessGrantedAt: string | null;
+  accessRejectedReason: string | null;
+  applied: boolean;
+  appliedAt: string | null;
+  status: StudentAccessStatus;
+}
+
+export interface DealStudentsSummary {
+  total: number;
+  access: number;
+  refused: number;
+  waiting: number;
+  applied: number;
+  products: Record<string, number>;
+}
+
+export interface DealStudentsResponse extends Paginated<DealStudent> {
+  summary: DealStudentsSummary;
+}
+
+export interface DealStudentsQuery {
+  search?: string;
+  access?: string;
+  product?: string;
+  page: number;
+  limit: number;
+}
+
+export interface AddEligibleResult {
+  added: number;
+  accessNow: boolean;
+  granted: number;
+  rejected: number;
+  eligibleCount: number;
+}
+
 export interface CrmDealDetail extends CrmDealRow {
+  addEligible: AddEligibleState;
   hubspotRecordUrl: string | null;
   ingestedAt: string | null;
   companyWebsite: string | null;
@@ -298,13 +370,11 @@ export interface ApprovalPreview {
   window?: {
     granted: number;
     rejected: number;
-    emails: number;
     windowHours: number;
     plannedWindowHours: number;
     reminderHours: number[];
     closesAt: string | null;
     closed: boolean;
-    studentEmailsOn: boolean;
   };
 }
 
@@ -780,7 +850,7 @@ export interface BoostOverview {
 
 export interface AppSettings {
   flow: { mode: FlowMode; crmOptions: Record<FlowMode, boolean>; approvals: Record<ApprovalGate, boolean> };
-  studentEmails: { jobEmail: boolean; jobUpdates: boolean; boostReminder: boolean };
+  studentEmails: { jobUpdates: boolean; boostReminder: boolean };
   checkpoints: CheckpointSwitches;
   crmEmails: { poolReached: boolean; candidatePool: boolean };
   aiCalls: { enabled: boolean };

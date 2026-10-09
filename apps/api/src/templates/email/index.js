@@ -40,35 +40,7 @@ function textDetails(rows) {
     .join("\n");
 }
 
-function jobRows(job) {
-  return [
-    ["Company", job.companyName],
-    ["Role", job.jobRole],
-    ["CTC", job.ctc],
-    ["Location", job.location],
-    ["Required Skills", displayValue(job.skills)],
-    ["Eligibility", job.eligibility],
-    ["Deadline", job.applicationEndAt ? `${formatDateTime(job.applicationEndAt)} IST` : null],
-  ];
-}
-
 const greeting = (name) => (name ? `Hi ${name.split(" ")[0]},` : "Hi,");
-
-export function initialJobEmail(job, student) {
-  const rows = jobRows(job);
-  const url = job.learningPortalJobUrl;
-  return {
-    subject: `New Job Opportunity – ${job.companyName} | ${job.jobRole}`,
-    html: layout({
-      preheader: `${job.companyName} is hiring for ${job.jobRole}. Apply before the deadline.`,
-      bodyHtml: `<p style="margin:0 0 12px;">${escapeHtml(greeting(student?.studentName))}</p>
-<p style="margin:0 0 4px;">A new opportunity is open for you. Review the details and apply before the deadline.</p>
-${detailsTable(rows)}
-${button("View & Apply", url)}`,
-    }),
-    text: `${greeting(student?.studentName)}\n\nA new opportunity is open for you.\n\n${textDetails(rows)}\n\nView & Apply: ${url}`,
-  };
-}
 
 export function reminderEmail(job, student, reminderType) {
   const rows = [
