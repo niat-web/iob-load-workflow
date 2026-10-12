@@ -10,7 +10,13 @@ import { connectedOrganizer, googleConnectionProblem, meetAuthMode } from "./goo
 import { integrations } from "./integrations.js";
 import { sharedProfilesUrl } from "./publicLinkService.js";
 import { getSettings } from "./settingsService.js";
-import { ensureSheet, sharedSheetView, updateSharedCell } from "./sharedSheetService.js";
+import {
+  deleteSharedColumn,
+  ensureSheet,
+  renameSharedColumn,
+  sharedSheetView,
+  updateSharedCell,
+} from "./sharedSheetService.js";
 
 export const INTERVIEW_COLUMNS = [
   { key: "studentEmail", label: "Student Email" },
@@ -21,6 +27,7 @@ export const INTERVIEW_COLUMNS = [
 
 const INTERVIEW_KEYS = new Set(INTERVIEW_COLUMNS.map((column) => column.key));
 const INTERNAL_KEY = /^i_[A-Za-z0-9_-]{6,20}$/;
+const SHARED_CUSTOM_KEY = /^c_[A-Za-z0-9_-]{6,20}$/;
 const MAX_INTERNAL_COLUMNS = 30;
 export const MAX_INTERVIEWERS = 20;
 const MAX_GUESTS = 50;
@@ -268,6 +275,7 @@ export async function addInterviewColumn(job, label) {
 }
 
 export async function renameInterviewColumn(job, key, label) {
+  if (SHARED_CUSTOM_KEY.test(key)) return renameSharedColumn(job, key, label);
   if (!INTERNAL_KEY.test(key)) throw badRequest("Only added columns can be renamed");
   const result = await SharedSheet.updateOne(
     { jobId: job._id, "internalColumns.key": key },
@@ -277,6 +285,7 @@ export async function renameInterviewColumn(job, key, label) {
 }
 
 export async function deleteInterviewColumn(job, key) {
+  if (SHARED_CUSTOM_KEY.test(key)) return deleteSharedColumn(job, key);
   if (!INTERNAL_KEY.test(key)) throw badRequest("Only added columns can be deleted");
   const result = await SharedSheet.updateOne(
     { jobId: job._id, "internalColumns.key": key },

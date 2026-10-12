@@ -2,7 +2,7 @@ import "./setup.js";
 import { after, before, beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { config } from "../src/config/env.js";
-import { AuditLog, CompanySettings, GoogleConnection, InterviewMeet } from "../src/models/index.js";
+import { AuditLog, CandidateAnalysis, CompanySettings, GoogleConnection, InterviewMeet } from "../src/models/index.js";
 import { setGoogleOAuthFactory } from "../src/services/googleConnectionService.js";
 import { LiveGoogleMeetClient, MockGoogleMeetClient } from "../src/services/googleMeetClient.js";
 import { integrations, overrideIntegration } from "../src/services/integrations.js";
@@ -41,6 +41,7 @@ describe("Interviews page and Google Meet", () => {
     crm = await loginAs(CRM_EMAIL, "CRM");
     psm = await loginAs("psm.user@example.com", "PSM");
     job = await runToPsmReview(crm, "12345");
+    await CandidateAnalysis.updateMany({ jobId: job._id }, { $set: { candidateStatus: "RECOMMENDED" } });
     await psm.post(`/api/psm/jobs/${job._id}/submit`).set(XHR);
     sharedBase = `/api/shared/profiles/${job.learningPortalJobId}`;
     base = `/api/interviews/jobs/${job._id}`;

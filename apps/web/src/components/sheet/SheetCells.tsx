@@ -1,5 +1,7 @@
 import { Check, ChevronDown, Columns3, Pencil, X } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { createPortal } from "react-dom";
+import { useDismiss } from "../../hooks/useDismiss";
 import type { SharedColumn } from "../../types/api";
 import { cn } from "../../utils/cn";
 import { Button, IconButton } from "../ui/Button";
@@ -73,14 +75,16 @@ export function EditableCell({
 }
 
 const OPTION_TONES: Record<string, string> = {
-  Selected: "bg-emerald-100 text-emerald-800",
-  Rejected: "bg-orange-100 text-orange-800",
-  "On Hold": "bg-slate-200 text-slate-700",
-  "Yet to Schedule": "bg-slate-100 text-slate-700",
-  Scheduled: "bg-violet-100 text-violet-800",
-  Hold: "bg-amber-100 text-amber-800",
-  "No Show": "bg-slate-800 text-white",
+  Selected: "bg-[#d4edbc] text-[#11734b]",
+  Rejected: "bg-[#ffcfc9] text-[#b10202]",
+  "On Hold": "bg-[#e6e6e6] text-[#3d3d3d]",
+  "Yet to Schedule": "bg-[#e6e6e6] text-[#3d3d3d]",
+  Scheduled: "bg-[#e6cff2] text-[#5a3286]",
+  Hold: "bg-[#ffe5a0] text-[#473821]",
+  "No Show": "bg-[#3d3d3d] text-white",
 };
+
+const MENU_WIDTH = 200;
 
 export function OptionCell({
   value,
@@ -95,30 +99,103 @@ export function OptionCell({
   saving: boolean;
   onSave: (next: string) => void;
 }) {
+  const [menu, setMenu] = useState<{ top: number; left: number } | null>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const close = () => setMenu(null);
+  useDismiss(menu !== null, close, [buttonRef, menuRef]);
+
+  useEffect(() => {
+    if (!menu) return undefined;
+    const onScroll = (event: Event) => {
+      if (menuRef.current?.contains(event.target as Node)) return;
+      setMenu(null);
+    };
+    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", onScroll);
+    return () => {
+      window.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("resize", onScroll);
+    };
+  }, [menu]);
+
+  const open = () => {
+    const rect = buttonRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const height = (options.length + (value ? 2 : 0)) * 36 + 16;
+    const below = rect.bottom + 4;
+    const top = below + height > window.innerHeight ? Math.max(8, rect.top - height - 4) : below;
+    setMenu({ top, left: Math.max(8, Math.min(rect.left, window.innerWidth - MENU_WIDTH - 8)) });
+  };
+
+  const pick = (next: string) => {
+    setMenu(null);
+    buttonRef.current?.focus();
+    if (next !== value) onSave(next);
+  };
+
   return (
-    <div className="relative inline-flex w-full min-w-[150px]">
-      <select
-        aria-label={label}
-        value={value}
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        aria-label={`${label}: ${value || "not set"}`}
+        aria-haspopup="listbox"
+        aria-expanded={menu !== null}
         disabled={saving}
-        onChange={(event) => onSave(event.target.value)}
+        onClick={() => (menu ? close() : open())}
+        onKeyDown={(event) => event.key === "Escape" && close()}
         className={cn(
-          "focus-ring h-8 w-full cursor-pointer appearance-none rounded-full border-0 pr-7 pl-3 text-xs font-semibold disabled:cursor-wait",
-          value ? (OPTION_TONES[value] ?? "bg-slate-100 text-ink") : "bg-slate-50 text-muted ring-1 ring-line",
+          "focus-ring inline-flex h-7 w-full min-w-[140px] items-center justify-between gap-2 rounded-full px-3 text-xs font-semibold transition-[filter] hover:brightness-95 disabled:cursor-wait",
+          value ? (OPTION_TONES[value] ?? "bg-slate-100 text-ink") : "bg-[#eef0f2] text-slate-500",
           saving && "opacity-60",
         )}
       >
-        <option value="" className="bg-surface text-muted">
-          Choose…
-        </option>
-        {options.map((option) => (
-          <option key={option} value={option} className="bg-surface text-ink">
-            {option}
-          </option>
-        ))}
-      </select>
-      <ChevronDown className="pointer-events-none absolute top-1/2 right-2.5 size-3.5 -translate-y-1/2" aria-hidden />
-    </div>
+        <span className="truncate">{value}</span>
+        <ChevronDown className="size-3.5 shrink-0" strokeWidth={2.5} aria-hidden />
+      </button>
+      {menu &&
+        createPortal(
+          <div
+            ref={menuRef}
+            role="listbox"
+            aria-label={label}
+            style={{ top: menu.top, left: menu.left, width: MENU_WIDTH }}
+            className="fixed z-50 animate-pop-in rounded-lg border border-line bg-white p-1.5 shadow-pop"
+          >
+            {options.map((option) => (
+              <button
+                key={option}
+                type="button"
+                role="option"
+                aria-selected={option === value}
+                onClick={() => pick(option)}
+                className={cn(
+                  "flex h-9 w-full items-center rounded-md px-2 hover:bg-slate-100 focus-visible:bg-slate-100 focus-visible:outline-none",
+                  option === value && "bg-slate-100",
+                )}
+              >
+                <span className={cn("rounded-full px-2.5 py-0.5 text-xs font-semibold", OPTION_TONES[option] ?? "bg-slate-100 text-ink")}>
+                  {option}
+                </span>
+              </button>
+            ))}
+            {value && (
+              <>
+                <div className="my-1 border-t border-line" />
+                <button
+                  type="button"
+                  onClick={() => pick("")}
+                  className="flex h-9 w-full items-center rounded-md px-2 text-xs font-semibold text-muted hover:bg-slate-100"
+                >
+                  Clear
+                </button>
+              </>
+            )}
+          </div>,
+          document.body,
+        )}
+    </>
   );
 }
 

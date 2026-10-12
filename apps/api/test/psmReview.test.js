@@ -133,6 +133,9 @@ describe("PSM review, public link and CRM notification", () => {
   });
 
   test("the shared profiles page has the same columns for every company and only the status dropdowns can change", async () => {
+    const lastRanked = await CandidateAnalysis.findOne({ jobId: job._id }).sort({ finalRank: -1 }).lean();
+    await CandidateAnalysis.updateMany({ jobId: job._id }, { $set: { candidateStatus: "RECOMMENDED" } });
+    await CandidateAnalysis.updateOne({ _id: lastRanked._id }, { $set: { candidateStatus: "CONSIDER" } });
     const submit = await psm.post(`/api/psm/jobs/${job._id}/submit`).set(XHR);
     const url = submit.body.publicLinkUrl;
     assert.ok(url.includes(`/shared/profiles/${companySlug(job.companyName)}/`), "the company name is in the link");
@@ -171,12 +174,22 @@ describe("PSM review, public link and CRM notification", () => {
     );
     assert.ok(!("totalApplied" in sheet), "no summary on the page");
 
-    const ranked = await CandidateAnalysis.find({ jobId: job._id }).sort({ finalRank: 1 }).lean();
+    const ranked = await CandidateAnalysis.find({ jobId: job._id, candidateStatus: "RECOMMENDED" }).sort({ finalRank: 1 }).lean();
     assert.deepEqual(
       sheet.rows.map((row) => row.values.fullName),
       ranked.map((candidate) => candidate.studentName),
-      "rows follow the PSM's final priority",
+      "only Recommended candidates, in the PSM's final priority",
     );
+    assert.ok(!sheet.rows.some((row) => row.values.fullName === lastRanked.studentName));
+
+    const changed = await psm
+      .patch(`/api/psm/jobs/${job._id}/candidates/${lastRanked.studentId}`)
+      .set(XHR)
+      .send({ candidateStatus: "RECOMMENDED" });
+    assert.equal(changed.status, 200, "the status can still change after submitting");
+    assert.ok((await api().get(base)).body.rows.some((row) => row.values.fullName === lastRanked.studentName), "now shared");
+    await psm.patch(`/api/psm/jobs/${job._id}/candidates/${lastRanked.studentId}`).set(XHR).send({ candidateStatus: "CONSIDER" });
+    assert.ok(!(await api().get(base)).body.rows.some((row) => row.values.fullName === lastRanked.studentName), "hidden again");
     const first = sheet.rows[0];
     assert.ok(first.values.email.endsWith("@students.example.com"));
     assert.equal(first.values.bachelorsCourse, "B.Tech");
@@ -193,8 +206,20 @@ describe("PSM review, public link and CRM notification", () => {
     assert.equal((await edit("resumeShortlisting", "Scheduled")).status, 400);
     assert.equal((await edit("fullName", "Someone else")).status, 400, "student details cannot be changed");
     assert.equal((await edit("resume", "x")).status, 400);
-    assert.equal((await api().post(`${base}/rows`).set(XHR).send({ values: {} })).status, 404, "rows cannot be added");
-    assert.equal((await api().post(`${base}/columns`).set(XHR).send({ label: "Slot" })).status, 404, "columns cannot be added");
+    const added = (await api().post(`${base}/rows`).set(XHR).send({})).body.row;
+    assert.equal(added.source, "ADDED");
+    assert.equal((await api().patch(`${base}/rows/${added.id}`).set(XHR).send({ key: "fullName", value: "Walk-in candidate" })).status, 204);
+    const column = (await api().post(`${base}/columns`).set(XHR).send({ label: "Interview slot" })).body.column;
+    assert.match(column.key, /^c_/);
+    assert.equal((await edit(column.key, "Mon 10 AM")).status, 204);
+    assert.equal((await api().patch(`${base}/columns/${column.key}`).set(XHR).send({ label: "Slot" })).status, 204);
+    assert.equal((await api().delete(`${base}/rows/${first.id}`).set(XHR)).status, 409, "the PSM's rows stay");
+    const withAdded = (await api().get(base)).body;
+    assert.equal(withAdded.rows.at(-1).values.fullName, "Walk-in candidate");
+    assert.equal(withAdded.rows[0].values[column.key], "Mon 10 AM");
+    assert.equal(withAdded.columns.at(-1).label, "Slot");
+    assert.equal((await api().delete(`${base}/rows/${added.id}`).set(XHR)).status, 204);
+    assert.equal((await api().delete(`${base}/columns/${column.key}`).set(XHR)).status, 204);
 
     const current = (await api().get(base)).body;
     assert.equal(current.rows[0].values.trRound1, "Scheduled");

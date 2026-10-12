@@ -11,11 +11,13 @@ import { FilterSelect } from "../components/FilterSelect";
 import { Pagination } from "../components/Pagination";
 import { buildCandidateColumns } from "../components/psm/candidateColumns";
 import { ReviewColumnsMenu } from "../components/psm/ReviewColumnsMenu";
+import { FreezeMenu } from "../components/sheet/SheetControls";
 import { SubmittedNote } from "../components/psm/SubmittedNote";
 import { SearchInput } from "../components/SearchInput";
 import { useToast } from "../components/toast-context";
 import { Button } from "../components/ui/Button";
 import { cardClass } from "../components/ui/styles";
+import { useSheetLayout } from "../hooks/useSheetLayout";
 import { useClampPage, useUrlFilters } from "../hooks/useUrlFilters";
 import { DEFAULT_PAGE_SIZE } from "../utils/pagination";
 import type { CandidateExtraColumn, CandidatePatch, CandidatesQuery } from "../types/api";
@@ -129,15 +131,21 @@ function PSMReview({ jobId }: { jobId: string }) {
 
   const detail = job.data;
   const readOnly = detail?.isSubmitted ?? true;
+  const statusEditable = Boolean(detail);
   const candidateCount = detail?.candidateCount ?? 0;
   const extras = detail?.psmColumns ?? NO_EXTRAS;
   const offset = ((pagination?.page ?? page) - 1) * (pagination?.limit ?? pageSize);
 
   const columns = useMemo(
-    () => buildCandidateColumns({ jobId, offset, candidateCount, readOnly, extras, save }),
-    [jobId, offset, candidateCount, readOnly, extras, save],
+    () => buildCandidateColumns({ jobId, offset, candidateCount, readOnly, statusEditable, extras, save }),
+    [jobId, offset, candidateCount, readOnly, statusEditable, extras, save],
   );
   const priorities = useMemo(() => priorityOptions(candidateCount), [candidateCount]);
+  const sheet = useSheetLayout("psm-review-sheet", { freezeColumns: 3 });
+  const columnLabels = useMemo(
+    () => columns.map((column) => (typeof column.header === "string" ? column.header : (column.id ?? ""))),
+    [columns],
+  );
 
   if (job.isError && !detail) {
     let content;
@@ -214,7 +222,14 @@ function PSMReview({ jobId }: { jobId: string }) {
             className="w-[calc(50%-4px)] sm:w-48"
           />
           {detail && (
-            <div className="sm:ml-auto">
+            <div className="flex items-center gap-2 sm:ml-auto">
+              <FreezeMenu
+                columnLabels={columnLabels}
+                freezeColumns={sheet.freezeColumns}
+                freezeRows={sheet.freezeRows}
+                onColumns={sheet.setFreezeColumns}
+                onRows={sheet.setFreezeRows}
+              />
               <ReviewColumnsMenu jobId={jobId} selected={detail.psmColumns ?? NO_EXTRAS} />
             </div>
           )}
@@ -227,6 +242,7 @@ function PSMReview({ jobId }: { jobId: string }) {
 
         <DataTable
           caption="Candidate pool"
+          sheet={sheet}
           data={detail ? candidates.data?.items : undefined}
           columns={columns}
           getRowId={(row) => row.studentId}

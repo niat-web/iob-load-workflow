@@ -188,11 +188,20 @@ export function sharedRoutes() {
   const router = Router();
   router.use(publicLimiter);
   router.get("/profiles/:jobId", validate({ params: shared.jobParams }), a(shared.sharedProfiles));
+  router.post("/profiles/:jobId/rows", validate({ params: shared.jobParams }), a(shared.addRow));
   router.patch(
     "/profiles/:jobId/rows/:rowId",
     validate({ params: shared.rowParams, body: shared.cellSchema }),
     a(shared.updateCell),
   );
+  router.delete("/profiles/:jobId/rows/:rowId", validate({ params: shared.rowParams }), a(shared.deleteRow));
+  router.post("/profiles/:jobId/columns", validate({ params: shared.jobParams, body: shared.columnSchema }), a(shared.addColumn));
+  router.patch(
+    "/profiles/:jobId/columns/:key",
+    validate({ params: shared.columnParams, body: shared.columnSchema }),
+    a(shared.renameColumn),
+  );
+  router.delete("/profiles/:jobId/columns/:key", validate({ params: shared.columnParams }), a(shared.deleteColumn));
   router.get("/profiles/:jobId/resumes/:ref", validate({ params: shared.resumeParams }), a(shared.sharedResume));
   return router;
 }

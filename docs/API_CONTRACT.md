@@ -581,7 +581,8 @@ Body (any subset):
 - `finalPriority` must be `P1..P{candidateCount}`. Setting a priority that another candidate holds
   swaps the two candidates' priorities so each priority stays unique.
 - `200` → `{ "candidate": Candidate, "swappedWith": { "studentId": "S2", "finalPriority": "P3" } | null }`
-- `409 REVIEW_FROZEN` after the pool is submitted.
+- After the pool is submitted only `candidateStatus` can change; anything else is `409 REVIEW_FROZEN`.
+  The company link shows only `RECOMMENDED` candidates, so a status change adds or removes them there.
 
 ### `POST /api/psm/jobs/:jobId/submit`
 
@@ -608,7 +609,12 @@ Anyone with the link can read it and set the status dropdowns.
   Hold, No Show). Rows are the PSM's candidates in final priority order. Student IDs, scores, remarks
   and resume storage URLs are never sent.
 - `PATCH /rows/:rowId` `{ key, value }` sets one of the six selects to one of its options, or `""` to
-  clear it (`204`). Any other key or value is `400`. Rows and columns cannot be added or removed.
+  clear it (`204`). Added columns (`c_` keys) take any text, and on rows added from the page every
+  student-detail column is text too; anything else is `400`.
+- `POST /rows` adds an empty row (`201 { row }`, `source: "ADDED"`); `DELETE /rows/:rowId` deletes a
+  row added on the page (`409` for the PSM's rows).
+- `POST /columns` `{ label }` adds a text column (`201 { column }`); `PATCH` / `DELETE /columns/:key`
+  rename or delete it. Only added columns can be renamed or deleted.
 - `GET /resumes/:ref` streams a shortlisted profile's resume.
 - `404 NOT_FOUND` for unknown or deactivated links, `410 LINK_EXPIRED` after 30 days.
 

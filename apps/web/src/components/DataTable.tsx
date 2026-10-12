@@ -1,9 +1,11 @@
 import { flexRender, getCoreRowModel, useReactTable, type ColumnDef } from "@tanstack/react-table";
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
-import type { MouseEvent, ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
+import type { SheetLayout } from "../hooks/useSheetLayout";
 import { cn } from "../utils/cn";
 import { ErrorState } from "./ErrorState";
 import { Skeleton } from "./LoadingSkeleton";
+import { ColumnResizeHandle, RowResizeHandle } from "./sheet/SheetControls";
 import { cardClass } from "./ui/styles";
 
 interface DataTableProps<T> {
@@ -22,6 +24,7 @@ interface DataTableProps<T> {
   onRowClick?: (row: T) => void;
   sort?: TableSort | null;
   onSortChange?: (sort: TableSort | null) => void;
+  sheet?: SheetLayout;
 }
 
 const INTERACTIVE = "button, a, input, select, textarea, label, [role='menuitem'], [role='checkbox'], [role='switch']";
@@ -43,6 +46,20 @@ function nextSort(current: TableSort | null | undefined, key: string): TableSort
 }
 
 const EMPTY: never[] = [];
+
+interface Measured {
+  widths: Record<string, number>;
+  heights: Record<string, number>;
+  header: number;
+}
+
+const sameNumbers = (a: Record<string, number>, b: Record<string, number>) => {
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every((key) => a[key] === b[key]);
+};
+
+const FROZEN_EDGE = "shadow-[inset_-1px_0_0_var(--color-line),6px_0_8px_-6px_rgb(15_23_42/0.18)]";
+const FROZEN_ROW_EDGE = "border-b-2 border-b-slate-300";
 const SKELETON_WIDTHS = ["w-10", "w-24", "w-32", "w-20", "w-28", "w-16"];
 
 export function DataTable<T>({
@@ -61,6 +78,7 @@ export function DataTable<T>({
   onRowClick,
   sort,
   onSortChange,
+  sheet,
 }: DataTableProps<T>) {
   // oxlint-disable-next-line react/incompatible-library -- React Compiler is not used; TanStack Table v8 is intentional.
   const table = useReactTable<T>({
@@ -79,6 +97,39 @@ export function DataTable<T>({
   const showEmpty = !showError && !showSkeleton && rows.length === 0;
   const leafColumns = table.getVisibleLeafColumns();
 
+  const headRefs = useRef(new Map<string, HTMLTableCellElement>());
+  const rowRefs = useRef(new Map<string, HTMLTableRowElement>());
+  const headerRowRef = useRef<HTMLTableRowElement>(null);
+  const [measured, setMeasured] = useState<Measured>({ widths: {}, heights: {}, header: 0 });
+  useLayoutEffect(() => {
+    if (!sheet) return;
+    const widths: Record<string, number> = {};
+    headRefs.current.forEach((element, id) => {
+      widths[id] = element.offsetWidth;
+    });
+    const heights: Record<string, number> = {};
+    rowRefs.current.forEach((element, id) => {
+      heights[id] = element.offsetHeight;
+    });
+    const header = headerRowRef.current?.offsetHeight ?? 0;
+    setMeasured((current) =>
+      current.header === header && sameNumbers(current.widths, widths) && sameNumbers(current.heights, heights)
+        ? current
+        : { widths, heights, header },
+    );
+  });
+
+  const frozenColumns = sheet ? Math.min(sheet.freezeColumns, leafColumns.length) : 0;
+  const frozenRows = sheet ? Math.min(sheet.freezeRows, rows.length) : 0;
+  const widthOf = (id: string) => sheet?.widths[id] ?? measured.widths[id] ?? 0;
+  const leftOf = (index: number) => leafColumns.slice(0, index).reduce((sum, column) => sum + widthOf(column.id), 0);
+  const topOf = (index: number) =>
+    measured.header + rows.slice(0, index).reduce((sum, row) => sum + (measured.heights[row.id] ?? 0), 0);
+  const sizeStyle = (id: string): CSSProperties => {
+    const width = sheet?.widths[id];
+    return width ? { width, minWidth: width, maxWidth: width } : {};
+  };
+
   return (
     <div className={cn(cardClass, "relative flex min-h-[320px] flex-1 shrink-0 flex-col overflow-hidden")}>
       {isFetching && !showSkeleton && (
@@ -88,7 +139,7 @@ export function DataTable<T>({
       )}
       {/* The empty and error states live inside the scroll region so the horizontal scrollbar
           always sits at the bottom of the table, never directly under the header row. */}
-      <div className="flex flex-1 flex-col overflow-x-auto overflow-y-hidden">
+      <div className={cn("flex flex-1 flex-col", sheet ? "max-h-[calc(100dvh-12rem)] overflow-auto" : "overflow-x-auto overflow-y-hidden")}>
         <table
           className="w-full min-w-max shrink-0 border-separate border-spacing-0 text-left text-sm [&>tbody>tr:last-child>td]:border-b-0"
           aria-busy={showSkeleton || undefined}
@@ -96,8 +147,8 @@ export function DataTable<T>({
           <caption className="sr-only">{caption}</caption>
           <thead>
             {table.getHeaderGroups().map((group) => (
-              <tr key={group.id}>
-                {group.headers.map((header) => {
+              <tr key={group.id} ref={headerRowRef}>
+                {group.headers.map((header, columnIndex) => {
                   const sortKey = onSortChange ? header.column.columnDef.meta?.sortKey : undefined;
                   const active = sortKey !== undefined && sort?.key === sortKey ? sort.dir : null;
                   const label = header.isPlaceholder
@@ -107,6 +158,14 @@ export function DataTable<T>({
                   return (
                     <th
                       key={header.id}
+                      ref={(element) => {
+                        if (element) headRefs.current.set(header.column.id, element);
+                        else headRefs.current.delete(header.column.id);
+                      }}
+                      style={{
+                        ...sizeStyle(header.column.id),
+                        ...(columnIndex < frozenColumns ? { left: leftOf(columnIndex) } : {}),
+                      }}
                       scope="col"
                       aria-sort={
                         active === "asc" ? "ascending" : active === "desc" ? "descending" : sortKey ? "none" : undefined
@@ -114,6 +173,9 @@ export function DataTable<T>({
                       className={cn(
                         "h-13 border-b border-line bg-surface px-5 text-xs font-bold tracking-wider whitespace-nowrap text-muted uppercase",
                         header.column.columnDef.meta?.headerClassName,
+                        sheet && "sticky top-0 z-20 overflow-hidden text-ellipsis",
+                        columnIndex < frozenColumns && "z-30",
+                        columnIndex === frozenColumns - 1 && FROZEN_EDGE,
                       )}
                     >
                       {sortKey ? (
@@ -137,6 +199,13 @@ export function DataTable<T>({
                       ) : (
                         label
                       )}
+                      {sheet && !header.isPlaceholder && (
+                        <ColumnResizeHandle
+                          label={typeof header.column.columnDef.header === "string" ? header.column.columnDef.header : header.column.id}
+                          width={() => widthOf(header.column.id)}
+                          onResize={(width) => sheet.setWidth(header.column.id, width)}
+                        />
+                      )}
                     </th>
                   );
                 })}
@@ -154,10 +223,14 @@ export function DataTable<T>({
                   ))}
                 </tr>
               ))}
-            {rows.map((row) => (
+            {rows.map((row, rowIndex) => (
               // oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions -- keyboard users open the same page from the link inside the row.
               <tr
                 key={row.id}
+                ref={(element) => {
+                  if (element) rowRefs.current.set(row.id, element);
+                  else rowRefs.current.delete(row.id);
+                }}
                 onClick={
                   onRowClick
                     ? (event) => {
@@ -171,17 +244,41 @@ export function DataTable<T>({
                   rowClassName?.(row.original),
                 )}
               >
-                {row.getVisibleCells().map((cell) => (
-                  <td
-                    key={cell.id}
-                    className={cn(
-                      "h-15 border-b border-line px-5 align-middle whitespace-nowrap text-ink",
-                      cell.column.columnDef.meta?.cellClassName,
-                    )}
-                  >
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </td>
-                ))}
+                {row.getVisibleCells().map((cell, columnIndex) => {
+                  const frozenColumn = columnIndex < frozenColumns;
+                  const frozenRow = rowIndex < frozenRows;
+                  const height = sheet?.heights[row.id];
+                  return (
+                    <td
+                      key={cell.id}
+                      style={{
+                        ...sizeStyle(cell.column.id),
+                        ...(height ? { height } : {}),
+                        ...(frozenColumn ? { left: leftOf(columnIndex) } : {}),
+                        ...(frozenRow ? { top: topOf(rowIndex) } : {}),
+                      }}
+                      className={cn(
+                        "h-15 border-b border-line px-5 align-middle whitespace-nowrap text-ink",
+                        cell.column.columnDef.meta?.cellClassName,
+                        sheet && "overflow-hidden text-ellipsis",
+                        (frozenColumn || frozenRow) && "sticky bg-surface group-hover:bg-slate-50",
+                        frozenColumn && frozenRow ? "z-[15]" : (frozenColumn || frozenRow) && "z-10",
+                        sheet && columnIndex === 0 && !frozenColumn && !frozenRow && "relative",
+                        columnIndex === frozenColumns - 1 && FROZEN_EDGE,
+                        rowIndex === frozenRows - 1 && FROZEN_ROW_EDGE,
+                      )}
+                    >
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      {sheet && columnIndex === 0 && (
+                        <RowResizeHandle
+                          label={`row ${rowIndex + 1}`}
+                          height={() => measured.heights[row.id] ?? 60}
+                          onResize={(next) => sheet.setHeight(row.id, next)}
+                        />
+                      )}
+                    </td>
+                  );
+                })}
               </tr>
             ))}
           </tbody>

@@ -382,7 +382,7 @@ Learning Portal. After that the portal keeps the logo its organisation was creat
 **D4. PSM review (PSM)**
 - The PSM opens the deal in **Candidate Pools** (**Open Review**). The page starts with the company and
   role, then the ranked candidates: #, AI Priority, Student Name, Student ID, Campus, Resume, AI Resume,
-  GRIT Skill, Assessment, Interview, Overall, AI Reason, Final Priority, PSM Remarks and Candidate
+  GRIT Skill, Overall, AI Reason, Final Priority, PSM Remarks and Candidate
   Status. **Columns** adds more applicant details for this deal (section 1).
 - The PSM changes priority, status and remarks where needed and **submits** the final pool.
 - After submitting, the pool is frozen and the shared profiles link is created:
@@ -391,7 +391,10 @@ Learning Portal. After that the portal keeps the logo its organisation was creat
 
 **D5. CRM gets the shared profiles link**
 - The CRM who loaded the deal gets an email with the link (if "Candidate pool ready" is on).
-- The page shows only one table, the same for every company, with the PSM's candidates in final
+- After submitting, priority and remarks are locked, but a PSM or admin can still change a
+  candidate's **status**. The company link shows **only Recommended** candidates, so changing a
+  status adds or removes that candidate there (their dropdown choices are kept if they come back).
+- The page shows only one table, the same for every company, with the Recommended candidates in final
   priority order:
   - student details from the applied pool (read only): Full Name, Mobile Number, Email Id, Bachelors
     Course Name, Bachelors Department Name, Bachelors Year of Completion, Bachelors Percentage and
@@ -400,7 +403,11 @@ Learning Portal. After that the portal keeps the logo its organisation was creat
     **TR Round 1**, **TR Round 2**, **HR Round**, **MR Round**, **Final Status** (Yet to Schedule,
     Scheduled, Selected, Rejected, Hold, No Show), each choice in its own colour;
   - choices save straight away and everyone sees them within 30 seconds;
-  - rows and columns cannot be added, removed or renamed.
+  - it looks like a spreadsheet: column letters A, B, C… across the top, row numbers down the left,
+    and the header row and Full Name column stay in place while scrolling;
+  - the company can **add rows** (every cell editable, deletable from the row number) and **add
+    columns** (text, renamable and deletable). The PSM's rows and the student details on them stay
+    as they are.
 - Student IDs, scores, PSM remarks and resume storage addresses are never sent to the page. The
   page does show students' mobile numbers and emails, and the link works without sign-in, so share
   it only with the company.
@@ -513,7 +520,8 @@ Meets and interviewer emails it has. **Open** shows that company's sheet.
 (read only) and the six status dropdowns, which are the same data as on the company's page. It also
 has columns with a lock that only appear on this page: **Student Email** (filled from the applied
 pool), **Meet Link**, **Meet Time** and **Auto-recording**, plus any columns added on this page. Every
-lock-column cell can be edited except Auto-recording. Rows cannot be added.
+lock-column cell can be edited except Auto-recording. Rows and columns the company added on its page
+show here too.
 
 **Company interviewer emails** are saved per company at the top of the page. They are never sent to the
 shared profiles page.

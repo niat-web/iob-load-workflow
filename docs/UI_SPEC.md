@@ -161,12 +161,15 @@ open.
 
 1. Same header. A small "← Back" text link, then the title "Company · Role". No summary strip.
 2. On mount call `POST /api/psm/jobs/:jobId/start-review` (idempotent).
-3. Filters row: search (name or student ID), AI priority, final priority, candidate status, and a
-   **Columns** button at the right.
+3. Filters row: search (name or student ID), AI priority, final priority, candidate status, and
+   **Freeze** and **Columns** buttons at the right. The table works like a spreadsheet: its header stays
+   on top while it scrolls inside the page, **Freeze** keeps the first columns (default #, AI Priority,
+   Student Name) and/or the first rows in place, a column's right edge or a row's bottom edge can be
+   dragged to resize it (double-click resets), and these choices are remembered in the browser.
 4. Candidate table columns (always shown):
 
    `#` · AI Priority · Student Name · Student ID · Campus · Resume · AI Resume Score ·
-   GRIT Skill Score · Assessment Score · Interview Score · Overall Score · AI Reason ·
+   GRIT Skill Score · Overall Score · AI Reason ·
    Final Priority · PSM Remarks · Candidate Status
 
    **Columns** adds hidden-by-default columns after these, saved for the deal: Interested, Applied
@@ -200,14 +203,20 @@ open.
 
 ## Shared profiles (`/shared/profiles/:company/:jobId`, also `/shared/profiles/:jobId`)
 
-No header, no sign-in, no summary: only the table, the same for every company, in the PSM's final
-priority order. Columns: `#` · Full Name · Mobile Number · Email Id · Bachelors Course Name ·
-Bachelors Department Name · Bachelors Year of Completion · Bachelors Percentage · Resume (View) ·
-Resume Shortlisting · TR Round 1 · TR Round 2 · HR Round · MR Round · Final Status. The student
-details are read only. The last six are pill dropdowns with a tinted header: Resume Shortlisting
-offers Selected (green), Rejected (orange), On Hold (grey); the rounds and Final Status offer Yet to
-Schedule (grey), Scheduled (purple), Selected (green), Rejected (orange), Hold (yellow), No Show
-(dark). A choice saves at once. The page refreshes every 30 seconds so choices by others appear.
+No header, no sign-in, no summary. A slim toolbar (**Add row**, **Add column**, "All changes saved"),
+then a spreadsheet that fills the screen and scrolls inside itself, like Google Sheets: a grey row of
+column letters (A, B, C…) on top, grey row numbers down the left, a pale yellow header row, thin grid
+lines, and the letters, header row, row numbers and the Full Name column stay frozen while scrolling.
+A **Freeze** button freezes the first columns (Full Name by default) and the first rows; the choice
+is remembered in the browser. Rows follow the PSM's final priority. Columns: Full Name · Mobile Number · Email Id · Bachelors Course
+Name · Bachelors Department Name · Bachelors Year of Completion · Bachelors Percentage · Resume (View) ·
+Resume Shortlisting · TR Round 1 · TR Round 2 · HR Round · MR Round · Final Status, then any added
+columns. Student details on the PSM's rows are read only. The six status columns are Sheets-style
+chips: a pill with a caret that opens a small list of coloured options (Selected green, Rejected
+red, On Hold and Yet to Schedule grey, Scheduled purple, Hold yellow, No Show dark) and Clear. Added
+rows are fully editable and get a bin icon in the row number on hover; added columns can be renamed
+or deleted from their header. Every change saves at once, and the page refreshes every 30 seconds so
+changes by others appear.
 Friendly states for `404` ("This link is not valid") and `410` ("This link has expired").
 
 ## States every page handles

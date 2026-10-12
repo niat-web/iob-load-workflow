@@ -37,6 +37,10 @@ export function SubmittedNote({ job }: { job: PsmJobDetail }) {
           </Button>
         </div>
       )}
+      <p className="w-full text-xs text-emerald-900/80">
+        Only candidates marked Recommended are on the company&apos;s link. Change a candidate&apos;s status here to add or
+        remove them; the rest of the review stays locked.
+      </p>
     </div>
   );
 }

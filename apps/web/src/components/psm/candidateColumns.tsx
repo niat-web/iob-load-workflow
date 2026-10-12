@@ -18,6 +18,7 @@ export interface CandidateColumnOptions {
   offset: number;
   candidateCount: number;
   readOnly: boolean;
+  statusEditable: boolean;
   extras: CandidateExtraColumn[];
   save: (studentId: string, patch: CandidatePatch) => Promise<boolean>;
 }
@@ -155,18 +156,6 @@ export function buildCandidateColumns(o: CandidateColumnOptions): ColumnDef<Cand
       meta: numeric,
     },
     {
-      id: "assessmentScore",
-      header: "Assessment Score",
-      cell: ({ row }) => <ScoreCell value={row.original.assessmentScore} />,
-      meta: numeric,
-    },
-    {
-      id: "interviewScore",
-      header: "Interview Score",
-      cell: ({ row }) => <ScoreCell value={row.original.interviewScore} />,
-      meta: numeric,
-    },
-    {
       id: "overallScore",
       header: "Overall Score",
       cell: ({ row }) => (
@@ -219,7 +208,7 @@ export function buildCandidateColumns(o: CandidateColumnOptions): ColumnDef<Cand
       header: "Candidate Status",
       cell: ({ row }) => {
         const c = row.original;
-        if (o.readOnly) {
+        if (!o.statusEditable) {
           return c.candidateStatus ? (
             <StatusBadge label={candidateStatusLabel(c.candidateStatus) ?? undefined} tone={candidateStatusTone(c.candidateStatus)} />
           ) : (

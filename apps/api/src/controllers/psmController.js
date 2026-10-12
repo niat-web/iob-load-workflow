@@ -306,11 +306,13 @@ async function recordHistory({ jobId, before, after, actor, reason = "PSM_EDIT" 
 
 export async function updateCandidate(req, res) {
   const job = await loadPsmJob(req.valid.params.jobId);
-  if (isReviewSubmitted(job)) throw new AppError(409, "REVIEW_FROZEN", "This candidate pool has already been submitted");
-  if (!EDITABLE.includes(job.status)) throw conflict("This candidate pool is not ready for review yet");
-
   const { studentId } = req.valid.params;
   const body = req.valid.body;
+  const submitted = isReviewSubmitted(job);
+  if (submitted && Object.keys(body).some((key) => key !== "candidateStatus")) {
+    throw new AppError(409, "REVIEW_FROZEN", "This candidate pool has been submitted. Only the candidate status can still change.");
+  }
+  if (!submitted && !EDITABLE.includes(job.status)) throw conflict("This candidate pool is not ready for review yet");
   const before = await CandidateAnalysis.findOne({ jobId: job._id, studentId }).lean();
   if (!before) throw notFound("Candidate not found");
 

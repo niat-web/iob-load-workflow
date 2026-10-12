@@ -586,6 +586,7 @@ export interface SharedColumn {
 
 export interface SharedRow {
   id: string;
+  source?: "PSM" | "ADDED";
   resumeRef: string | null;
   values: Record<string, string>;
 }
