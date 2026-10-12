@@ -68,17 +68,22 @@ export async function ensureSheet(job) {
   return SharedSheet.findOne({ jobId: job._id }).lean();
 }
 
-async function studentDetailsByRef(job, refs) {
-  if (!refs.length) return new Map();
-  const candidates = await CandidateAnalysis.find(
-    { jobId: job._id, publicRef: { $in: refs } },
-    { publicRef: 1, studentId: 1, studentName: 1, resumeUrl: 1 },
-  ).lean();
+async function studentDetailsFor(job, candidates) {
+  if (!candidates.length) return new Map();
   const studentIds = candidates.map((candidate) => candidate.studentId);
   const [applications, eligible] = await Promise.all([
     JobApplication.find(
       { jobId: job._id, studentId: { $in: studentIds } },
-      { studentId: 1, studentName: 1, email: 1, mobile: 1, profile: 1 },
+      {
+        studentId: 1,
+        studentName: 1,
+        email: 1,
+        mobile: 1,
+        "profile.bachelorsCourse": 1,
+        "profile.bachelorsDepartment": 1,
+        "profile.bachelorsYear": 1,
+        "profile.bachelorsPercentage": 1,
+      },
     ).lean(),
     JobEligibleStudent.find(
       { jobId: job._id, studentId: { $in: studentIds } },
@@ -113,44 +118,47 @@ async function studentDetailsByRef(job, refs) {
 
 const SHARED_STATUS = "RECOMMENDED";
 
-async function recommendedOrder(job) {
-  const recommended = await CandidateAnalysis.find(
+function recommendedCandidates(job) {
+  return CandidateAnalysis.find(
     { jobId: job._id, candidateStatus: SHARED_STATUS, publicRef: { $nin: [null, ""] } },
-    { publicRef: 1 },
+    { publicRef: 1, studentId: 1, studentName: 1, resumeUrl: 1 },
   )
     .sort({ finalRank: 1, studentId: 1 })
     .lean();
+}
+
+async function recommendedOrder(job) {
+  const recommended = await recommendedCandidates(job);
   return new Map(recommended.map((candidate, index) => [candidate.publicRef, index]));
 }
 
 async function visibleSheet(job) {
-  let sheet = await ensureSheet(job);
-  const order = await recommendedOrder(job);
+  let [sheet, recommended] = await Promise.all([ensureSheet(job), recommendedCandidates(job)]);
+  const order = new Map(recommended.map((candidate, index) => [candidate.publicRef, index]));
   const present = new Set(sheet.rows.filter((row) => row.source === "PSM").map((row) => row.ref));
   const missing = [...order.keys()].filter((ref) => !present.has(ref));
   if (missing.length) {
-    for (const ref of missing) {
-      await SharedSheet.updateOne(
-        { jobId: job._id, rows: { $not: { $elemMatch: { source: "PSM", ref } } } },
-        { $push: { rows: { ref, source: "PSM", values: {}, createdAt: now() } } },
-      );
-    }
+    await Promise.all(
+      missing.map((ref) =>
+        SharedSheet.updateOne(
+          { jobId: job._id, rows: { $not: { $elemMatch: { source: "PSM", ref } } } },
+          { $push: { rows: { ref, source: "PSM", values: {}, createdAt: now() } } },
+        ),
+      ),
+    );
     sheet = await SharedSheet.findOne({ jobId: job._id }).lean();
   }
   const shared = sheet.rows
     .filter((row) => row.source === "PSM" && order.has(row.ref))
     .sort((a, b) => order.get(a.ref) - order.get(b.ref));
   const added = sheet.rows.filter((row) => row.source === "ADDED");
-  return { sheet, rows: [...shared, ...added] };
+  return { sheet, rows: [...shared, ...added], recommended };
 }
 
 export async function sharedSheetView(job) {
-  const { sheet, rows } = await visibleSheet(job);
+  const { sheet, rows, recommended } = await visibleSheet(job);
   const customColumns = sheet.customColumns ?? [];
-  const details = await studentDetailsByRef(
-    job,
-    rows.filter((row) => row.source === "PSM" && row.ref).map((row) => row.ref),
-  );
+  const details = await studentDetailsFor(job, recommended);
   const editableKeys = [...STATUS_COLUMNS.keys(), ...customColumns.map((column) => column.key)];
   return {
     companyName: job.companyName,

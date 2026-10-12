@@ -31,16 +31,18 @@ export async function createPublicLinkForJob(jobId, createdBy) {
   }
 }
 
+const SHARED_JOB_FIELDS = { companyName: 1, jobRole: 1, learningPortalJobId: 1, skills: 1 };
+
 export async function resolveSharedLink(learningPortalJobId) {
   if (!JOB_ID_PATTERN.test(String(learningPortalJobId ?? ""))) throw notFound("This link is not valid");
-  const link = await PublicLink.findOne({ learningPortalJobId });
+  const link = await PublicLink.findOne({ learningPortalJobId }).lean();
   if (!link || !link.isActive) throw notFound("This link is not valid");
   if (link.expiresAt.getTime() <= now().getTime()) {
     throw new AppError(410, "LINK_EXPIRED", "This link has expired");
   }
-  const job = await Job.findById(link.jobId).lean();
+  const job = await Job.findById(link.jobId, SHARED_JOB_FIELDS).lean();
   if (!job) throw notFound("This link is not valid");
-  await PublicLink.updateOne({ _id: link._id }, { $set: { lastAccessedAt: now() }, $inc: { accessCount: 1 } });
+  PublicLink.updateOne({ _id: link._id }, { $set: { lastAccessedAt: now() }, $inc: { accessCount: 1 } }).catch(() => {});
   return { link, job };
 }
 

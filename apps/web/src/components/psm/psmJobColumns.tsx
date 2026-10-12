@@ -43,8 +43,9 @@ function ReviewAction({ row, backTo }: { row: PsmJobRow; backTo: string }) {
     <Link
       to={`/psm/jobs/${encodeURIComponent(row.id)}/${action.page}`}
       state={{ backTo }}
+      {...(action.page === "review" ? { target: "_blank", rel: "noopener noreferrer" } : {})}
       className={buttonClass(action.variant, "sm", "w-32")}
-      aria-label={`${action.label}: ${row.companyName} – ${row.jobRole}`}
+      aria-label={`${action.label}: ${row.companyName} – ${row.jobRole}${action.page === "review" ? " (opens in a new tab)" : ""}`}
     >
       {action.label}
     </Link>

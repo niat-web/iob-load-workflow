@@ -13,9 +13,10 @@ import { homePathFor } from "./roles";
 interface RequireRoleProps {
   roles: readonly Role[];
   children: ReactNode;
+  bare?: boolean;
 }
 
-export function RequireRole({ roles, children }: RequireRoleProps) {
+export function RequireRole({ roles, children, bare = false }: RequireRoleProps) {
   const { state, reload } = useAuth();
   const location = useLocation();
 
@@ -58,5 +59,6 @@ export function RequireRole({ roles, children }: RequireRoleProps) {
     );
   }
 
+  if (bare) return <div className="flex min-h-dvh flex-col bg-canvas px-4 py-5 sm:px-6">{children}</div>;
   return <AppShell user={user}>{children}</AppShell>;
 }

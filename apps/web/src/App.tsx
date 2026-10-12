@@ -2,6 +2,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { lazy, Suspense, useState, type ReactNode } from "react";
 import { createBrowserRouter, Outlet, RouterProvider, ScrollRestoration } from "react-router";
 import { createQueryClient } from "./api/queryClient";
+import { prefetchSharedProfiles } from "./api/shared";
 import { AuthProvider } from "./auth/AuthProvider";
 import { RequireRole } from "./auth/RequireRole";
 import { RoleRedirect } from "./auth/RoleRedirect";
@@ -27,6 +28,8 @@ const PSMReviewPage = lazy(() => pageLoaders.psmReview().then((m) => ({ default:
 const PSMApplicantsPage = lazy(() => pageLoaders.psmApplicants().then((m) => ({ default: m.PSMApplicantsPage })));
 const PrivacyPage = lazy(() => pageLoaders.privacy().then((m) => ({ default: m.PrivacyPage })));
 const JobUpdateFormPage = lazy(() => pageLoaders.jobUpdate().then((m) => ({ default: m.JobUpdateFormPage })));
+if (window.location.pathname.startsWith("/shared/profiles/")) void pageLoaders.sharedProfiles();
+
 const SharedProfilesPage = lazy(() => pageLoaders.sharedProfiles().then((m) => ({ default: m.SharedProfilesPage })));
 
 function ContentFallback() {
@@ -37,9 +40,9 @@ function ContentFallback() {
   );
 }
 
-function internal(roles: typeof CRM_ROLES, page: ReactNode) {
+function internal(roles: typeof CRM_ROLES, page: ReactNode, bare = false) {
   return (
-    <RequireRole roles={roles}>
+    <RequireRole roles={roles} bare={bare}>
       <Suspense fallback={<ContentFallback />}>{page}</Suspense>
     </RequireRole>
   );
@@ -91,7 +94,7 @@ const router = createBrowserRouter([
           { path: "/settings", element: internal(ALL_ROLES, <SettingsPage />) },
           { path: "/settings/:section", element: internal(ALL_ROLES, <SettingsPage />) },
           { path: "/psm", element: internal(PSM_ROLES, <PSMJobsPage />) },
-          { path: "/psm/jobs/:jobId/review", element: internal(PSM_ROLES, <PSMReviewPage />) },
+          { path: "/psm/jobs/:jobId/review", element: internal(PSM_ROLES, <PSMReviewPage />, true) },
           { path: "/psm/jobs/:jobId/applicants", element: internal(PSM_ROLES, <PSMApplicantsPage />) },
           { path: "*", element: <NotFoundPage /> },
         ],
@@ -101,7 +104,11 @@ const router = createBrowserRouter([
 ]);
 
 export function App() {
-  const [queryClient] = useState(createQueryClient);
+  const [queryClient] = useState(() => {
+    const client = createQueryClient();
+    prefetchSharedProfiles(client, window.location.pathname);
+    return client;
+  });
   return (
     <QueryClientProvider client={queryClient}>
       <ToastProvider>

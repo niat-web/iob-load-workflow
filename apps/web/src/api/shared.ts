@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import type { SharedColumn, SharedProfiles, SharedRow } from "../types/api";
 import { api, apiUrl, seg } from "./client";
 
@@ -12,10 +12,20 @@ export function sharedResumeUrl(jobId: string, ref: string): string {
   return apiUrl(`${base(jobId)}/resumes/${seg(ref)}`);
 }
 
+const fetchProfiles = (jobId: string, signal?: AbortSignal) => api.get<SharedProfiles>(base(jobId), undefined, signal);
+
+const SHARED_PATH = /^\/shared\/profiles\/(?:[^/]+\/)?([0-9a-f-]{36})\/?$/i;
+
+export function prefetchSharedProfiles(queryClient: QueryClient, pathname: string) {
+  const jobId = SHARED_PATH.exec(pathname)?.[1];
+  if (!jobId) return;
+  void queryClient.prefetchQuery({ queryKey: sharedKeys.profiles(jobId), queryFn: ({ signal }) => fetchProfiles(jobId, signal), retry: false });
+}
+
 export function useSharedProfiles(jobId: string) {
   return useQuery({
     queryKey: sharedKeys.profiles(jobId),
-    queryFn: ({ signal }) => api.get<SharedProfiles>(base(jobId), undefined, signal),
+    queryFn: ({ signal }) => fetchProfiles(jobId, signal),
     enabled: jobId.length > 0,
     refetchInterval: 30_000,
     refetchOnWindowFocus: true,
