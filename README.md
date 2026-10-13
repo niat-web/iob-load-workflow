@@ -388,7 +388,7 @@ Deals are loaded the way `CRM_Job_Loading/retool_phase1.py` loads them, using th
 - **Content**: the payload ([nkbPayload.js](apps/api/src/services/learningPortal/nkbPayload.js)) and
   the student-facing text ([jobContent.js](apps/api/src/services/learningPortal/jobContent.js)) port
   the tool's rules and prompts: eligibility criteria per enroll plan and the disclaimer are written
-  by Gemini (`GEMINI_CONTENT_MODEL`) with the same templates, falling back to the tool's rule-based
+  by Gemini (`gemini-2.5-flash-lite`) with the same templates, falling back to the tool's rule-based
   text without AI. The payload is built once and stored, so beta, prod and retries get identical
   content. `show_for_all_users_in_enroll_plans` lists the job for the deal's enroll plans; only
   students granted access can apply.
@@ -466,7 +466,7 @@ asking for it. Only NIAT applicants are analysed; Academy applicants get no AI r
 
 ### Gemini
 
-`GEMINI_API_KEY` from Google AI Studio; `GEMINI_MODEL=gemini-3.5-flash-lite` (2.5 models are closed to new users). Output is strict JSON
+`GEMINI_API_KEY` from Google AI Studio. Every Gemini call uses `gemini-2.5-flash-lite`, fixed in code. Output is strict JSON
 validated with Zod; the prompt forbids inventing experience and treats resume text as untrusted.
 One candidate's failure is recorded and the rest continue; failed candidates are re-analysed when
 the step is retried.

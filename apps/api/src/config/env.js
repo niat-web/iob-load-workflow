@@ -9,6 +9,7 @@ import { PORTAL_DEFAULTS, PORTAL_ENVIRONMENTS } from "./learningPortalDefaults.j
 const here = path.dirname(fileURLToPath(import.meta.url));
 const apiRoot = path.resolve(here, "../..");
 const repoRoot = path.resolve(apiRoot, "../..");
+const GEMINI_MODEL = "gemini-2.5-flash-lite";
 
 if (process.env.NODE_ENV !== "test") {
   for (const file of [path.join(apiRoot, ".env"), path.join(repoRoot, ".env")]) {
@@ -166,8 +167,6 @@ const schema = z.object({
   GOOGLE_MEET_TIMEOUT_MS: number(30000, { min: 1000, max: 120000 }),
 
   GEMINI_API_KEY: optionalString,
-  GEMINI_MODEL: z.string().default("gemini-3.5-flash-lite"),
-  GEMINI_CONTENT_MODEL: z.string().default("gemini-3.5-flash-lite"),
   GEMINI_CONCURRENCY: number(4, { min: 1, max: 32 }),
   GEMINI_TIMEOUT_MS: number(60000, { min: 1000 }),
 
@@ -402,8 +401,8 @@ function buildConfig(env) {
 
     gemini: {
       apiKey: env.GEMINI_API_KEY,
-      model: env.GEMINI_MODEL,
-      contentModel: env.GEMINI_CONTENT_MODEL,
+      model: GEMINI_MODEL,
+      contentModel: GEMINI_MODEL,
       concurrency: env.GEMINI_CONCURRENCY,
       timeoutMs: env.GEMINI_TIMEOUT_MS,
     },
